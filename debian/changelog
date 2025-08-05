@@ -1,0 +1,14 @@
+minios-session-manager (1.0.0-1) unstable; urgency=medium
+
+  * Initial release
+  * CLI interface for session management
+  * GTK3 GUI interface that calls CLI operations
+  * Support for viewing, creating, activating, deleting, and cleaning up sessions
+  * Full support for all three session modes: native, dynfilefs, and raw
+  * Filesystem compatibility detection and mode restrictions
+  * Size specification support for dynfilefs and raw modes
+  * DynFileFS integration with automatic file splitting
+  * Compatible with both JSON and legacy session formats
+  * Comprehensive documentation with compatibility matrix
+
+ -- MiniOS Team <team@minios.dev>  Mon, 05 Aug 2025 00:00:00 +0000

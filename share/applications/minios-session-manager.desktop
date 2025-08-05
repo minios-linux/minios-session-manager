@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=MiniOS Session Manager
+Comment=Manage MiniOS persistent sessions
+Comment[ru]=Управление сессиями сохранения MiniOS
+Icon=preferences-system
+Exec=minios-session-manager
+Categories=System;Settings;
+Keywords=session;persistent;changes;storage;
+StartupNotify=true
+Terminal=false

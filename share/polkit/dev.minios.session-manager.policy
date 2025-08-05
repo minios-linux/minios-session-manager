@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+
+<policyconfig>
+  <vendor>MiniOS</vendor>
+  <vendor_url>https://minios.dev</vendor_url>
+  <icon_name>preferences-system</icon_name>
+
+  <action id="dev.minios.session-manager.read">
+    <description>View MiniOS sessions</description>
+    <description xml:lang="ru">Просмотр сессий MiniOS</description>
+    <message>Authentication is required to view MiniOS sessions</message>
+    <message xml:lang="ru">Для просмотра сессий MiniOS требуется аутентификация</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="dev.minios.session-manager.write">
+    <description>Modify MiniOS sessions</description>
+    <description xml:lang="ru">Изменение сессий MiniOS</description>
+    <message>Authentication is required to create, activate, or delete MiniOS sessions</message>
+    <message xml:lang="ru">Для создания, активации или удаления сессий MiniOS требуется аутентификация</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_self_keep</allow_active>
+    </defaults>
+  </action>
+
+  <action id="dev.minios.session-manager.admin">
+    <description>Administrative MiniOS session operations</description>
+    <description xml:lang="ru">Административные операции с сессиями MiniOS</description>
+    <message>Administrative privileges are required for system-level session operations</message>
+    <message xml:lang="ru">Для системных операций с сессиями требуются права администратора</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+</policyconfig>
