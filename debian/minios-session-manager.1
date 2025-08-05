@@ -5,60 +5,12 @@ minios-session-manager \- graphical interface for managing MiniOS persistent ses
 .B minios-session-manager
 .SH DESCRIPTION
 .B minios-session-manager
-provides a GTK3 graphical user interface for managing MiniOS persistent sessions.
+provides a graphical user interface for managing MiniOS persistent sessions.
 It offers an intuitive way to browse, create, activate, and delete sessions without using the command line.
 .PP
 The application internally uses
-.BR minios-session-cli (1)
+.BR minios-session (1)
 to perform actual session operations, providing a user-friendly frontend to the command-line functionality.
-.SH FEATURES
-The graphical interface provides the following capabilities:
-.TP
-.B Session List View
-Displays all available sessions in a sortable table with columns for ID, status, mode, version, edition, size, and last modification time.
-.TP
-.B Current Session Display
-Shows information about the currently active session at the top of the window.
-.TP
-.B Session Creation
-Create new sessions with a choice of persistence modes (native, dynfilefs, raw) through a dialog interface. The interface automatically detects filesystem compatibility and shows only supported modes.
-.TP
-.B Session Activation
-Activate any available session to make it the default for the next boot.
-.TP
-.B Session Deletion
-Delete selected sessions with confirmation dialogs. The currently active session cannot be deleted.
-.TP
-.B Cleanup Operations
-Remove old sessions based on age threshold with configurable number of days.
-.TP
-.B Filesystem Compatibility
-Automatic detection of media filesystem type with restrictions on incompatible session modes. Size limitations are enforced for FAT32 raw images.
-.TP
-.B Compatibility Warnings
-Automatic detection and warnings for sessions created with different MiniOS versions or editions.
-.SH INTERFACE ELEMENTS
-.TP
-.B Main Window
-The main window displays the session list, current session information, and action buttons.
-.TP
-.B Refresh Button
-Updates the session list and current session information.
-.TP
-.B Create Session Button
-Opens a dialog to create a new session with mode selection.
-.TP
-.B Activate Session Button
-Activates the selected session after confirmation.
-.TP
-.B Delete Session Button
-Deletes the selected session after confirmation (if not currently active).
-.TP
-.B Cleanup Sessions Button
-Opens a dialog to clean up old sessions with configurable age threshold.
-.TP
-.B About Button
-Shows application information and version details.
 .SH SESSION MODES
 The application supports creation of sessions in three different modes:
 .TP
@@ -70,22 +22,6 @@ For non-POSIX filesystems (FAT32, NTFS). Uses expandable container files.
 .TP
 .B Raw Mode
 For any filesystem. Uses fixed-size image files.
-.SH DIALOGS
-.TP
-.B Create Session Dialog
-Allows selection of session mode and provides information about each mode's characteristics and requirements. Automatically detects filesystem type and shows only compatible modes. Includes size selection for dynfilefs and raw modes with filesystem-specific limitations.
-.TP
-.B Activation Confirmation
-Confirms session activation and warns about potential compatibility issues.
-.TP
-.B Deletion Confirmation
-Confirms session deletion with warnings about irreversibility.
-.TP
-.B Cleanup Configuration
-Allows setting the age threshold for automatic cleanup of old sessions.
-.TP
-.B Error and Information Dialogs
-Display operation results, errors, and informational messages.
 .SH KEYBOARD SHORTCUTS
 .TP
 .B F5
@@ -113,40 +49,16 @@ Desktop entry file for application menu integration.
 .TP
 .B /usr/share/polkit-1/actions/dev.minios.session-manager.policy
 PolicyKit configuration for administrative operations.
-.SH DEPENDENCIES
-.TP
-.B minios-session-cli
-The command-line utility that performs actual session operations.
-.TP
-.B GTK3
-Graphical toolkit for the user interface.
-.TP
-.B Python3
-Python interpreter and GTK bindings.
-.SH EXIT STATUS
-The application runs until closed by the user. Individual operations may succeed or fail with appropriate user feedback through dialog boxes.
 .SH NOTES
 .PP
 The graphical interface requires a running X11 or Wayland session. For headless or text-only systems, use
-.BR minios-session-cli (1)
+.BR minios-session (1)
 instead.
 .PP
-The application starts without requiring root privileges and automatically requests authentication via PolicyKit when needed. Write operations (create, activate, delete sessions) will show authentication dialogs when system permissions require it.
-.SH PRIVILEGE ESCALATION
-The graphical interface handles privilege escalation transparently:
-.TP
-.B Session Viewing
-Reading session information typically requires no authentication.
-.TP
-.B Session Management
-Creating, activating, or deleting sessions automatically triggers authentication prompts via PolicyKit when needed.
-.TP
-.B Error Handling
-Clear error messages are displayed when authentication fails or is cancelled by the user.
+The application starts without requiring root privileges and automatically requests authentication via PolicyKit when needed for write operations (create, activate, delete).
 .SH SEE ALSO
-.BR minios-session-cli (1),
-.BR live-config (7),
-.BR gtk3 (7)
+.BR minios-session (1),
+.BR live-config (7)
 .SH AUTHOR
 MiniOS Team <team@minios.dev>
 .SH REPORTING BUGS

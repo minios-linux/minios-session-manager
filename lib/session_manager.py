@@ -3,7 +3,7 @@
 MiniOS Session Manager GUI
 
 Graphical interface for managing MiniOS persistent sessions.
-This GUI application calls the CLI utility (minios-session-cli) to perform actual operations.
+This GUI application calls the CLI utility (minios-session) to perform actual operations.
 """
 
 import gi
@@ -16,7 +16,7 @@ import gettext
 from datetime import datetime
 
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, GLib
+from gi.repository import Gtk, GLib, Pango
 
 # Internationalization setup
 try:
@@ -32,20 +32,45 @@ class SessionManagerGUI:
     def __init__(self):
         self.cli_command = self._find_cli_command()
         if not self.cli_command:
-            self._show_error(_("Error: minios-session-cli not found in PATH"))
+            self._show_error(_("Error: minios-session not found in PATH"))
             sys.exit(1)
+        
+        
+        self._load_css()
         
         self.builder = Gtk.Builder()
         self.create_interface()
         self.refresh_session_list()
     
+    def _load_css(self):
+        """Load CSS styling for the application"""
+        css_paths = [
+            "/usr/share/minios-session-manager/styles/style.css",
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), "share", "styles", "style.css")
+        ]
+        
+        for css_path in css_paths:
+            if os.path.exists(css_path):
+                try:
+                    provider = Gtk.CssProvider()
+                    provider.load_from_path(css_path)
+                    Gtk.StyleContext.add_provider_for_screen(
+                        Gtk.Widget.get_screen(Gtk.Window()),
+                        provider,
+                        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+                    )
+                    break
+                except Exception as e:
+                    print(f"Warning: Failed to load CSS from {css_path}: {e}")
+                    continue
+    
     def _find_cli_command(self):
         """Find the CLI command executable"""
         # Try different possible locations
         possible_paths = [
-            'minios-session-cli',  # In PATH
-            '/usr/bin/minios-session-cli',  # System install
-            os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bin', 'minios-session-cli')  # Source
+            'minios-session',
+            '/usr/bin/minios-session',
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bin', 'minios-session')  # Source
         ]
         
         for path in possible_paths:
@@ -71,161 +96,423 @@ class SessionManagerGUI:
     
     def create_interface(self):
         """Create the main interface"""
-        # Main window
+        
         self.window = Gtk.Window()
         self.window.set_title(_("MiniOS Session Manager"))
-        self.window.set_default_size(800, 600)
+        self.window.set_icon_name("preferences-desktop-personal")  # Personal desktop preferences icon
+        self.window.set_default_size(600, 500)
         self.window.set_position(Gtk.WindowPosition.CENTER)
         self.window.connect("destroy", Gtk.main_quit)
         
-        # Main container
+        
         main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        main_box.set_margin_left(10)
-        main_box.set_margin_right(10)
+        main_box.set_margin_start(10)
+        main_box.set_margin_end(10)
         main_box.set_margin_top(10)
         main_box.set_margin_bottom(10)
         self.window.add(main_box)
         
-        # Header
-        header_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        main_box.pack_start(header_box, False, False, 0)
         
-        title_label = Gtk.Label()
-        title_label.set_markup(f"<b>{_('MiniOS Session Manager')}</b>")
-        header_box.pack_start(title_label, False, False, 0)
         
-        # Current session info
-        self.current_session_label = Gtk.Label()
-        self.current_session_label.set_halign(Gtk.Align.START)
-        main_box.pack_start(self.current_session_label, False, False, 0)
-        
-        # Session list
         list_frame = Gtk.Frame()
         list_frame.set_label(_("Available Sessions"))
         main_box.pack_start(list_frame, True, True, 0)
         
-        # Create scrollable list
+        
         scrolled = Gtk.ScrolledWindow()
         scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-        list_frame.add(scrolled)
         
-        # TreeView for sessions
-        self.session_store = Gtk.ListStore(str, str, str, str, str, str, str)  # ID, Status, Mode, Version, Edition, Size, Modified
-        self.session_tree = Gtk.TreeView(model=self.session_store)
-        scrolled.add(self.session_tree)
         
-        # Columns
-        columns = [
-            (_("ID"), 0),
-            (_("Status"), 1), 
-            (_("Mode"), 2),
-            (_("Version"), 3),
-            (_("Edition"), 4),
-            (_("Size"), 5),
-            (_("Modified"), 6)
-        ]
+        self.sessions_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
+        self.sessions_list.connect("row-selected", self._on_session_selected)
+        self.sessions_list.connect("button-press-event", self._on_list_button_press)
+        self.sessions_list.set_margin_start(10)
+        self.sessions_list.set_margin_end(10)
+        self.sessions_list.set_margin_top(10)
+        self.sessions_list.set_margin_bottom(10)
+        scrolled.add(self.sessions_list)
         
-        for title, col_id in columns:
-            renderer = Gtk.CellRendererText()
-            column = Gtk.TreeViewColumn(title, renderer, text=col_id)
-            column.set_resizable(True)
-            column.set_sort_column_id(col_id)
-            self.session_tree.append_column(column)
         
-        # First row of buttons
-        button_row1 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        main_box.pack_start(button_row1, False, False, 0)
+        self._create_context_menu()
         
-        # Refresh button
-        refresh_btn = Gtk.Button.new_with_label(_("Refresh"))
-        refresh_btn.connect("clicked", self.on_refresh_clicked)
-        button_row1.pack_start(refresh_btn, False, False, 0)
         
-        # Create button
-        create_btn = Gtk.Button.new_with_label(_("Create Session"))
+        self.selected_session_id = None
+        
+        
+        toolbar_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=15)
+        toolbar_box.set_halign(Gtk.Align.CENTER)
+        toolbar_box.set_margin_top(15)
+        main_box.pack_start(toolbar_box, False, False, 0)
+        
+        
+        create_btn = Gtk.Button()
+        create_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        create_icon = Gtk.Image.new_from_icon_name("document-new", Gtk.IconSize.DND)
+        create_label = Gtk.Label(label=_("Create"))
+        create_box.pack_start(create_icon, False, False, 0)
+        create_box.pack_start(create_label, False, False, 0)
+        create_btn.add(create_box)
         create_btn.connect("clicked", self.on_create_clicked)
-        button_row1.pack_start(create_btn, False, False, 0)
+        create_btn.get_style_context().add_class('suggested-action')
+        create_btn.get_style_context().add_class('large-button')
+        create_btn.get_style_context().add_class('create-button')
+        create_btn.set_size_request(140, -1)
+        toolbar_box.pack_start(create_btn, False, False, 0)
         
-        # Activate button
-        activate_btn = Gtk.Button.new_with_label(_("Activate Session"))
-        activate_btn.connect("clicked", self.on_activate_clicked)
-        button_row1.pack_start(activate_btn, False, False, 0)
         
-        # Delete button
-        delete_btn = Gtk.Button.new_with_label(_("Delete Session"))
-        delete_btn.connect("clicked", self.on_delete_clicked)
-        button_row1.pack_start(delete_btn, False, False, 0)
+        refresh_btn = Gtk.Button()
+        refresh_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        refresh_icon = Gtk.Image.new_from_icon_name("view-refresh", Gtk.IconSize.DND)
+        refresh_label = Gtk.Label(label=_("Refresh"))
+        refresh_box.pack_start(refresh_icon, False, False, 0)
+        refresh_box.pack_start(refresh_label, False, False, 0)
+        refresh_btn.add(refresh_box)
+        refresh_btn.connect("clicked", self.on_refresh_clicked)
+        refresh_btn.get_style_context().add_class('large-button')
+        refresh_btn.get_style_context().add_class('refresh-button')
+        refresh_btn.set_size_request(140, -1)
+        toolbar_box.pack_start(refresh_btn, False, False, 0)
         
-        # Second row of buttons
-        button_row2 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        main_box.pack_start(button_row2, False, False, 0)
         
-        # Cleanup button
-        cleanup_btn = Gtk.Button.new_with_label(_("Cleanup Old Sessions"))
+        cleanup_btn = Gtk.Button()
+        cleanup_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        cleanup_icon = Gtk.Image.new_from_icon_name("user-trash", Gtk.IconSize.DND)
+        cleanup_label = Gtk.Label(label=_("Cleanup"))
+        cleanup_box.pack_start(cleanup_icon, False, False, 0)
+        cleanup_box.pack_start(cleanup_label, False, False, 0)
+        cleanup_btn.add(cleanup_box)
         cleanup_btn.connect("clicked", self.on_cleanup_clicked)
-        button_row2.pack_start(cleanup_btn, False, False, 0)
+        cleanup_btn.get_style_context().add_class('large-button')
+        cleanup_btn.get_style_context().add_class('cleanup-button')
+        cleanup_btn.set_size_request(140, -1)
+        toolbar_box.pack_start(cleanup_btn, False, False, 0)
         
-        # About button
-        about_btn = Gtk.Button.new_with_label(_("About"))
-        about_btn.connect("clicked", self.on_about_clicked)
-        button_row2.pack_end(about_btn, False, False, 0)
+        
+        
+        self.loading_spinner = Gtk.Spinner()
+        self.loading_label = Gtk.Label(label=_("Loading sessions..."))
+        self.loading_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        self.loading_box.pack_start(self.loading_spinner, False, False, 0)
+        self.loading_box.pack_start(self.loading_label, False, False, 0)
+        self.loading_box.set_halign(Gtk.Align.CENTER)
+        self.loading_box.set_valign(Gtk.Align.CENTER)
+        self.loading_box.get_style_context().add_class('loading-overlay')
+        
+        
+        overlay = Gtk.Overlay()
+        overlay.add(scrolled)
+        overlay.add_overlay(self.loading_box)
+        list_frame.add(overlay)
+        self.loading_box.set_visible(False)
     
     def refresh_session_list(self):
         """Refresh the session list from CLI"""
-        def update_ui():
-            # Get current session info
-            success, output, error = self._run_cli_command(['current'])
-            if success and output.strip():
-                self.current_session_label.set_text(output.strip())
-            else:
-                self.current_session_label.set_text(_("No current session found"))
-            
-            # Clear existing data
-            self.session_store.clear()
-            
-            # Get session list
-            success, output, error = self._run_cli_command(['list'])
-            if not success:
-                self._show_error(_("Failed to get session list: {}").format(error))
-                return
-            
-            # Parse the output - this is a bit crude but works
-            lines = output.split('\n')
-            current_session = None
-            
-            for i, line in enumerate(lines):
-                if line.startswith('Session #'):
-                    # Extract session info
-                    session_id = line.split('#')[1].split()[0]
-                    is_current = '(CURRENT)' in line
-                    status = _("CURRENT") if is_current else _("Available")
-                    
-                    # Look for following lines with details
-                    mode = version = edition = size = modified = "Unknown"
-                    
-                    for j in range(i+1, min(i+6, len(lines))):
-                        detail_line = lines[j].strip()
-                        if detail_line.startswith('Mode:'):
-                            mode = detail_line.split(':', 1)[1].strip()
-                        elif detail_line.startswith('Version:'):
-                            version_info = detail_line.split(':', 1)[1].strip()
-                            if '/' in version_info:
-                                version, edition = version_info.split('/', 1)
-                                version = version.strip()
-                                edition = edition.strip()
-                            else:
-                                version = version_info
-                        elif detail_line.startswith('Size:'):
-                            size = detail_line.split(':', 1)[1].strip()
-                        elif detail_line.startswith('Last Modified:'):
-                            modified = detail_line.split(':', 1)[1].strip()
-                    
-                    self.session_store.append([session_id, status, mode, version, edition, size, modified])
+        def fetch_data():
+            """Fetch data in background thread"""
+            try:
+                # Get session list and active/running sessions separately for accurate status
+                list_success, list_output, list_error = self._run_cli_command(['list', '--json'])
+                active_success, active_output, active_error = self._run_cli_command(['active', '--json'])
+                running_success, running_output, running_error = self._run_cli_command(['running', '--json'])
+                
+                # Parse active and running session IDs
+                active_session_id = None
+                running_session_id = None
+                
+                if active_success and active_output.strip():
+                    try:
+                        active_data = json.loads(active_output.strip())
+                        active_session_id = active_data.get('id')
+                    except:
+                        pass
+                
+                if running_success and running_output.strip():
+                    try:
+                        running_data = json.loads(running_output.strip())
+                        running_session_id = running_data.get('id')
+                    except:
+                        pass
+                
+                # Return results to main thread
+                GLib.idle_add(self._process_session_data, list_success, list_output, list_error, active_session_id, running_session_id)
+            except Exception as e:
+                GLib.idle_add(self._show_error, _("Error fetching session data: {}").format(str(e)))
+                GLib.idle_add(self._show_loading, False)
         
-        # Run in thread to avoid blocking UI
-        thread = threading.Thread(target=update_ui)
+        # Show loading indicator
+        self._show_loading(True)
+        
+        # Run fetch in thread to avoid blocking UI
+        thread = threading.Thread(target=fetch_data)
         thread.daemon = True
         thread.start()
+    
+    def _process_session_data(self, list_success, list_output, list_error, active_session_id, running_session_id):
+        """Process session data in main thread"""
+        try:
+            # Clear existing session rows
+            for row in self.sessions_list.get_children():
+                self.sessions_list.remove(row)
+            
+            # Check for list errors
+            if not list_success:
+                self._show_error(_("Failed to get session list: {}").format(list_error))
+                return
+            
+            # Parse JSON output
+            if list_output.strip().startswith('['):
+                # JSON format - parse sessions directly
+                try:
+                    sessions = json.loads(list_output.strip())
+                    sessions_found = len(sessions) > 0
+                    
+                    for session in sessions:
+                        session_id = session.get('id', 'unknown')
+                        # Determine status from separate commands
+                        is_active = (session_id == active_session_id)
+                        is_running = (session_id == running_session_id)
+                        mode = session.get('mode', 'unknown')
+                        version = session.get('version', 'unknown')
+                        edition = session.get('edition', 'unknown')
+                        size = session.get('size_formatted', 'unknown')
+                        modified_str = session.get('modified', 'unknown')
+                        
+                        # Format modified date
+                        try:
+                            if modified_str != 'unknown':
+                                from datetime import datetime
+                                modified_dt = datetime.fromisoformat(modified_str.replace('Z', '+00:00'))
+                                modified = modified_dt.strftime('%Y-%m-%d %H:%M:%S')
+                            else:
+                                modified = 'unknown'
+                        except:
+                            modified = modified_str
+                        
+                        # Create session row
+                        self._create_session_row(session_id, is_active, is_running, mode, version, edition, size, modified)
+                
+                except json.JSONDecodeError as e:
+                    self._show_error(_("Failed to parse session list JSON: {}").format(str(e)))
+                    return
+            else:
+                # Fallback to text parsing (backward compatibility)
+                lines = list_output.split('\n')
+                sessions_found = False
+                
+                for i, line in enumerate(lines):
+                    if line.startswith('Session #'):
+                        sessions_found = True
+                        # Extract session info
+                        session_id = line.split('#')[1].split()[0]
+                        # Determine status from separate commands
+                        is_active = (session_id == active_session_id)
+                        is_running = (session_id == running_session_id)
+                        
+                        # Look for following lines with details
+                        mode = version = edition = size = modified = "Unknown"
+                        
+                        for j in range(i+1, min(i+6, len(lines))):
+                            detail_line = lines[j].strip()
+                            if detail_line.startswith('Mode:'):
+                                mode = detail_line.split(':', 1)[1].strip()
+                            elif detail_line.startswith('Version:'):
+                                version_info = detail_line.split(':', 1)[1].strip()
+                                if '/' in version_info:
+                                    version, edition = version_info.split('/', 1)
+                                    version = version.strip()
+                                    edition = edition.strip()
+                                else:
+                                    version = version_info
+                            elif detail_line.startswith('Size:'):
+                                size = detail_line.split(':', 1)[1].strip()
+                            elif detail_line.startswith('Last Modified:'):
+                                modified = detail_line.split(':', 1)[1].strip()
+                        
+                        # Create session row
+                        self._create_session_row(session_id, is_active, is_running, mode, version, edition, size, modified)
+            
+            if not sessions_found:
+                # Show "no sessions" message
+                no_sessions_row = Gtk.ListBoxRow()
+                no_sessions_row.set_sensitive(False)
+                no_sessions_label = Gtk.Label(label=_("No sessions found"))
+                no_sessions_label.set_margin_top(20)
+                no_sessions_label.set_margin_bottom(20)
+                no_sessions_row.add(no_sessions_label)
+                self.sessions_list.add(no_sessions_row)
+            
+            self.sessions_list.show_all()
+        finally:
+            # Hide loading indicator
+            self._show_loading(False)
+    
+    def _create_session_row(self, session_id, is_active, is_running, mode, version, edition, size, modified):
+        """Create a session row in kernel-manager style"""
+        row = Gtk.ListBoxRow()
+        
+        # Add CSS classes based on session status (like kernel manager)
+        if is_active:
+            row.get_style_context().add_class('session-status-active')  # Use 'active' style for current
+        else:
+            row.get_style_context().add_class('session-status-available')
+        
+        main_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=15)
+        main_box.get_style_context().add_class('session-item')
+        
+        # Session icon - better icons
+        if is_running:
+            icon_name = 'system-run'  # Running icon for currently running session
+        elif is_active:
+            icon_name = 'media-floppy'  # Default/active session icon
+        else:
+            icon_name = 'media-floppy'  # Storage/session icon for available sessions
+        img = Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.DND)
+        main_box.pack_start(img, False, False, 0)
+        
+        # Session info box
+        info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        info_box.set_hexpand(True)
+        
+        # Main session name - clean without (CURRENT)
+        session_label = Gtk.Label()
+        session_title = f"Session #{session_id}"
+        session_label.set_markup(f'<b><span size="large">{GLib.markup_escape_text(session_title)}</span></b>')
+        session_label.set_halign(Gtk.Align.START)
+        session_label.set_ellipsize(Pango.EllipsizeMode.END)
+        info_box.pack_start(session_label, False, False, 0)
+        
+        # Create a grid for better information layout
+        details_grid = Gtk.Grid()
+        details_grid.set_column_spacing(20)
+        details_grid.set_row_spacing(3)
+        
+        # Row 1: Mode and Version
+        mode_label = Gtk.Label()
+        mode_label.set_markup(f'<span size="small"><b>{_("Mode:")}</b> {GLib.markup_escape_text(mode)}</span>')
+        mode_label.set_halign(Gtk.Align.START)
+        details_grid.attach(mode_label, 0, 0, 1, 1)
+        
+        version_label = Gtk.Label()
+        version_label.set_markup(f'<span size="small"><b>{_("Version:")}</b> {GLib.markup_escape_text(version)}/{GLib.markup_escape_text(edition)}</span>')
+        version_label.set_halign(Gtk.Align.START)
+        details_grid.attach(version_label, 1, 0, 1, 1)
+        
+        # Row 2: Size and Modified
+        size_label = Gtk.Label()
+        size_label.set_markup(f'<span size="small"><b>{_("Size:")}</b> {GLib.markup_escape_text(size)}</span>')
+        size_label.set_halign(Gtk.Align.START)
+        details_grid.attach(size_label, 0, 1, 1, 1)
+        
+        modified_label = Gtk.Label()
+        modified_label.set_markup(f'<span size="small"><b>{_("Modified:")}</b> {GLib.markup_escape_text(modified)}</span>')
+        modified_label.set_halign(Gtk.Align.START)
+        details_grid.attach(modified_label, 1, 1, 1, 1)
+        
+        info_box.pack_start(details_grid, False, False, 0)
+        main_box.pack_start(info_box, True, True, 0)
+        
+        # Status badges on the right - in horizontal line
+        status_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
+        status_box.set_valign(Gtk.Align.CENTER)
+        status_box.set_halign(Gtk.Align.END)
+        
+        # Primary status badge
+        status_label = Gtk.Label()
+        if is_active:
+            status_text = _('ACTIVE')
+            status_label.get_style_context().add_class('active-session-badge')
+        else:
+            status_text = _('AVAILABLE')
+            status_label.get_style_context().add_class('available-session-badge')
+        
+        status_label.set_markup(f'<span size="small" weight="bold">{GLib.markup_escape_text(status_text)}</span>')
+        status_label.set_halign(Gtk.Align.CENTER)
+        status_box.pack_start(status_label, False, False, 0)
+        
+        # Running badge (secondary) - in same line
+        if is_running:
+            running_label = Gtk.Label()
+            running_text = _('RUNNING')
+            running_label.get_style_context().add_class('running-session-badge')
+            running_label.set_markup(f'<span size="small" weight="bold">{GLib.markup_escape_text(running_text)}</span>')
+            running_label.set_halign(Gtk.Align.CENTER)
+            status_box.pack_start(running_label, False, False, 0)
+        
+        main_box.pack_start(status_box, False, False, 0)
+        
+        row.add(main_box)
+        row.session_id = session_id
+        row.is_active = is_active
+        row.is_running = is_running
+        
+        self.sessions_list.add(row)
+    
+    def _on_session_selected(self, list_box, row):
+        """Handle session selection"""
+        if row:
+            self.selected_session_id = row.session_id
+        else:
+            self.selected_session_id = None
+    
+    def _create_context_menu(self):
+        """Create context menu for session items"""
+        self.context_menu = Gtk.Menu()
+        self.context_menu.get_style_context().add_class('session-context-menu')
+        
+        # Activate menu item
+        activate_item = Gtk.MenuItem(label=_("Activate Session"))
+        activate_item.get_style_context().add_class('context-menu-activate')
+        activate_item.connect("activate", self._on_context_activate)
+        self.context_menu.append(activate_item)
+        
+        # Separator
+        separator = Gtk.SeparatorMenuItem()
+        self.context_menu.append(separator)
+        
+        # Delete menu item
+        delete_item = Gtk.MenuItem(label=_("Delete Session"))
+        delete_item.get_style_context().add_class('context-menu-delete')
+        delete_item.connect("activate", self._on_context_delete)
+        self.context_menu.append(delete_item)
+        
+        self.context_menu.show_all()
+    
+    def _on_list_button_press(self, widget, event):
+        """Handle button press on list"""
+        if event.button == 3:  # Right click
+            # Get the row under cursor
+            row = self.sessions_list.get_row_at_y(int(event.y))
+            if row:
+                # Select the row
+                self.sessions_list.select_row(row)
+                self.selected_session_id = row.session_id
+                
+                # Update menu items based on session status
+                activate_item = self.context_menu.get_children()[0]
+                delete_item = self.context_menu.get_children()[2]
+                
+                # Disable activate if already active
+                if hasattr(row, 'is_active') and row.is_active:
+                    activate_item.set_sensitive(False)
+                    delete_item.set_sensitive(False)  # Can't delete active session
+                else:
+                    activate_item.set_sensitive(True)
+                    delete_item.set_sensitive(True)
+                
+                # Show context menu
+                self.context_menu.popup_at_pointer(event)
+                return True
+        return False
+    
+    def _on_context_activate(self, menu_item):
+        """Handle activate from context menu"""
+        if self.selected_session_id:
+            self.on_activate_clicked(None)
+    
+    def _on_context_delete(self, menu_item):
+        """Handle delete from context menu"""
+        if self.selected_session_id:
+            self.on_delete_clicked(None)
     
     def on_refresh_clicked(self, button):
         """Handle refresh button click"""
@@ -264,8 +551,7 @@ class SessionManagerGUI:
         # Create session mode selection dialog
         dialog = Gtk.Dialog(
             title=_("Create New Session"),
-            parent=self.window,
-            flags=0
+            parent=self.window
         )
         dialog.add_buttons(
             Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
@@ -274,8 +560,8 @@ class SessionManagerGUI:
         
         content_area = dialog.get_content_area()
         content_area.set_spacing(10)
-        content_area.set_margin_left(10)
-        content_area.set_margin_right(10)
+        content_area.set_margin_start(10)
+        content_area.set_margin_end(10)
         content_area.set_margin_top(10)
         content_area.set_margin_bottom(10)
         
@@ -284,7 +570,7 @@ class SessionManagerGUI:
         fs_info_label.set_markup(f"<b>{_('Detected filesystem:')} {filesystem_type}</b>")
         content_area.pack_start(fs_info_label, False, False, 0)
         
-        label = Gtk.Label(_("Select session mode:"))
+        label = Gtk.Label(label=_("Select session mode:"))
         content_area.pack_start(label, False, False, 0)
         
         # Radio buttons for mode selection (only for compatible modes)
@@ -293,7 +579,7 @@ class SessionManagerGUI:
         
         if 'native' in compatible_modes:
             native_radio = Gtk.RadioButton.new_with_label_from_widget(None, _("Native Mode"))
-            native_radio.set_tooltip_text(_("Direct storage on POSIX filesystems (ext4, btrfs, etc.)"))
+            native_radio.set_tooltip_text(_("Direct storage on POSIX filesystems"))
             content_area.pack_start(native_radio, False, False, 0)
             radio_buttons['native'] = native_radio
             if first_radio is None:
@@ -308,7 +594,7 @@ class SessionManagerGUI:
         if 'dynfilefs' in compatible_modes:
             base_radio = first_radio if first_radio else None
             dynfilefs_radio = Gtk.RadioButton.new_with_label_from_widget(base_radio, _("DynFileFS Mode"))
-            dynfilefs_radio.set_tooltip_text(_("Dynamic files for FAT32, NTFS filesystems"))
+            dynfilefs_radio.set_tooltip_text(_("Dynamic files"))
             content_area.pack_start(dynfilefs_radio, False, False, 0)
             radio_buttons['dynfilefs'] = dynfilefs_radio
             if first_radio is None:
@@ -317,7 +603,7 @@ class SessionManagerGUI:
         if 'raw' in compatible_modes:
             base_radio = first_radio if first_radio else None
             raw_radio = Gtk.RadioButton.new_with_label_from_widget(base_radio, _("Raw Mode"))
-            raw_radio.set_tooltip_text(_("Fixed-size image files for any filesystem"))
+            raw_radio.set_tooltip_text(_("Static image files"))
             content_area.pack_start(raw_radio, False, False, 0)
             radio_buttons['raw'] = raw_radio
             if first_radio is None:
@@ -327,7 +613,7 @@ class SessionManagerGUI:
         size_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         content_area.pack_start(size_box, False, False, 0)
         
-        size_label = Gtk.Label(_("Size (MB):"))
+        size_label = Gtk.Label(label=_("Size (MB):"))
         size_box.pack_start(size_label, False, False, 0)
         
         adjustment = Gtk.Adjustment(value=4000, lower=100, upper=50000, step_increment=100)
@@ -336,7 +622,7 @@ class SessionManagerGUI:
         size_spinbutton.set_value(4000)
         size_box.pack_start(size_spinbutton, False, False, 0)
         
-        size_info_label = Gtk.Label(_("(Only used for DynFileFS and Raw modes)"))
+        size_info_label = Gtk.Label(label=_("(Only used for DynFileFS and Raw modes)"))
         size_info_label.set_sensitive(False)
         size_box.pack_start(size_info_label, False, False, 0)
         
@@ -372,6 +658,15 @@ class SessionManagerGUI:
         on_mode_changed(None)
         
         dialog.show_all()
+        
+        # Style the dialog buttons to remove white colors
+        cancel_button = dialog.get_widget_for_response(Gtk.ResponseType.CANCEL)
+        ok_button = dialog.get_widget_for_response(Gtk.ResponseType.OK)
+        if cancel_button:
+            cancel_button.get_style_context().add_class('dialog-neutral-button')
+        if ok_button:
+            ok_button.get_style_context().add_class('dialog-neutral-button')
+        
         response = dialog.run()
         
         if response == Gtk.ResponseType.OK:
@@ -387,109 +682,147 @@ class SessionManagerGUI:
             
             dialog.destroy()
             
-            # Create session with appropriate parameters
-            if mode in ["dynfilefs", "raw"]:
-                success, output, error = self._run_cli_command(['create', '--mode', mode, '--size', str(size_mb)])
-            else:
-                success, output, error = self._run_cli_command(['create', '--mode', mode])
+            # Show progress dialog
+            progress_dialog = self._create_progress_dialog(_("Creating Session"), _("Creating new session, please wait..."))
+            progress_dialog.show_all()
             
-            if success:
-                self._show_info(output.strip())
-                self.refresh_session_list()
-            else:
-                self._show_error(_("Failed to create session: {}").format(error))
+            # Create session in background thread
+            def create_session_bg():
+                try:
+                    if mode in ["dynfilefs", "raw"]:
+                        success, output, error = self._run_cli_command(['create', '--mode', mode, '--size', str(size_mb)])
+                    else:
+                        success, output, error = self._run_cli_command(['create', '--mode', mode])
+                    
+                    # Update UI in main thread
+                    GLib.idle_add(self._on_session_creation_complete, success, output, error, progress_dialog)
+                except Exception as e:
+                    GLib.idle_add(self._on_session_creation_complete, False, "", str(e), progress_dialog)
+            
+            thread = threading.Thread(target=create_session_bg)
+            thread.daemon = True
+            thread.start()
         else:
             dialog.destroy()
     
     def on_activate_clicked(self, button):
-        """Handle activate session button click"""
-        selection = self.session_tree.get_selection()
-        model, tree_iter = selection.get_selected()
-        
-        if tree_iter is None:
+        """Handle activate session action"""
+        if not self.selected_session_id:
             self._show_info(_("Please select a session to activate"))
             return
         
-        session_id = model[tree_iter][0]
-        session_status = model[tree_iter][1]
+        session_id = self.selected_session_id
         
         # Check if already active
-        if session_status == _("CURRENT"):
-            self._show_info(_("Session #{} is already active").format(session_id))
-            return
+        for row in self.sessions_list.get_children():
+            if hasattr(row, 'session_id') and row.session_id == session_id:
+                if row.is_active:
+                    self._show_info(_("Session #{} is already active").format(session_id))
+                    return
+                break
         
         # Confirm activation
         dialog = Gtk.MessageDialog(
             parent=self.window,
-            flags=0,
             message_type=Gtk.MessageType.QUESTION,
             buttons=Gtk.ButtonsType.YES_NO,
-            text=_("Confirm Activation")
+            text=_("Ready to switch sessions?")
         )
         dialog.format_secondary_text(
-            _("Are you sure you want to activate session #{}?\n\nThis will take effect on the next boot.").format(session_id)
+            _("You're about to activate session #{}.\n\nThis session will become your new default and will be active after the next boot.\n\nShall we make the switch?").format(session_id)
         )
+        
+        # Style the dialog buttons
+        dialog.get_style_context().add_class('friendly-dialog')
+        yes_button = dialog.get_widget_for_response(Gtk.ResponseType.YES)
+        no_button = dialog.get_widget_for_response(Gtk.ResponseType.NO)
+        yes_button.set_label(_("Yes, activate"))
+        no_button.set_label(_("Maybe later"))
+        yes_button.get_style_context().add_class('suggested-action')
+        no_button.get_style_context().add_class('icon-button')
         
         response = dialog.run()
         dialog.destroy()
         
         if response == Gtk.ResponseType.YES:
-            # Activate session
-            success, output, error = self._run_cli_command(['activate', session_id])
-            if success:
-                self._show_info(output.strip())
-                self.refresh_session_list()
-            else:
-                self._show_error(_("Failed to activate session: {}").format(error))
+            # Show progress dialog
+            progress_dialog = self._create_progress_dialog(_("Activating Session"), _("Activating session, please wait..."))
+            progress_dialog.show_all()
+            
+            # Activate session in background thread
+            def activate_session_bg():
+                try:
+                    success, output, error = self._run_cli_command(['activate', session_id])
+                    GLib.idle_add(self._on_session_operation_complete, success, output, error, progress_dialog, _("Session activated successfully"), _("Failed to activate session"))
+                except Exception as e:
+                    GLib.idle_add(self._on_session_operation_complete, False, "", str(e), progress_dialog, "", _("Failed to activate session"))
+            
+            thread = threading.Thread(target=activate_session_bg)
+            thread.daemon = True
+            thread.start()
     
     def on_delete_clicked(self, button):
-        """Handle delete button click"""
-        selection = self.session_tree.get_selection()
-        model, tree_iter = selection.get_selected()
-        
-        if tree_iter is None:
+        """Handle delete session action"""
+        if not self.selected_session_id:
             self._show_info(_("Please select a session to delete"))
             return
         
-        session_id = model[tree_iter][0]
-        session_status = model[tree_iter][1]
+        session_id = self.selected_session_id
         
-        # Prevent deleting current session
-        if session_status == _("CURRENT"):
-            self._show_error(_("Cannot delete the currently active session"))
-            return
+        # Prevent deleting active session
+        for row in self.sessions_list.get_children():
+            if hasattr(row, 'session_id') and row.session_id == session_id:
+                if row.is_active:
+                    self._show_error(_("Cannot delete the currently active session"))
+                    return
+                break
         
         # Confirm deletion
         dialog = Gtk.MessageDialog(
             parent=self.window,
-            flags=0,
             message_type=Gtk.MessageType.QUESTION,
             buttons=Gtk.ButtonsType.YES_NO,
-            text=_("Confirm Deletion")
+            text=_("Delete this session?")
         )
         dialog.format_secondary_text(
-            _("Are you sure you want to delete session #{}?\n\nThis action cannot be undone.").format(session_id)
+            _("You're about to permanently delete session #{}.\n\nThis action cannot be undone and all data in this session will be lost forever.\n\nAre you absolutely sure you want to proceed?").format(session_id)
         )
+        
+        # Style the dialog buttons
+        dialog.get_style_context().add_class('friendly-dialog')
+        yes_button = dialog.get_widget_for_response(Gtk.ResponseType.YES)
+        no_button = dialog.get_widget_for_response(Gtk.ResponseType.NO)
+        yes_button.set_label(_("Yes, delete it"))
+        no_button.set_label(_("Keep it safe"))
+        yes_button.get_style_context().add_class('destructive-action')
+        no_button.get_style_context().add_class('suggested-action')
         
         response = dialog.run()
         dialog.destroy()
         
         if response == Gtk.ResponseType.YES:
-            # Delete session
-            success, output, error = self._run_cli_command(['delete', session_id])
-            if success:
-                self._show_info(output.strip())
-                self.refresh_session_list()
-            else:
-                self._show_error(_("Failed to delete session: {}").format(error))
+            # Show progress dialog
+            progress_dialog = self._create_progress_dialog(_("Deleting Session"), _("Deleting session, please wait..."))
+            progress_dialog.show_all()
+            
+            # Delete session in background thread
+            def delete_session_bg():
+                try:
+                    success, output, error = self._run_cli_command(['delete', session_id])
+                    GLib.idle_add(self._on_session_operation_complete, success, output, error, progress_dialog, _("Session deleted successfully"), _("Failed to delete session"))
+                except Exception as e:
+                    GLib.idle_add(self._on_session_operation_complete, False, "", str(e), progress_dialog, "", _("Failed to delete session"))
+            
+            thread = threading.Thread(target=delete_session_bg)
+            thread.daemon = True
+            thread.start()
     
     def on_cleanup_clicked(self, button):
         """Handle cleanup button click"""
         # Ask for days threshold
         dialog = Gtk.Dialog(
             title=_("Cleanup Old Sessions"),
-            parent=self.window,
-            flags=0
+            parent=self.window
         )
         dialog.add_buttons(
             Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
@@ -498,12 +831,12 @@ class SessionManagerGUI:
         
         content_area = dialog.get_content_area()
         content_area.set_spacing(10)
-        content_area.set_margin_left(10)
-        content_area.set_margin_right(10)
+        content_area.set_margin_start(10)
+        content_area.set_margin_end(10)
         content_area.set_margin_top(10)
         content_area.set_margin_bottom(10)
         
-        label = Gtk.Label(_("Delete sessions older than how many days?"))
+        label = Gtk.Label(label=_("Delete sessions older than how many days?"))
         content_area.pack_start(label, False, False, 0)
         
         adjustment = Gtk.Adjustment(value=30, lower=1, upper=365, step_increment=1)
@@ -513,6 +846,15 @@ class SessionManagerGUI:
         content_area.pack_start(spinbutton, False, False, 0)
         
         dialog.show_all()
+        
+        # Style the dialog buttons to remove white colors
+        cancel_button = dialog.get_widget_for_response(Gtk.ResponseType.CANCEL)
+        ok_button = dialog.get_widget_for_response(Gtk.ResponseType.OK)
+        if cancel_button:
+            cancel_button.get_style_context().add_class('dialog-neutral-button')
+        if ok_button:
+            ok_button.get_style_context().add_class('dialog-neutral-button')
+        
         response = dialog.run()
         
         if response == Gtk.ResponseType.OK:
@@ -522,7 +864,6 @@ class SessionManagerGUI:
             # Confirm cleanup
             confirm_dialog = Gtk.MessageDialog(
                 parent=self.window,
-                flags=0,
                 message_type=Gtk.MessageType.QUESTION,
                 buttons=Gtk.ButtonsType.YES_NO,
                 text=_("Confirm Cleanup")
@@ -535,62 +876,159 @@ class SessionManagerGUI:
             confirm_dialog.destroy()
             
             if confirm_response == Gtk.ResponseType.YES:
-                # Run cleanup
-                success, output, error = self._run_cli_command(['cleanup', '--days', str(days)])
-                if success:
-                    self._show_info(output.strip())
-                    self.refresh_session_list()
-                else:
-                    self._show_error(_("Cleanup failed: {}").format(error))
+                # Show progress dialog
+                progress_dialog = self._create_progress_dialog(_("Cleaning Up Sessions"), _("Cleaning up old sessions, please wait..."))
+                progress_dialog.show_all()
+                
+                # Run cleanup in background thread
+                def cleanup_sessions_bg():
+                    try:
+                        success, output, error = self._run_cli_command(['cleanup', '--days', str(days)])
+                        GLib.idle_add(self._on_session_operation_complete, success, output, error, progress_dialog, _("Cleanup completed successfully"), _("Cleanup failed"))
+                    except Exception as e:
+                        GLib.idle_add(self._on_session_operation_complete, False, "", str(e), progress_dialog, "", _("Cleanup failed"))
+                
+                thread = threading.Thread(target=cleanup_sessions_bg)
+                thread.daemon = True
+                thread.start()
         else:
             dialog.destroy()
     
-    def on_about_clicked(self, button):
-        """Show about dialog"""
-        about = Gtk.AboutDialog()
-        about.set_transient_for(self.window)
-        about.set_program_name(_("MiniOS Session Manager"))
-        about.set_version("1.0.0")
-        about.set_copyright("Copyright © 2025 MiniOS Team")
-        about.set_comments(_("A utility for managing MiniOS persistent sessions"))
-        about.set_website("https://minios.dev")
-        about.set_website_label("minios.dev")
-        about.set_license_type(Gtk.License.GPL_3_0)
-        about.set_authors(["MiniOS Team <team@minios.dev>"])
-        
-        about.run()
-        about.destroy()
     
     def _show_error(self, message):
-        """Show error dialog"""
+        """Show error dialog with friendly styling"""
         dialog = Gtk.MessageDialog(
             parent=self.window,
-            flags=0,
             message_type=Gtk.MessageType.ERROR,
             buttons=Gtk.ButtonsType.OK,
-            text=_("Error")
+            text=_("Oops! Something went wrong")
         )
-        dialog.format_secondary_text(str(message))
+        dialog.format_secondary_text(_("Don't worry, we can fix this:\n\n{}").format(str(message)))
+        
+        # Style the dialog
+        dialog.get_style_context().add_class('friendly-dialog')
+        ok_button = dialog.get_widget_for_response(Gtk.ResponseType.OK)
+        ok_button.set_label(_("Got it"))
+        ok_button.get_style_context().add_class('suggested-action')
+        
         dialog.run()
         dialog.destroy()
     
     def _show_info(self, message):
-        """Show info dialog"""
+        """Show info dialog with friendly styling"""
+        # Determine appropriate title based on message content
+        if "success" in message.lower() or "activated" in message.lower() or "created" in message.lower():
+            title = _("Great! Task completed")
+            prefix = _("Everything went smoothly:\n\n")
+            button_label = _("Awesome!")
+        elif "already" in message.lower():
+            title = _("Just so you know")
+            prefix = _("Here's what's happening:\n\n")
+            button_label = _("Thanks")
+        elif "select" in message.lower():
+            title = _("Quick reminder")
+            prefix = _("To continue, please:\n\n")
+            button_label = _("Will do")
+        else:
+            title = _("Information")
+            prefix = _("Here's what you need to know:\n\n")
+            button_label = _("Thanks")
+            
         dialog = Gtk.MessageDialog(
             parent=self.window,
-            flags=0,
             message_type=Gtk.MessageType.INFO,
             buttons=Gtk.ButtonsType.OK,
-            text=_("Information")
+            text=title
         )
-        dialog.format_secondary_text(str(message))
+        dialog.format_secondary_text(prefix + str(message))
+        
+        # Style the dialog
+        dialog.get_style_context().add_class('friendly-dialog')
+        ok_button = dialog.get_widget_for_response(Gtk.ResponseType.OK)
+        ok_button.set_label(button_label)
+        ok_button.get_style_context().add_class('suggested-action')
+        
         dialog.run()
         dialog.destroy()
+    
+    def _create_progress_dialog(self, title, message):
+        """Create a progress dialog with spinner"""
+        progress_dialog = Gtk.Dialog(
+            title=title,
+            parent=self.window,
+            modal=True,
+            destroy_with_parent=True
+        )
+        progress_dialog.set_deletable(False)
+        progress_dialog.set_resizable(False)
+        progress_dialog.set_default_size(400, 150)
+        
+        content_area = progress_dialog.get_content_area()
+        content_area.set_spacing(15)
+        content_area.set_margin_start(20)
+        content_area.set_margin_end(20)
+        content_area.set_margin_top(20)
+        content_area.set_margin_bottom(20)
+        
+        # Progress box with spinner and text
+        progress_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=15)
+        progress_box.set_halign(Gtk.Align.CENTER)
+        
+        # Spinner
+        spinner = Gtk.Spinner()
+        spinner.set_size_request(32, 32)
+        spinner.start()
+        progress_box.pack_start(spinner, False, False, 0)
+        
+        # Message label
+        message_label = Gtk.Label(label=message)
+        message_label.set_halign(Gtk.Align.START)
+        progress_box.pack_start(message_label, False, False, 0)
+        
+        content_area.pack_start(progress_box, True, True, 0)
+        
+        return progress_dialog
+    
+    def _on_session_creation_complete(self, success, output, error, progress_dialog):
+        """Handle session creation completion"""
+        progress_dialog.destroy()
+        
+        if success:
+            self._show_info(output.strip())
+            self.refresh_session_list()
+        else:
+            self._show_error(_("Failed to create session: {}").format(error))
+    
+    def _on_session_operation_complete(self, success, output, error, progress_dialog, success_prefix, error_prefix):
+        """Handle generic session operation completion"""
+        progress_dialog.destroy()
+        
+        if success:
+            message = output.strip() if output.strip() else success_prefix
+            self._show_info(message)
+            self.refresh_session_list()
+        else:
+            error_message = f"{error_prefix}: {error}" if error else error_prefix
+            self._show_error(error_message)
+    
+    def _show_loading(self, show):
+        """Show or hide loading indicator"""
+        if show:
+            # Ensure CSS class is applied every time we show the loading overlay
+            self.loading_box.get_style_context().add_class('loading-overlay')
+            self.loading_box.set_visible(True)
+            self.loading_spinner.start()
+        else:
+            self.loading_box.set_visible(False)
+            self.loading_spinner.stop()
     
     def run(self):
         """Start the application"""
         self.window.show_all()
-        Gtk.main()
+        try:
+            Gtk.main()
+        except KeyboardInterrupt:
+            pass
 
 def main():
     """Main entry point"""

@@ -9,6 +9,7 @@ This is the CLI-only version that performs actual session operations.
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -29,28 +30,39 @@ except:
 class SessionManager:
     """Main class for managing MiniOS sessions"""
     
-    def __init__(self, privileged_mode=False):
+    def __init__(self, privileged_mode=False, custom_sessions_dir=None):
         self.sessions_file = None
         self.sessions_dir = None
         self.current_session = None
         self.session_format = None  # 'json' or 'conf'
         self.privileged_mode = privileged_mode
+        self.custom_sessions_dir = custom_sessions_dir
+        
+        # Detect if we're running as root or with elevated privileges
+        if os.geteuid() == 0:
+            self.privileged_mode = True
+            
         self._detect_session_storage()
     
     def _detect_session_storage(self):
         """Detect where sessions are stored and in what format"""
-        # Common locations for session storage
-        possible_paths = [
-            "/run/initramfs/changes",
-            "/mnt/live/changes", 
-            "/live/changes",
-            "/tmp/changes"  # fallback for testing
-        ]
-        
-        for path in possible_paths:
-            if os.path.exists(path):
-                self.sessions_dir = path
-                break
+        # If custom directory is specified, use it
+        if self.custom_sessions_dir:
+            if os.path.exists(self.custom_sessions_dir):
+                self.sessions_dir = self.custom_sessions_dir
+            else:
+                return False
+        else:
+            # Common locations for session storage
+            possible_paths = [
+                "/run/initramfs/memory/data/minios/changes",
+                "/tmp/changes"  # fallback for testing
+            ]
+            
+            for path in possible_paths:
+                if os.path.exists(path):
+                    self.sessions_dir = path
+                    break
         
         if not self.sessions_dir:
             return False
@@ -82,20 +94,10 @@ class SessionManager:
     
     def _run_privileged_command(self, command_args):
         """Run a command with elevated privileges using pkexec"""
-        # Find the privileged CLI script
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        privileged_script = os.path.join(script_dir, "session_cli_privileged.py")
-        
-        # If running from installed location, adjust path
-        if not os.path.exists(privileged_script):
-            privileged_script = "/usr/lib/minios-session-manager/session_cli_privileged.py"
-        
-        if not os.path.exists(privileged_script):
-            return False, "", _("Privileged script not found")
-        
         try:
-            # Use pkexec to run the privileged script
-            cmd = ["pkexec", "python3", privileged_script] + command_args
+            # Use pkexec to run the current script with --privileged flag
+            current_script = os.path.abspath(__file__)
+            cmd = ["pkexec", "python3", current_script, "--privileged"] + command_args
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
             return result.returncode == 0, result.stdout, result.stderr
         except subprocess.TimeoutExpired:
@@ -108,7 +110,7 @@ class SessionManager:
     def _requires_privileges(self, operation):
         """Check if an operation requires elevated privileges"""
         # Read operations that might not need privileges
-        read_operations = ['list', 'current', 'info']
+        read_operations = ['list', 'active', 'info', 'running']
         
         # Write operations that need privileges
         write_operations = ['activate', 'create', 'delete', 'cleanup']
@@ -150,6 +152,9 @@ class SessionManager:
                 elif operation == 'cleanup':
                     print(output.strip())
                     return 0, []  # Return success count and empty errors
+                elif operation in ['active', 'running', 'info']:
+                    print(output.strip())
+                    return None  # Indicate that output was already printed
                 else:
                     return output.strip()
             else:
@@ -213,7 +218,7 @@ class SessionManager:
             print(f"Error writing sessions metadata: {e}", file=sys.stderr)
             return False
     
-    def list_sessions(self):
+    def list_sessions(self, include_running_check=True):
         """List all available sessions"""
         # Check if we need to use privileges
         result = self._execute_operation('list')
@@ -225,6 +230,13 @@ class SessionManager:
             
         sessions = []
         metadata = self._read_sessions_metadata()
+        
+        # Get running session info for comparison (avoid recursion)
+        running_id = None
+        if include_running_check:
+            running_session = self.get_running_session(avoid_recursion=True)
+            if running_session and 'id' in running_session:
+                running_id = running_session['id']
         
         # Find session directories (numeric names)
         for item in os.listdir(self.sessions_dir):
@@ -245,7 +257,8 @@ class SessionManager:
                     'edition': session_data.get('edition', 'unknown'), 
                     'size': size,
                     'modified': datetime.fromtimestamp(stat.st_mtime),
-                    'is_default': metadata.get('default') == session_id
+                    'is_default': metadata.get('default') == session_id,
+                    'is_running': session_id == running_id
                 })
         
         # Sort by session ID
@@ -352,14 +365,14 @@ class SessionManager:
         
         compatible_modes = []
         
-        # Native mode: requires POSIX-compatible filesystem
+        # Native mode: requires POSIX-compatible filesystem (ext2/3/4, btrfs, xfs, etc.)
         if is_posix:
             compatible_modes.append('native')
         
-        # DynFileFS mode: works on most writable filesystems
+        # DynFileFS mode: works on ALL writable filesystems (including FAT32, NTFS, ext4, etc.)
         compatible_modes.append('dynfilefs')
         
-        # Raw mode: works on any writable filesystem
+        # Raw mode: works on ALL writable filesystems (static images)
         compatible_modes.append('raw')
         
         return compatible_modes
@@ -460,11 +473,126 @@ class SessionManager:
         if not current_id:
             return None
             
-        sessions = self.list_sessions()
+        sessions = self.list_sessions(include_running_check=False)  # Avoid recursion
         for session in sessions:
             if session['id'] == current_id:
                 return session
         return None
+    
+    def get_running_session(self, avoid_recursion=False):
+        """Get information about currently running session"""
+        # Try to detect which session is actually running by checking mount points
+        try:
+            # Use findmnt to get detailed mount information
+            result = subprocess.run(['findmnt', '-o', 'TARGET,SOURCE'], capture_output=True, text=True)
+            if result.returncode == 0:
+                mount_output = result.stdout
+                
+                # Look for bind mount of session directory to /run/initramfs/memory/changes
+                for line in mount_output.split('\n'):
+                    if '/run/initramfs/memory/changes' in line and self.sessions_dir:
+                        # Parse findmnt output like: /run/initramfs/memory/changes /dev/sda1[/minios/changes/1]
+                        # Remove tree formatting characters if present
+                        clean_line = line.replace('│', '').replace('├─', '').replace('└─', '').strip()
+                        parts = clean_line.split()
+                        if len(parts) >= 2:
+                            target = parts[0]
+                            source = parts[1]
+                            # Make sure this is the exact target we're looking for
+                            if target == '/run/initramfs/memory/changes':
+                                # Extract session ID from source like: /dev/sda1[/minios/changes/1]
+                                if '[' in source and ']' in source:
+                                    bracket_content = source.split('[')[1].split(']')[0]
+                                    # Extract session ID from path like /minios/changes/1
+                                    if '/changes/' in bracket_content:
+                                        session_id = bracket_content.split('/changes/')[-1]
+                                        if session_id.isdigit():
+                                            return self._get_session_info(session_id, avoid_recursion)
+            
+            # Fallback: check /proc/cmdline for session information
+            with open('/proc/cmdline', 'r') as f:
+                cmdline = f.read().strip()
+            
+            # Look for perchdir parameter
+            perchdir_match = re.search(r'perchdir=(\w+)', cmdline)
+            
+            if perchdir_match:
+                perchdir_value = perchdir_match.group(1)
+                
+                # If perchdir is a number, that's the running session
+                if perchdir_value.isdigit():
+                    return self._get_session_info(perchdir_value, avoid_recursion)
+                elif perchdir_value == 'new':
+                    # Running in new session mode
+                    return {
+                        'id': 'new',
+                        'path': None,
+                        'mode': 'temporary',
+                        'version': 'current',
+                        'edition': 'current',
+                        'size': 0,
+                        'modified': None,
+                        'is_default': False,
+                        'status': 'temporary'
+                    }
+                elif perchdir_value == 'resume':
+                    # Resume mode - need to check what's actually mounted
+                    # This is handled above in findmnt checking
+                    # As fallback, check default session from config
+                    if avoid_recursion:
+                        metadata = self._read_sessions_metadata()
+                        current_id = metadata.get('default')
+                        if current_id:
+                            return self._get_session_info(current_id, avoid_recursion)
+                    else:
+                        # Return default session but mark it as uncertain
+                        metadata = self._read_sessions_metadata()
+                        current_id = metadata.get('default')
+                        if current_id:
+                            sessions = self.list_sessions(include_running_check=False)
+                            for session in sessions:
+                                if session['id'] == current_id:
+                                    session['status'] = 'default_fallback'
+                                    return session
+        except Exception as e:
+            # Error occurred, return None
+            if not avoid_recursion:
+                print(f"Error detecting running session: {e}", file=sys.stderr)
+        
+        return None
+    
+    def _get_session_info(self, session_id, avoid_recursion=False):
+        """Helper to get session info by ID"""
+        if avoid_recursion:
+            # Simple session info without full list
+            session_path = os.path.join(self.sessions_dir, session_id) if self.sessions_dir else None
+            return {
+                'id': session_id,
+                'path': session_path,
+                'mode': 'unknown',
+                'version': 'unknown', 
+                'edition': 'unknown',
+                'size': 0,
+                'modified': None,
+                'is_default': False
+            }
+        else:
+            sessions = self.list_sessions(include_running_check=False)
+            for session in sessions:
+                if session['id'] == session_id:
+                    return session
+            # Session exists in cmdline but not in filesystem
+            return {
+                'id': session_id,
+                'path': os.path.join(self.sessions_dir, session_id) if self.sessions_dir else None,
+                'mode': 'unknown',
+                'version': 'unknown',
+                'edition': 'unknown',
+                'size': 0,
+                'modified': None,
+                'is_default': False,
+                'status': 'running_missing'
+            }
     
     def activate_session(self, session_id):
         """Activate a session (set as default)"""
@@ -688,12 +816,17 @@ class SessionManager:
         sessions = self.list_sessions()
         current = self.get_current_session()
         current_id = current['id'] if current else None
+        running = self.get_running_session()
+        running_id = running['id'] if running else None
         
         old_sessions = []
         cutoff_date = datetime.now().timestamp() - (days_threshold * 24 * 3600)
         
         for session in sessions:
-            if session['id'] != current_id and session['modified'].timestamp() < cutoff_date:
+            # Skip current (active) session, running session, and sessions newer than cutoff
+            if (session['id'] != current_id and 
+                session['id'] != running_id and 
+                session['modified'].timestamp() < cutoff_date):
                 old_sessions.append(session)
         
         deleted_count = 0
@@ -733,11 +866,17 @@ def format_session_list(sessions):
     lines.append("-" * 80)
     
     for session in sessions:
-        status = _("(CURRENT)") if session['is_default'] else ""
-        modified_str = session['modified'].strftime("%Y-%m-%d %H:%M:%S")
+        status_parts = []
+        if session['is_default']:
+            status_parts.append(_("ACTIVE"))
+        if session.get('is_running', False):
+            status_parts.append(_("RUNNING"))
+        
+        status = f" ({', '.join(status_parts)})" if status_parts else ""
+        modified_str = session['modified'].strftime("%Y-%m-%d %H:%M:%S") if session['modified'] else "unknown"
         size_str = SessionManager()._format_size(session['size'])
         
-        lines.append(f"Session #{session['id']} {status}")
+        lines.append(f"Session #{session['id']}{status}")
         lines.append(f"  Mode: {session['mode']}")
         lines.append(f"  Version: {session['version']} / {session['edition']}")
         lines.append(f"  Size: {size_str}")
@@ -746,65 +885,212 @@ def format_session_list(sessions):
     
     return "\n".join(lines)
 
-# GUI functions removed - this is CLI-only version
+def format_sessions_json(sessions):
+    """Format session list as JSON"""
+    json_sessions = []
+    for session in sessions:
+        json_session = {
+            'id': session['id'],
+            'mode': session['mode'],
+            'version': session['version'],
+            'edition': session['edition'],
+            'size': session['size'],
+            'size_formatted': SessionManager()._format_size(session['size']),
+            'modified': session['modified'].isoformat() if session['modified'] else None,
+            'path': session['path'],
+            'is_default': session['is_default'],
+            'is_running': session.get('is_running', False)
+        }
+        # Add status if present (for running sessions)
+        if 'status' in session:
+            json_session['status'] = session['status']
+        json_sessions.append(json_session)
+    
+    return json.dumps(json_sessions, indent=2, ensure_ascii=False)
+
+def format_session_json(session):
+    """Format single session as JSON"""
+    if not session:
+        return json.dumps(None)
+    
+    json_session = {
+        'id': session['id'],
+        'mode': session['mode'],
+        'version': session['version'],
+        'edition': session['edition'],
+        'size': session['size'],
+        'size_formatted': SessionManager()._format_size(session['size']),
+        'modified': session['modified'].isoformat() if session['modified'] else None,
+        'path': session['path'],
+        'is_default': session['is_default']
+    }
+    # Add status if present (for running sessions)
+    if 'status' in session:
+        json_session['status'] = session['status']
+    
+    return json.dumps(json_session, indent=2, ensure_ascii=False)
+
+def format_filesystem_info_json(fs_info):
+    """Format filesystem info as JSON"""
+    if not fs_info:
+        return json.dumps({'error': 'Filesystem information not available'})
+    
+    return json.dumps(fs_info, indent=2, ensure_ascii=False)
+
+
 
 def main():
     """Main application entry point"""
+    import sys
+    
+    # Check if we're running in privileged mode (called via pkexec)
+    privileged_mode = '--privileged' in sys.argv
+    if privileged_mode:
+        sys.argv.remove('--privileged')
+    
     parser = argparse.ArgumentParser(
-        description=_('MiniOS Session Manager - Manage persistent sessions'),
+        description=_('MiniOS Session Manager - Command line tool for managing persistent sessions'),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=_("""
-Examples:
-  minios-session-cli list                       # List all sessions
-  minios-session-cli current                    # Show current session
-  minios-session-cli info                       # Show filesystem compatibility info
-  minios-session-cli activate 2                # Activate session #2
-  minios-session-cli create --mode native      # Create new native session
-  minios-session-cli create --mode dynfilefs   # Create dynfilefs session (4GB)
-  minios-session-cli create --mode dynfilefs --size 8000  # Create 8GB dynfilefs session
-  minios-session-cli create --mode raw --size 2000        # Create 2GB raw session
-  minios-session-cli delete 3                  # Delete session #3
-  minios-session-cli cleanup --days 30         # Delete sessions older than 30 days
+GLOBAL OPTIONS:
+  --json                    Output results in JSON format (can be used with any command)
+  --sessions-dir PATH       Use custom sessions directory instead of default
+
+COMMANDS:
+  list                      List all available sessions with detailed information
+  active                    Show currently active session (will boot next)
+  running                   Show currently running session (current boot)
+  info                      Show filesystem type and compatible session modes
+  activate SESSION_ID       Activate specified session (required: session_id)
+  create [OPTIONS]          Create new session (optional: --mode, --size)
+  delete SESSION_ID         Delete specified session (required: session_id)
+  cleanup [OPTIONS]         Delete old sessions (optional: --days, default: 30)
+
+SESSION MODES:
+  native                    Direct filesystem changes (requires POSIX-compatible filesystem)
+  dynfilefs                 Dynamic file system overlay (works on any filesystem, 4GB default)
+  raw                       Raw disk image (works on any filesystem, custom size required)
+
+COMMAND BEHAVIOR:
+  • create without --mode: Uses native mode (may fail on FAT32/NTFS)
+  • create without --size: Uses 4000MB (4GB) for dynfilefs/raw modes
+  • cleanup without --days: Uses 30-day threshold for deletion
+  • cleanup protects both active and running sessions from deletion
+
+EXAMPLES:
+
+  Basic Usage:
+    minios-session list                           List all available sessions
+    minios-session active                         Show which session will boot next
+    minios-session running                        Show currently running session
+    minios-session info                           Show filesystem compatibility info
+
+  Session Management:
+    minios-session activate 2                     Set session #2 as default for next boot
+    minios-session delete 3                       Delete session #3 permanently
+    minios-session cleanup --days 30              Delete sessions older than 30 days
+    minios-session cleanup                        Delete sessions older than 30 days (default)
+
+  Creating Sessions:
+    minios-session create --mode native           Create native session (filesystem changes)
+    minios-session create --mode dynfilefs        Create 4GB dynfilefs session
+    minios-session create --mode dynfilefs --size 8000   Create 8GB dynfilefs session
+    minios-session create --mode raw --size 2000         Create 2GB raw disk image
+
+  Error Handling:
+    minios-session create                         May fail on FAT32: "Use dynfilefs or raw mode"
+    minios-session create --mode raw --size 5000 May fail on FAT32: "Exceeds 4000MB limit"
+
+  JSON Output (for automation):
+    minios-session --json list                    List sessions in JSON format
+    minios-session active --json                  Get active session info as JSON
+    minios-session info --json                    Get system info as JSON
+
+  Custom Session Directory:
+    minios-session --sessions-dir /mnt/usb/sessions list
+    minios-session --sessions-dir /tmp/test create --mode native
+
+NOTE: Most write operations (activate, create, delete, cleanup) require root privileges.
+      The tool will automatically request privileges when needed.
         """)
     )
     
+    # Add global flags that can be used anywhere
+    parser.add_argument('--json', action='store_true', help=_('Output in JSON format'))
+    parser.add_argument('--sessions-dir', type=str, metavar='PATH', 
+                       help=_('Custom path to sessions directory'))
+    
     subparsers = parser.add_subparsers(dest='command', help=_('Available commands'))
     
-    # List command
-    list_parser = subparsers.add_parser('list', help=_('List all sessions'))
+    # Create parent parser with common arguments
+    parent_parser = argparse.ArgumentParser(add_help=False)
+    parent_parser.add_argument('--json', action='store_true', help=_('Output in JSON format'))
+    parent_parser.add_argument('--sessions-dir', type=str, metavar='PATH', 
+                              help=_('Custom path to sessions directory'))
     
-    # Current command
-    current_parser = subparsers.add_parser('current', help=_('Show current session'))
+    # List command
+    list_parser = subparsers.add_parser('list', help=_('List all sessions'), parents=[parent_parser])
+    
+    # Active command (renamed from current for GUI consistency)
+    active_parser = subparsers.add_parser('active', help=_('Show active session'), parents=[parent_parser])
+    
+    # Running command
+    running_parser = subparsers.add_parser('running', help=_('Show running session'), parents=[parent_parser])
     
     # Info command
-    info_parser = subparsers.add_parser('info', help=_('Show filesystem and compatibility information'))
+    info_parser = subparsers.add_parser('info', help=_('Show filesystem and compatibility information'), parents=[parent_parser])
     
     # Activate command
-    activate_parser = subparsers.add_parser('activate', help=_('Activate a session'))
+    activate_parser = subparsers.add_parser('activate', help=_('Activate a session'), parents=[parent_parser])
     activate_parser.add_argument('session_id', help=_('Session ID to activate'))
     
     # Create command
-    create_parser = subparsers.add_parser('create', help=_('Create a new session'))
+    create_parser = subparsers.add_parser('create', help=_('Create a new session'), parents=[parent_parser])
     create_parser.add_argument('--mode', choices=['native', 'dynfilefs', 'raw'], 
                               default='native', help=_('Session mode (default: native)'))
     create_parser.add_argument('--size', type=int, metavar='MB',
                               help=_('Size in MB for dynfilefs/raw modes (default: 4000)'))
     
     # Delete command
-    delete_parser = subparsers.add_parser('delete', help=_('Delete a session'))
+    delete_parser = subparsers.add_parser('delete', help=_('Delete a session'), parents=[parent_parser])
     delete_parser.add_argument('session_id', help=_('Session ID to delete'))
     
     # Cleanup command
-    cleanup_parser = subparsers.add_parser('cleanup', help=_('Clean up old sessions'))
+    cleanup_parser = subparsers.add_parser('cleanup', help=_('Clean up old sessions'), parents=[parent_parser])
     cleanup_parser.add_argument('--days', type=int, default=30, 
                                help=_('Delete sessions older than N days (default: 30)'))
     
 # GUI command removed - use minios-session-manager for GUI
     
+    # Parse arguments - handle global flags that can appear anywhere
+    # Extract global flags from any position
+    global_json = '--json' in sys.argv
+    sessions_dir = None
+    
+    # Find sessions-dir parameter
+    for i, arg in enumerate(sys.argv):
+        if arg == '--sessions-dir' and i + 1 < len(sys.argv):
+            sessions_dir = sys.argv[i + 1]
+            break
+        elif arg.startswith('--sessions-dir='):
+            sessions_dir = arg.split('=', 1)[1]
+            break
+    
+    # Parse normally  
     args = parser.parse_args()
     
-    # Initialize session manager
-    manager = SessionManager()
+    # Apply global flags
+    if global_json:
+        args.json = True
+    
+    if sessions_dir and not hasattr(args, 'sessions_dir'):
+        args.sessions_dir = sessions_dir
+    elif sessions_dir:
+        args.sessions_dir = sessions_dir
+    
+    # Initialize session manager with custom directory if specified
+    custom_dir = getattr(args, 'sessions_dir', None)
+    manager = SessionManager(privileged_mode=privileged_mode, custom_sessions_dir=custom_dir)
     
     if not manager.sessions_dir:
         print(_("Error: Could not find sessions directory."), file=sys.stderr)
@@ -814,56 +1100,85 @@ Examples:
     # Handle commands
     if args.command == 'list':
         sessions = manager.list_sessions()
-        print(format_session_list(sessions))
-    
-    elif args.command == 'current':
-        current = manager.get_current_session()
-        if current:
-            print(_("Current session: #{}").format(current['id']))
-            print(_("Mode: {}").format(current['mode']))
-            print(_("Version: {} / {}").format(current['version'], current['edition']))
-            print(_("Size: {}").format(manager._format_size(current['size'])))
-            print(_("Last Modified: {}").format(current['modified'].strftime("%Y-%m-%d %H:%M:%S")))
+        if args.json:
+            print(format_sessions_json(sessions))
         else:
-            print(_("No current session found"))
+            print(format_session_list(sessions))
+    
+    elif args.command == 'active':
+        current = manager.get_current_session()
+        if args.json:
+            print(format_session_json(current))
+        else:
+            if current:
+                print(_("Active session: #{}").format(current['id']))
+                print(_("Mode: {}").format(current['mode']))
+                print(_("Version: {} / {}").format(current['version'], current['edition']))
+                print(_("Size: {}").format(manager._format_size(current['size'])))
+                print(_("Last Modified: {}").format(current['modified'].strftime("%Y-%m-%d %H:%M:%S") if current['modified'] else "unknown"))
+            else:
+                print(_("No active session found"))
+    
+    elif args.command == 'running':
+        running = manager.get_running_session()
+        if args.json:
+            print(format_session_json(running))
+        else:
+            if running:
+                print(_("Running session: #{}").format(running['id']))
+                print(_("Mode: {}").format(running['mode']))
+                print(_("Version: {} / {}").format(running['version'], running['edition']))
+                print(_("Size: {}").format(manager._format_size(running['size'])))
+                if running['modified']:
+                    print(_("Last Modified: {}").format(running['modified'].strftime("%Y-%m-%d %H:%M:%S")))
+                if 'status' in running:
+                    print(_("Status: {}").format(running['status']))
+            else:
+                print(_("No running session detected"))
     
     elif args.command == 'info':
         fs_info, error = manager.get_filesystem_info()
         if error:
-            print(_("Error: {}").format(error), file=sys.stderr)
+            if args.json:
+                print(json.dumps({'error': error}))
+            else:
+                print(_("Error: {}").format(error), file=sys.stderr)
             sys.exit(1)
         
-        print(_("MiniOS Media Information:"))
-        print("-" * 40)
-        fs = fs_info['filesystem']
-        print(_("Filesystem Type: {}").format(fs['type']))
-        print(_("Device: {}").format(fs['device']))
-        print(_("Mount Options: {}").format(fs['mount_options'] or _("none")))
-        print(_("Read-only: {}").format(_("Yes") if fs['is_readonly'] else _("No")))
-        print(_("POSIX Compatible: {}").format(_("Yes") if fs['is_posix_compatible'] else _("No")))
-        print()
-        
-        print(_("Compatible Session Modes:"))
-        compatible = fs_info['compatible_modes']
-        if compatible:
-            for mode in compatible:
-                print(f"  ✓ {mode}")
+        if args.json:
+            print(format_filesystem_info_json(fs_info))
         else:
-            print(_("  None (read-only media)"))
-        print()
-        
-        limitations = fs_info['limitations']
-        if limitations:
-            print(_("Filesystem Limitations:"))
-            if 'max_file_size' in limitations:
-                print(_("  • Maximum file size: {}MB ({:.1f}GB)").format(
-                    limitations['max_file_size'], limitations['max_file_size'] / 1024))
-            if 'no_posix' in limitations:
-                print(_("  • No POSIX features (no native mode support)"))
-            if 'case_insensitive' in limitations:
-                print(_("  • Case-insensitive filenames"))
-        else:
-            print(_("No known limitations"))
+            print(_("MiniOS Media Information:"))
+            print("-" * 40)
+            fs = fs_info['filesystem']
+            print(_("Filesystem Type: {}").format(fs['type']))
+            print(_("Device: {}").format(fs['device']))
+            print(_("Mount Options: {}").format(fs['mount_options'] or _("none")))
+            print(_("Read-only: {}").format(_("Yes") if fs['is_readonly'] else _("No")))
+            print(_("POSIX Compatible: {}").format(_("Yes") if fs['is_posix_compatible'] else _("No")))
+            print()
+            
+            print(_("Compatible Session Modes:"))
+            compatible = fs_info['compatible_modes']
+            if compatible:
+                for mode in compatible:
+                    print(f"  ✓ {mode}")
+            else:
+                print(_("  None (read-only media)"))
+            print()
+            
+            limitations = fs_info['limitations']
+            if limitations:
+                print(_("Filesystem Limitations:"))
+                if 'max_file_size' in limitations:
+                    print(_("  • Maximum file size: {}MB ({:.1f}GB)").format(
+                        limitations['max_file_size'], limitations['max_file_size'] / 1024))
+                if 'no_posix' in limitations:
+                    print(_("  • No POSIX features (no native mode support)"))
+                if 'case_insensitive' in limitations:
+                    print(_("  • Case-insensitive filenames"))
+            else:
+                print(_("No known limitations"))
     
     elif args.command == 'activate':
         success, message = manager.activate_session(args.session_id)

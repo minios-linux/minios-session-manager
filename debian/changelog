@@ -1,4 +1,4 @@
-minios-session-manager (1.0.0-1) unstable; urgency=medium
+minios-session-manager (1.0.0) unstable; urgency=medium
 
   * Initial release
   * CLI interface for session management

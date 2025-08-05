@@ -1,77 +1,106 @@
 #!/usr/bin/make -f
 
-# MiniOS Session Manager Makefile
+DESTDIR ?= /
 
-PREFIX ?= /usr
-BINDIR = $(PREFIX)/bin
-LIBDIR = $(PREFIX)/lib/minios-session-manager
-SHAREDIR = $(PREFIX)/share
-LOCALEDIR = $(SHAREDIR)/locale
+EXECUTABLES = bin/minios-session bin/minios-session-manager
+LIBRARIES = lib/*.py
+APPLICATIONS = share/applications/minios-session-manager.desktop
+POLICIES = share/polkit/dev.minios.session-manager.policy
+STYLES = share/styles/style.css
 
-INSTALL = install
-INSTALL_PROGRAM = $(INSTALL) -m 755
-INSTALL_DATA = $(INSTALL) -m 644
-INSTALL_DIR = $(INSTALL) -d
+BINDIR = usr/bin
+LIBDIR = usr/lib/minios-session-manager
+APPLICATIONSDIR = usr/share/applications
+POLKITACTIONSDIR = usr/share/polkit-1/actions
+LOCALEDIR = usr/share/locale
+SHAREDIR = usr/share/minios-session-manager
 
-.PHONY: all install install-bin install-lib install-share install-locale clean build-deb
+PO_FILES = $(shell find po -maxdepth 1 -name "*.po")
+MO_FILES = $(patsubst %.po,%.mo,$(PO_FILES))
 
-all:
-	@echo "MiniOS Session Manager"
-	@echo "Available targets:"
-	@echo "  install      - Install to system"
-	@echo "  install-bin  - Install binaries only"
-	@echo "  install-lib  - Install libraries only" 
-	@echo "  install-share - Install shared files only"
-	@echo "  build-deb    - Build Debian package"
-	@echo "  clean        - Clean build files"
+build: mo
 
-install: install-bin install-lib install-share install-locale
+mo: $(MO_FILES)
 
-install-bin:
-	$(INSTALL_DIR) $(DESTDIR)$(BINDIR)
-	$(INSTALL_PROGRAM) bin/minios-session-manager $(DESTDIR)$(BINDIR)/
-	$(INSTALL_PROGRAM) bin/minios-session-cli $(DESTDIR)$(BINDIR)/
+update-po:
+	@echo "Updating translation files..."
+	./update-po.sh
 
-install-lib:
-	$(INSTALL_DIR) $(DESTDIR)$(LIBDIR)
-	$(INSTALL_DATA) lib/session_manager.py $(DESTDIR)$(LIBDIR)/
-	$(INSTALL_DATA) lib/session_cli.py $(DESTDIR)$(LIBDIR)/
-	$(INSTALL_PROGRAM) lib/session_cli_privileged.py $(DESTDIR)$(LIBDIR)/
-
-install-share:
-	$(INSTALL_DIR) $(DESTDIR)$(SHAREDIR)/applications
-	$(INSTALL_DIR) $(DESTDIR)$(SHAREDIR)/polkit-1/actions
-	$(INSTALL_DATA) share/applications/minios-session-manager.desktop $(DESTDIR)$(SHAREDIR)/applications/
-	$(INSTALL_DATA) share/polkit/dev.minios.session-manager.policy $(DESTDIR)$(SHAREDIR)/polkit-1/actions/
-
-install-locale:
-	@if [ -d po/ ]; then \
-		for po in po/*.po; do \
-			if [ -f "$$po" ]; then \
-				lang=$$(basename $$po .po); \
-				$(INSTALL_DIR) $(DESTDIR)$(LOCALEDIR)/$$lang/LC_MESSAGES; \
-				msgfmt $$po -o $(DESTDIR)$(LOCALEDIR)/$$lang/LC_MESSAGES/minios-session-manager.mo; \
-			fi; \
-		done; \
-	fi
-
-build-deb:
-	dpkg-buildpackage -us -uc -b
+%.mo: %.po
+	@echo "Generating mo file for $<"
+	msgfmt -o $@ $<
+	chmod 644 $@
 
 clean:
-	rm -rf debian/minios-session-manager/
-	rm -f debian/files
-	rm -f debian/debhelper-build-stamp
-	rm -f debian/*.log
-	rm -f debian/*.substvars
-	find . -name "*.pyc" -delete
-	find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+	rm -rf $(MO_FILES)
+
+install: build
+	install -d $(DESTDIR)/$(BINDIR) \
+				$(DESTDIR)/$(LIBDIR) \
+				$(DESTDIR)/$(APPLICATIONSDIR) \
+				$(DESTDIR)/$(POLKITACTIONSDIR) \
+				$(DESTDIR)/$(LOCALEDIR) \
+				$(DESTDIR)/$(SHAREDIR)
+
+	cp $(EXECUTABLES) $(DESTDIR)/$(BINDIR)
+	chmod 755 $(patsubst %,$(DESTDIR)/$(BINDIR)/%,$(notdir $(EXECUTABLES)))
+	cp $(LIBRARIES) $(DESTDIR)/$(LIBDIR)
+	chmod +x $(DESTDIR)/$(LIBDIR)/minios_session.py
+	chmod +x $(DESTDIR)/$(LIBDIR)/minios_session_manager.py
+	cp $(APPLICATIONS) $(DESTDIR)/$(APPLICATIONSDIR)
+	cp $(POLICIES) $(DESTDIR)/$(POLKITACTIONSDIR)
+	cp $(STYLES) $(DESTDIR)/$(SHAREDIR)
+
+	@for MO_FILE in $(MO_FILES); do \
+		LOCALE=$(basename $MO_FILE .mo); \
+		echo "Copying mo file $MO_FILE to $(DESTDIR)/usr/share/locale/$$LOCALE/LC_MESSAGES/minios-session-manager.mo"; \
+		install -Dm644 "$MO_FILE" "$(DESTDIR)/usr/share/locale/$$LOCALE/LC_MESSAGES/minios-session-manager.mo"; \
+	done
 
 uninstall:
-	rm -f $(DESTDIR)$(BINDIR)/minios-session-manager
-	rm -f $(DESTDIR)$(BINDIR)/minios-session-cli
-	rm -rf $(DESTDIR)$(LIBDIR)
-	rm -f $(DESTDIR)$(SHAREDIR)/applications/minios-session-manager.desktop
-	rm -f $(DESTDIR)$(SHAREDIR)/polkit-1/actions/dev.minios.session-manager.policy
-	# Remove locale files
-	find $(DESTDIR)$(LOCALEDIR) -name "minios-session-manager.mo" -delete 2>/dev/null || true
+	@echo "Uninstalling MiniOS Session Manager..."
+
+		rm -f $(DESTDIR)/$(BINDIR)/minios-session
+	rm -f $(DESTDIR)/$(BINDIR)/minios-session-manager
+	rm -rf $(DESTDIR)/$(LIBDIR)
+	rm -f $(DESTDIR)/$(APPLICATIONSDIR)/minios-session-manager.desktop
+	rm -f $(DESTDIR)/$(POLKITACTIONSDIR)/dev.minios.session-manager.policy
+	rm -rf $(DESTDIR)/$(SHAREDIR)
+	
+	@echo "Removing translations..."
+	@for MO_FILE in $(MO_FILES); do \
+		LOCALE=$$(basename $$MO_FILE .mo); \
+		echo "Removing translation file for locale $$LOCALE"; \
+		rm -f "$(DESTDIR)/usr/share/locale/$$LOCALE/LC_MESSAGES/minios-session-manager.mo"; \
+		rmdir "$(DESTDIR)/usr/share/locale/$$LOCALE/LC_MESSAGES" 2>/dev/null || true; \
+		rmdir "$(DESTDIR)/usr/share/locale/$$LOCALE" 2>/dev/null || true; \
+	done
+
+	rm -f $(DESTDIR)/usr/share/man/man1/minios-session.1
+	rm -f $(DESTDIR)/usr/share/man/man1/minios-session-manager.1
+
+	@echo "MiniOS Session Manager uninstalled successfully"
+
+reinstall: uninstall install
+	@echo "MiniOS Session Manager reinstalled successfully"
+
+help:
+	@echo "MiniOS Session Manager - Available targets:"
+	@echo ""
+	@echo "  build       - Build translation files (.mo)"
+	@echo "  clean       - Remove built files (.mo)"
+	@echo "  install     - Install to DESTDIR (default: /)"
+	@echo "  uninstall   - Remove installed files from DESTDIR"
+	@echo "  reinstall   - Uninstall and install again"
+	@echo "  update-po   - Update translation template and files"
+	@echo "  help        - Show this help message"
+	@echo ""
+	@echo "Variables:"
+	@echo "  DESTDIR     - Installation prefix (default: /)"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make install DESTDIR=/tmp/test    # Install to test directory"
+	@echo "  make uninstall                    # Remove from system"
+	@echo "  sudo make reinstall               # Reinstall as root"
+
+.PHONY: build mo update-po clean install uninstall reinstall help

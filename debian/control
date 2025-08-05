@@ -10,8 +10,7 @@ Vcs-Browser: https://github.com/minios-linux/minios-live
 
 Package: minios-session-manager
 Architecture: all
-Depends: ${misc:Depends}, python3, python3-gi, gir1.2-gtk-3.0, dynfilefs, policykit-1
-Recommends: jq
+Depends: ${misc:Depends}, python3, python3-gi, gir1.2-gtk-3.0, dynfilefs, polkitd | policykit-1, pkexec | policykit-1
 Description: MiniOS session management utility
  A utility for managing MiniOS persistent sessions from within
  the running system. Provides both command-line and graphical

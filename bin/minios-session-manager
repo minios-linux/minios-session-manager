@@ -10,11 +10,11 @@ set -e
 SCRIPT_DIR=$(dirname "$(readlink -f -- "$0")")
 
 # Check for installed location first
-if [ -f "/usr/lib/minios-session-manager/session_manager.py" ]; then
+if [ -f "/usr/lib/minios-session-manager/minios_session_manager.py" ]; then
     DIR="/usr/lib/minios-session-manager"
 else
     # Assume running from source, construct path relative to this script
     DIR="$(dirname "$SCRIPT_DIR")/lib"
 fi
 
-exec python3 -u "$DIR/session_manager.py" "$@"
+exec python3 -u "$DIR/minios_session_manager.py" "$@"
