@@ -1,7 +1,5 @@
 #!/usr/bin/make -f
 
-DESTDIR ?= /
-
 EXECUTABLES = bin/minios-session bin/minios-session-manager
 LIBRARIES = lib/*.py
 APPLICATIONS = share/applications/minios-session-manager.desktop
@@ -52,9 +50,9 @@ install: build
 	cp $(STYLES) $(DESTDIR)/$(SHAREDIR)
 
 	@for MO_FILE in $(MO_FILES); do \
-		LOCALE=$(basename $MO_FILE .mo); \
-		echo "Copying mo file $MO_FILE to $(DESTDIR)/usr/share/locale/$$LOCALE/LC_MESSAGES/minios-session-manager.mo"; \
-		install -Dm644 "$MO_FILE" "$(DESTDIR)/usr/share/locale/$$LOCALE/LC_MESSAGES/minios-session-manager.mo"; \
+		LOCALE=$(basename $$MO_FILE .mo); \
+		echo "Copying mo file $$MO_FILE to $(DESTDIR)/usr/share/locale/$$LOCALE/LC_MESSAGES/minios-session-manager.mo"; \
+		install -Dm644 "$$MO_FILE" "$(DESTDIR)/usr/share/locale/$$LOCALE/LC_MESSAGES/minios-session-manager.mo"; \
 	done
 
 uninstall:
