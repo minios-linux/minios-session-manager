@@ -38,11 +38,83 @@ class SessionManager:
         self.privileged_mode = privileged_mode
         self.custom_sessions_dir = custom_sessions_dir
         
+        # Setup cache directory and file in /tmp (clears on reboot)
+        self.cache_dir = f"/tmp/minios-session-manager-{os.getuid()}"
+        self.cache_file = os.path.join(self.cache_dir, "session_sizes.json")
+        self._ensure_cache_dir()
+        
         # Detect if we're running as root or with elevated privileges
         if os.geteuid() == 0:
             self.privileged_mode = True
             
         self._detect_session_storage()
+    
+    def _ensure_cache_dir(self):
+        """Ensure cache directory exists"""
+        try:
+            os.makedirs(self.cache_dir, mode=0o755, exist_ok=True)
+        except OSError:
+            # Fallback to system temp directory if creation fails
+            import tempfile
+            self.cache_dir = tempfile.gettempdir()
+            self.cache_file = os.path.join(self.cache_dir, f"minios-session-cache-{os.getuid()}.json")
+    
+    def _load_size_cache(self):
+        """Load size cache from /tmp"""
+        if not os.path.exists(self.cache_file):
+            return {}
+        
+        try:
+            with open(self.cache_file, 'r') as f:
+                data = json.load(f)
+                # Validate cache against current sessions directory
+                if data.get('sessions_dir') != self.sessions_dir:
+                    return {}  # Cache invalid - different sessions directory
+                return data.get('cache', {})
+        except (json.JSONDecodeError, OSError):
+            return {}
+    
+    def _save_size_cache(self, cache_data):
+        """Save size cache to /tmp"""
+        try:
+            cache_content = {
+                "version": "1.0",
+                "sessions_dir": self.sessions_dir,
+                "updated_at": time.time(),
+                "cache": cache_data
+            }
+            
+            with open(self.cache_file, 'w') as f:
+                json.dump(cache_content, f, indent=2)
+        except OSError:
+            pass  # Ignore cache write failures
+    
+    def _update_size_cache(self, session_id, size, mtime):
+        """Update size cache for specific session"""
+        cache_data = self._load_size_cache()
+        cache_data[session_id] = {
+            'size': size,
+            'size_formatted': self._format_size(size),
+            'mtime': mtime,
+            'cached_at': time.time()
+        }
+        self._save_size_cache(cache_data)
+    
+    def clear_size_cache(self, session_id=None):
+        """Clear size cache for specific session or all sessions"""
+        if session_id:
+            # Clear cache for specific session
+            cache_data = self._load_size_cache()
+            if session_id in cache_data:
+                del cache_data[session_id]
+                self._save_size_cache(cache_data)
+        else:
+            # Clear entire cache
+            try:
+                if os.path.exists(self.cache_file):
+                    os.remove(self.cache_file)
+            except OSError:
+                pass
     
     def _detect_session_storage(self):
         """Detect where sessions are stored and in what format"""
@@ -266,7 +338,37 @@ class SessionManager:
         return sessions
     
     def _get_directory_size(self, path):
-        """Get total size of directory in bytes"""
+        """Get total size of directory in bytes with caching"""
+        session_id = os.path.basename(path)
+        
+        try:
+            # Get current directory modification time
+            current_mtime = os.path.getmtime(path)
+            
+            # Load cache and check if valid
+            cache_data = self._load_size_cache()
+            session_cache = cache_data.get(session_id, {})
+            cached_size = session_cache.get('size')
+            cached_mtime = session_cache.get('mtime')
+            
+            # Check if cache is valid (mtime unchanged)
+            if cached_size is not None and cached_mtime == current_mtime:
+                return cached_size
+            
+            # Cache miss or outdated - recalculate
+            actual_size = self._calculate_directory_size(path)
+            
+            # Update cache
+            self._update_size_cache(session_id, actual_size, current_mtime)
+            
+            return actual_size
+            
+        except (OSError, PermissionError):
+            # Fallback to direct calculation without caching
+            return self._calculate_directory_size(path)
+    
+    def _calculate_directory_size(self, path):
+        """Calculate actual directory size (original implementation)"""
         # Check if this is a dynfilefs session
         changes_file = os.path.join(path, "changes.dat")
         if os.path.exists(changes_file) or any(f.startswith("changes.dat") for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))):

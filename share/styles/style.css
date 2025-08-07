@@ -1,9 +1,16 @@
 /* Session Manager Styles */
 
 /* ==================== List Styles ==================== */
+
+/* Simple border for the scrolled window containing the session list */
+scrolledwindow {
+    border: 1px solid #d0d0d0;
+    border-radius: 4px;
+}
+
 listbox {
     background-color: #fafafa;
-    border: 1px solid #d9d9d9;
+    border: none;
     border-radius: 3px;
 }
 
@@ -166,4 +173,25 @@ menuitem:hover {
 .session-context-menu menuitem.context-menu-delete:hover {
     background: linear-gradient(to bottom, #f16c6c, #cc0000);
     color: white;
+}
+
+/* ==================== Frame and ScrolledWindow Styles ==================== */
+frame {
+    border: 1px solid;
+    border-radius: 3px;
+}
+
+frame > border {
+    border: none;
+    padding: 0;
+}
+
+scrolledwindow {
+    border: none;
+    background-color: transparent;
+}
+
+scrolledwindow > viewport {
+    border: none;
+    background-color: transparent;
 }

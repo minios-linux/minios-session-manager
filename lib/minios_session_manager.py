@@ -16,7 +16,8 @@ import gettext
 from datetime import datetime
 
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, GLib, Pango
+gi.require_version('Gdk', '3.0')
+from gi.repository import Gtk, GLib, Pango, Gdk
 
 # Internationalization setup
 try:
@@ -54,8 +55,10 @@ class SessionManagerGUI:
                 try:
                     provider = Gtk.CssProvider()
                     provider.load_from_path(css_path)
+                    # Use Gdk.Screen.get_default() for GTK 3
+                    screen = Gdk.Screen.get_default()
                     Gtk.StyleContext.add_provider_for_screen(
-                        Gtk.Widget.get_screen(Gtk.Window()),
+                        screen,
                         provider,
                         Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
                     )
@@ -94,15 +97,23 @@ class SessionManagerGUI:
         except Exception as e:
             return False, "", str(e)
     
+    def _build_header_bar(self):
+        """Build the header bar"""
+        header = Gtk.HeaderBar(show_close_button=True)
+        header.props.title = _("MiniOS Session Manager")
+        self.window.set_titlebar(header)
+    
     def create_interface(self):
         """Create the main interface"""
         
         self.window = Gtk.Window()
-        self.window.set_title(_("MiniOS Session Manager"))
         self.window.set_icon_name("preferences-desktop-personal")  # Personal desktop preferences icon
         self.window.set_default_size(600, 500)
         self.window.set_position(Gtk.WindowPosition.CENTER)
         self.window.connect("destroy", Gtk.main_quit)
+        
+        # Build header bar similar to kernel manager
+        self._build_header_bar()
         
         
         main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
@@ -112,39 +123,54 @@ class SessionManagerGUI:
         main_box.set_margin_bottom(10)
         self.window.add(main_box)
         
+        # Instruction label (like in kernel manager)
+        lbl = Gtk.Label(label=_("Available Sessions"), xalign=0)
+        lbl.set_margin_bottom(8)
+        main_box.pack_start(lbl, False, False, 0)
         
-        
-        list_frame = Gtk.Frame()
-        list_frame.set_label(_("Available Sessions"))
-        main_box.pack_start(list_frame, True, True, 0)
-        
-        
-        scrolled = Gtk.ScrolledWindow()
-        scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-        
-        
+        # Sessions list (without Frame, like kernel manager)
         self.sessions_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
         self.sessions_list.connect("row-selected", self._on_session_selected)
         self.sessions_list.connect("button-press-event", self._on_list_button_press)
-        self.sessions_list.set_margin_start(10)
-        self.sessions_list.set_margin_end(10)
-        self.sessions_list.set_margin_top(10)
-        self.sessions_list.set_margin_bottom(10)
+        
+        # ScrolledWindow setup (like kernel manager)
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_min_content_width(400)
+        scrolled.set_min_content_height(200)
+        scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         scrolled.add(self.sessions_list)
         
+        # Loading overlay components (like kernel manager)
+        self.loading_spinner = Gtk.Spinner()
+        self.loading_label = Gtk.Label(label=_("Loading sessions..."))
+        self.loading_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        self.loading_box.pack_start(self.loading_spinner, False, False, 0)
+        self.loading_box.pack_start(self.loading_label, False, False, 0)
+        self.loading_box.set_halign(Gtk.Align.CENTER)
+        self.loading_box.set_valign(Gtk.Align.CENTER)
+        self.loading_box.get_style_context().add_class('loading-overlay')
         
+        # Create overlay (like kernel manager)
+        overlay = Gtk.Overlay()
+        overlay.add(scrolled)
+        overlay.add_overlay(self.loading_box)
+        self.loading_box.set_visible(False)
+        
+        main_box.pack_start(overlay, True, True, 0)
+        
+        # Create context menu
         self._create_context_menu()
         
-        
+        # Initialize selection
         self.selected_session_id = None
         
-        
+        # Toolbar buttons
         toolbar_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=15)
         toolbar_box.set_halign(Gtk.Align.CENTER)
         toolbar_box.set_margin_top(15)
         main_box.pack_start(toolbar_box, False, False, 0)
         
-        
+        # Create button
         create_btn = Gtk.Button()
         create_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         create_icon = Gtk.Image.new_from_icon_name("document-new", Gtk.IconSize.DND)
@@ -159,7 +185,7 @@ class SessionManagerGUI:
         create_btn.set_size_request(140, -1)
         toolbar_box.pack_start(create_btn, False, False, 0)
         
-        
+        # Refresh button
         refresh_btn = Gtk.Button()
         refresh_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         refresh_icon = Gtk.Image.new_from_icon_name("view-refresh", Gtk.IconSize.DND)
@@ -173,7 +199,7 @@ class SessionManagerGUI:
         refresh_btn.set_size_request(140, -1)
         toolbar_box.pack_start(refresh_btn, False, False, 0)
         
-        
+        # Cleanup button
         cleanup_btn = Gtk.Button()
         cleanup_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         cleanup_icon = Gtk.Image.new_from_icon_name("user-trash", Gtk.IconSize.DND)
@@ -186,24 +212,6 @@ class SessionManagerGUI:
         cleanup_btn.get_style_context().add_class('cleanup-button')
         cleanup_btn.set_size_request(140, -1)
         toolbar_box.pack_start(cleanup_btn, False, False, 0)
-        
-        
-        
-        self.loading_spinner = Gtk.Spinner()
-        self.loading_label = Gtk.Label(label=_("Loading sessions..."))
-        self.loading_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        self.loading_box.pack_start(self.loading_spinner, False, False, 0)
-        self.loading_box.pack_start(self.loading_label, False, False, 0)
-        self.loading_box.set_halign(Gtk.Align.CENTER)
-        self.loading_box.set_valign(Gtk.Align.CENTER)
-        self.loading_box.get_style_context().add_class('loading-overlay')
-        
-        
-        overlay = Gtk.Overlay()
-        overlay.add(scrolled)
-        overlay.add_overlay(self.loading_box)
-        list_frame.add(overlay)
-        self.loading_box.set_visible(False)
     
     def refresh_session_list(self):
         """Refresh the session list from CLI"""
@@ -682,9 +690,8 @@ class SessionManagerGUI:
             
             dialog.destroy()
             
-            # Show progress dialog
-            progress_dialog = self._create_progress_dialog(_("Creating Session"), _("Creating new session, please wait..."))
-            progress_dialog.show_all()
+            # Show loading overlay
+            self._show_loading(True, _("Creating new session, please wait..."))
             
             # Create session in background thread
             def create_session_bg():
@@ -695,9 +702,9 @@ class SessionManagerGUI:
                         success, output, error = self._run_cli_command(['create', '--mode', mode])
                     
                     # Update UI in main thread
-                    GLib.idle_add(self._on_session_creation_complete, success, output, error, progress_dialog)
+                    GLib.idle_add(self._on_session_creation_complete, success, output, error, None)
                 except Exception as e:
-                    GLib.idle_add(self._on_session_creation_complete, False, "", str(e), progress_dialog)
+                    GLib.idle_add(self._on_session_creation_complete, False, "", str(e), None)
             
             thread = threading.Thread(target=create_session_bg)
             thread.daemon = True
@@ -721,41 +728,20 @@ class SessionManagerGUI:
                     return
                 break
         
-        # Confirm activation
-        dialog = Gtk.MessageDialog(
-            parent=self.window,
-            message_type=Gtk.MessageType.QUESTION,
-            buttons=Gtk.ButtonsType.YES_NO,
-            text=_("Ready to switch sessions?")
-        )
-        dialog.format_secondary_text(
-            _("You're about to activate session #{}.\n\nThis session will become your new default and will be active after the next boot.\n\nShall we make the switch?").format(session_id)
-        )
-        
-        # Style the dialog buttons
-        dialog.get_style_context().add_class('friendly-dialog')
-        yes_button = dialog.get_widget_for_response(Gtk.ResponseType.YES)
-        no_button = dialog.get_widget_for_response(Gtk.ResponseType.NO)
-        yes_button.set_label(_("Yes, activate"))
-        no_button.set_label(_("Maybe later"))
-        yes_button.get_style_context().add_class('suggested-action')
-        no_button.get_style_context().add_class('icon-button')
-        
-        response = dialog.run()
-        dialog.destroy()
+        # Directly proceed with activation without confirmation dialog
+        response = Gtk.ResponseType.YES
         
         if response == Gtk.ResponseType.YES:
-            # Show progress dialog
-            progress_dialog = self._create_progress_dialog(_("Activating Session"), _("Activating session, please wait..."))
-            progress_dialog.show_all()
+            # Show loading overlay
+            self._show_loading(True, _("Activating session, please wait..."))
             
             # Activate session in background thread
             def activate_session_bg():
                 try:
                     success, output, error = self._run_cli_command(['activate', session_id])
-                    GLib.idle_add(self._on_session_operation_complete, success, output, error, progress_dialog, _("Session activated successfully"), _("Failed to activate session"))
+                    GLib.idle_add(self._on_session_operation_complete, success, output, error, None, _("Session activated successfully"), _("Failed to activate session"))
                 except Exception as e:
-                    GLib.idle_add(self._on_session_operation_complete, False, "", str(e), progress_dialog, "", _("Failed to activate session"))
+                    GLib.idle_add(self._on_session_operation_complete, False, "", str(e), None, "", _("Failed to activate session"))
             
             thread = threading.Thread(target=activate_session_bg)
             thread.daemon = True
@@ -801,17 +787,16 @@ class SessionManagerGUI:
         dialog.destroy()
         
         if response == Gtk.ResponseType.YES:
-            # Show progress dialog
-            progress_dialog = self._create_progress_dialog(_("Deleting Session"), _("Deleting session, please wait..."))
-            progress_dialog.show_all()
+            # Show loading overlay
+            self._show_loading(True, _("Deleting session, please wait..."))
             
             # Delete session in background thread
             def delete_session_bg():
                 try:
                     success, output, error = self._run_cli_command(['delete', session_id])
-                    GLib.idle_add(self._on_session_operation_complete, success, output, error, progress_dialog, _("Session deleted successfully"), _("Failed to delete session"))
+                    GLib.idle_add(self._on_session_operation_complete, success, output, error, None, _("Session deleted successfully"), _("Failed to delete session"))
                 except Exception as e:
-                    GLib.idle_add(self._on_session_operation_complete, False, "", str(e), progress_dialog, "", _("Failed to delete session"))
+                    GLib.idle_add(self._on_session_operation_complete, False, "", str(e), None, "", _("Failed to delete session"))
             
             thread = threading.Thread(target=delete_session_bg)
             thread.daemon = True
@@ -876,17 +861,16 @@ class SessionManagerGUI:
             confirm_dialog.destroy()
             
             if confirm_response == Gtk.ResponseType.YES:
-                # Show progress dialog
-                progress_dialog = self._create_progress_dialog(_("Cleaning Up Sessions"), _("Cleaning up old sessions, please wait..."))
-                progress_dialog.show_all()
+                # Show loading overlay
+                self._show_loading(True, _("Cleaning up old sessions, please wait..."))
                 
                 # Run cleanup in background thread
                 def cleanup_sessions_bg():
                     try:
                         success, output, error = self._run_cli_command(['cleanup', '--days', str(days)])
-                        GLib.idle_add(self._on_session_operation_complete, success, output, error, progress_dialog, _("Cleanup completed successfully"), _("Cleanup failed"))
+                        GLib.idle_add(self._on_session_operation_complete, success, output, error, None, _("Cleanup completed successfully"), _("Cleanup failed"))
                     except Exception as e:
-                        GLib.idle_add(self._on_session_operation_complete, False, "", str(e), progress_dialog, "", _("Cleanup failed"))
+                        GLib.idle_add(self._on_session_operation_complete, False, "", str(e), None, "", _("Cleanup failed"))
                 
                 thread = threading.Thread(target=cleanup_sessions_bg)
                 thread.daemon = True
@@ -991,7 +975,11 @@ class SessionManagerGUI:
     
     def _on_session_creation_complete(self, success, output, error, progress_dialog):
         """Handle session creation completion"""
-        progress_dialog.destroy()
+        # Hide loading overlay if no progress_dialog (using overlay)
+        if progress_dialog is None:
+            self._show_loading(False)
+        else:
+            progress_dialog.destroy()
         
         if success:
             self._show_info(output.strip())
@@ -1001,19 +989,24 @@ class SessionManagerGUI:
     
     def _on_session_operation_complete(self, success, output, error, progress_dialog, success_prefix, error_prefix):
         """Handle generic session operation completion"""
-        progress_dialog.destroy()
+        # Hide loading overlay if no progress_dialog (using overlay)
+        if progress_dialog is None:
+            self._show_loading(False)
+        else:
+            progress_dialog.destroy()
         
         if success:
-            message = output.strip() if output.strip() else success_prefix
-            self._show_info(message)
+            # Skip showing success info dialog, just refresh the list
             self.refresh_session_list()
         else:
             error_message = f"{error_prefix}: {error}" if error else error_prefix
             self._show_error(error_message)
     
-    def _show_loading(self, show):
+    def _show_loading(self, show, text=None):
         """Show or hide loading indicator"""
         if show:
+            if text:
+                self.loading_label.set_text(text)
             # Ensure CSS class is applied every time we show the loading overlay
             self.loading_box.get_style_context().add_class('loading-overlay')
             self.loading_box.set_visible(True)
@@ -1021,6 +1014,8 @@ class SessionManagerGUI:
         else:
             self.loading_box.set_visible(False)
             self.loading_spinner.stop()
+            # Reset to default text
+            self.loading_label.set_text(_("Loading sessions..."))
     
     def run(self):
         """Start the application"""
