@@ -100,21 +100,28 @@ class SessionManager:
         }
         self._save_size_cache(cache_data)
     
-    def clear_size_cache(self, session_id=None):
-        """Clear size cache for specific session or all sessions"""
-        if session_id:
-            # Clear cache for specific session
-            cache_data = self._load_size_cache()
-            if session_id in cache_data:
-                del cache_data[session_id]
-                self._save_size_cache(cache_data)
-        else:
-            # Clear entire cache
-            try:
-                if os.path.exists(self.cache_file):
-                    os.remove(self.cache_file)
-            except OSError:
-                pass
+    
+    def _get_current_union_fs(self):
+        """Get current union filesystem type"""
+        try:
+            # First check if union= parameter was used
+            with open('/proc/cmdline', 'r') as f:
+                cmdline = f.read().strip()
+                union_match = re.search(r'union=(\w+)', cmdline)
+                if union_match:
+                    union_param = union_match.group(1)
+                    if union_param in ['aufs', 'overlayfs']:
+                        return union_param
+            
+            # Auto-detection based on kernel support
+            with open('/proc/filesystems', 'r') as f:
+                filesystems = f.read()
+                if 'aufs' in filesystems:
+                    return 'aufs'
+                else:
+                    return 'overlayfs'
+        except (OSError, IOError):
+            return 'unknown'
     
     def _detect_session_storage(self):
         """Detect where sessions are stored and in what format"""
@@ -326,7 +333,8 @@ class SessionManager:
                     'path': path,
                     'mode': session_data.get('mode', 'unknown'),
                     'version': session_data.get('version', 'unknown'),
-                    'edition': session_data.get('edition', 'unknown'), 
+                    'edition': session_data.get('edition', 'unknown'),
+                    'union': session_data.get('union', 'unknown'), 
                     'size': size,
                     'modified': datetime.fromtimestamp(stat.st_mtime),
                     'is_default': metadata.get('default') == session_id,
@@ -632,6 +640,7 @@ class SessionManager:
                         'mode': 'temporary',
                         'version': 'current',
                         'edition': 'current',
+                        'union': 'current',
                         'size': 0,
                         'modified': None,
                         'is_default': False,
@@ -674,6 +683,7 @@ class SessionManager:
                 'mode': 'unknown',
                 'version': 'unknown', 
                 'edition': 'unknown',
+                'union': 'unknown',
                 'size': 0,
                 'modified': None,
                 'is_default': False
@@ -690,6 +700,7 @@ class SessionManager:
                 'mode': 'unknown',
                 'version': 'unknown',
                 'edition': 'unknown',
+                'union': 'unknown',
                 'size': 0,
                 'modified': None,
                 'is_default': False,
@@ -833,6 +844,7 @@ class SessionManager:
             # Get system version and edition
             version = "unknown"
             edition = "unknown"
+            union = self._get_current_union_fs()
             
             # Try to read from /etc/minios-release
             release_file = "/etc/minios-release"
@@ -855,7 +867,8 @@ class SessionManager:
             metadata["sessions"][new_id] = {
                 "mode": session_mode,
                 "version": version,
-                "edition": edition
+                "edition": edition,
+                "union": union
             }
             
             if self._write_sessions_metadata(metadata):
@@ -978,11 +991,13 @@ def format_session_list(sessions):
         modified_str = session['modified'].strftime("%Y-%m-%d %H:%M:%S") if session['modified'] else "unknown"
         size_str = SessionManager()._format_size(session['size'])
         
-        lines.append(f"Session #{session['id']}{status}")
-        lines.append(f"  Mode: {session['mode']}")
-        lines.append(f"  Version: {session['version']} / {session['edition']}")
-        lines.append(f"  Size: {size_str}")
-        lines.append(f"  Last Modified: {modified_str}")
+        lines.append(f"{_('Session')} #{session['id']}{status}")
+        lines.append(f"  {_('Mode:').rstrip(':')} {session['mode']}")
+        lines.append(f"  {_('Version:').rstrip(':')} {session['version']}")
+        lines.append(f"  {_('Edition:').rstrip(':')} {session['edition']}")
+        lines.append(f"  {_('Union FS:').rstrip(':')} {session['union']}")
+        lines.append(f"  {_('Size:').rstrip(':')} {size_str}")
+        lines.append(f"  {_('Last Modified:').rstrip(':')} {modified_str}")
         lines.append("")
     
     return "\n".join(lines)
@@ -996,6 +1011,7 @@ def format_sessions_json(sessions):
             'mode': session['mode'],
             'version': session['version'],
             'edition': session['edition'],
+            'union': session['union'],
             'size': session['size'],
             'size_formatted': SessionManager()._format_size(session['size']),
             'modified': session['modified'].isoformat() if session['modified'] else None,
@@ -1020,6 +1036,7 @@ def format_session_json(session):
         'mode': session['mode'],
         'version': session['version'],
         'edition': session['edition'],
+        'union': session['union'],
         'size': session['size'],
         'size_formatted': SessionManager()._format_size(session['size']),
         'modified': session['modified'].isoformat() if session['modified'] else None,
@@ -1162,6 +1179,7 @@ NOTE: Most write operations (activate, create, delete, cleanup) require root pri
     cleanup_parser.add_argument('--days', type=int, default=30, 
                                help=_('Delete sessions older than N days (default: 30)'))
     
+    
 # GUI command removed - use minios-session-manager for GUI
     
     # Parse arguments - handle global flags that can appear anywhere
@@ -1215,7 +1233,9 @@ NOTE: Most write operations (activate, create, delete, cleanup) require root pri
             if current:
                 print(_("Active session: #{}").format(current['id']))
                 print(_("Mode: {}").format(current['mode']))
-                print(_("Version: {} / {}").format(current['version'], current['edition']))
+                print(_("Version: {}").format(current['version']))
+                print(_("Edition: {}").format(current['edition']))
+                print(_("Union FS: {}").format(current['union']))
                 print(_("Size: {}").format(manager._format_size(current['size'])))
                 print(_("Last Modified: {}").format(current['modified'].strftime("%Y-%m-%d %H:%M:%S") if current['modified'] else "unknown"))
             else:
@@ -1229,7 +1249,9 @@ NOTE: Most write operations (activate, create, delete, cleanup) require root pri
             if running:
                 print(_("Running session: #{}").format(running['id']))
                 print(_("Mode: {}").format(running['mode']))
-                print(_("Version: {} / {}").format(running['version'], running['edition']))
+                print(_("Version: {}").format(running['version']))
+                print(_("Edition: {}").format(running['edition']))
+                print(_("Union FS: {}").format(running['union']))
                 print(_("Size: {}").format(manager._format_size(running['size'])))
                 if running['modified']:
                     print(_("Last Modified: {}").format(running['modified'].strftime("%Y-%m-%d %H:%M:%S")))
@@ -1304,6 +1326,7 @@ NOTE: Most write operations (activate, create, delete, cleanup) require root pri
             print(_("Errors:"))
             for error in errors:
                 print(f"  {error}")
+    
     
 # GUI command removed
     

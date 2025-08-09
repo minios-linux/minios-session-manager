@@ -185,19 +185,6 @@ class SessionManagerGUI:
         create_btn.set_size_request(140, -1)
         toolbar_box.pack_start(create_btn, False, False, 0)
         
-        # Refresh button
-        refresh_btn = Gtk.Button()
-        refresh_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        refresh_icon = Gtk.Image.new_from_icon_name("view-refresh", Gtk.IconSize.DND)
-        refresh_label = Gtk.Label(label=_("Refresh"))
-        refresh_box.pack_start(refresh_icon, False, False, 0)
-        refresh_box.pack_start(refresh_label, False, False, 0)
-        refresh_btn.add(refresh_box)
-        refresh_btn.connect("clicked", self.on_refresh_clicked)
-        refresh_btn.get_style_context().add_class('large-button')
-        refresh_btn.get_style_context().add_class('refresh-button')
-        refresh_btn.set_size_request(140, -1)
-        toolbar_box.pack_start(refresh_btn, False, False, 0)
         
         # Cleanup button
         cleanup_btn = Gtk.Button()
@@ -282,6 +269,7 @@ class SessionManagerGUI:
                         mode = session.get('mode', 'unknown')
                         version = session.get('version', 'unknown')
                         edition = session.get('edition', 'unknown')
+                        union = session.get('union', 'unknown')
                         size = session.get('size_formatted', 'unknown')
                         modified_str = session.get('modified', 'unknown')
                         
@@ -297,7 +285,7 @@ class SessionManagerGUI:
                             modified = modified_str
                         
                         # Create session row
-                        self._create_session_row(session_id, is_active, is_running, mode, version, edition, size, modified)
+                        self._create_session_row(session_id, is_active, is_running, mode, version, edition, union, size, modified)
                 
                 except json.JSONDecodeError as e:
                     self._show_error(_("Failed to parse session list JSON: {}").format(str(e)))
@@ -317,7 +305,7 @@ class SessionManagerGUI:
                         is_running = (session_id == running_session_id)
                         
                         # Look for following lines with details
-                        mode = version = edition = size = modified = "Unknown"
+                        mode = version = edition = union = size = modified = "Unknown"
                         
                         for j in range(i+1, min(i+6, len(lines))):
                             detail_line = lines[j].strip()
@@ -325,10 +313,12 @@ class SessionManagerGUI:
                                 mode = detail_line.split(':', 1)[1].strip()
                             elif detail_line.startswith('Version:'):
                                 version_info = detail_line.split(':', 1)[1].strip()
-                                if '/' in version_info:
-                                    version, edition = version_info.split('/', 1)
-                                    version = version.strip()
-                                    edition = edition.strip()
+                                parts = version_info.split('/')
+                                if len(parts) >= 2:
+                                    version = parts[0].strip()
+                                    edition = parts[1].strip()
+                                    if len(parts) >= 3:
+                                        union = parts[2].strip()
                                 else:
                                     version = version_info
                             elif detail_line.startswith('Size:'):
@@ -337,7 +327,7 @@ class SessionManagerGUI:
                                 modified = detail_line.split(':', 1)[1].strip()
                         
                         # Create session row
-                        self._create_session_row(session_id, is_active, is_running, mode, version, edition, size, modified)
+                        self._create_session_row(session_id, is_active, is_running, mode, version, edition, union, size, modified)
             
             if not sessions_found:
                 # Show "no sessions" message
@@ -354,7 +344,7 @@ class SessionManagerGUI:
             # Hide loading indicator
             self._show_loading(False)
     
-    def _create_session_row(self, session_id, is_active, is_running, mode, version, edition, size, modified):
+    def _create_session_row(self, session_id, is_active, is_running, mode, version, edition, union, size, modified):
         """Create a session row in kernel-manager style"""
         row = Gtk.ListBoxRow()
         
@@ -383,7 +373,7 @@ class SessionManagerGUI:
         
         # Main session name - clean without (CURRENT)
         session_label = Gtk.Label()
-        session_title = f"Session #{session_id}"
+        session_title = f"{_('Session')} #{session_id}"
         session_label.set_markup(f'<b><span size="large">{GLib.markup_escape_text(session_title)}</span></b>')
         session_label.set_halign(Gtk.Align.START)
         session_label.set_ellipsize(Pango.EllipsizeMode.END)
@@ -401,20 +391,31 @@ class SessionManagerGUI:
         details_grid.attach(mode_label, 0, 0, 1, 1)
         
         version_label = Gtk.Label()
-        version_label.set_markup(f'<span size="small"><b>{_("Version:")}</b> {GLib.markup_escape_text(version)}/{GLib.markup_escape_text(edition)}</span>')
+        version_label.set_markup(f'<span size="small"><b>{_("Version:")}</b> {GLib.markup_escape_text(version)}</span>')
         version_label.set_halign(Gtk.Align.START)
         details_grid.attach(version_label, 1, 0, 1, 1)
         
-        # Row 2: Size and Modified
+        # Row 2: Edition and Union
+        edition_label = Gtk.Label()
+        edition_label.set_markup(f'<span size="small"><b>{_("Edition:")}</b> {GLib.markup_escape_text(edition)}</span>')
+        edition_label.set_halign(Gtk.Align.START)
+        details_grid.attach(edition_label, 0, 1, 1, 1)
+        
+        union_label = Gtk.Label()
+        union_label.set_markup(f'<span size="small"><b>{_("Union FS:")}</b> {GLib.markup_escape_text(union)}</span>')
+        union_label.set_halign(Gtk.Align.START)
+        details_grid.attach(union_label, 1, 1, 1, 1)
+        
+        # Row 3: Size and Modified
         size_label = Gtk.Label()
         size_label.set_markup(f'<span size="small"><b>{_("Size:")}</b> {GLib.markup_escape_text(size)}</span>')
         size_label.set_halign(Gtk.Align.START)
-        details_grid.attach(size_label, 0, 1, 1, 1)
+        details_grid.attach(size_label, 0, 2, 1, 1)
         
         modified_label = Gtk.Label()
         modified_label.set_markup(f'<span size="small"><b>{_("Modified:")}</b> {GLib.markup_escape_text(modified)}</span>')
         modified_label.set_halign(Gtk.Align.START)
-        details_grid.attach(modified_label, 1, 1, 1, 1)
+        details_grid.attach(modified_label, 1, 2, 1, 1)
         
         info_box.pack_start(details_grid, False, False, 0)
         main_box.pack_start(info_box, True, True, 0)
@@ -522,9 +523,6 @@ class SessionManagerGUI:
         if self.selected_session_id:
             self.on_delete_clicked(None)
     
-    def on_refresh_clicked(self, button):
-        """Handle refresh button click"""
-        self.refresh_session_list()
     
     def on_create_clicked(self, button):
         """Handle create session button click"""
