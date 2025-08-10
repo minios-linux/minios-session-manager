@@ -1136,12 +1136,12 @@ def main():
     """Main application entry point"""
     import sys
     
-    # Check if we're running in privileged mode (called via pkexec)
+    # Check if we're running in privileged mode
     privileged_mode = '--privileged' in sys.argv
     if privileged_mode:
         sys.argv.remove('--privileged')
     
-    # Check for root privileges (like minios-kernel CLI)
+    # Check for root privileges
     if os.geteuid() != 0:
         error_msg = _("This tool requires root privileges. Please run with sudo or through pkexec.")
         print(json.dumps({"success": False, "error": error_msg}), file=sys.stderr)

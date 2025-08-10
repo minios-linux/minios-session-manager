@@ -161,7 +161,7 @@ class SessionManagerGUI:
         self.window.set_position(Gtk.WindowPosition.CENTER)
         self.window.connect("destroy", Gtk.main_quit)
         
-        # Build header bar similar to kernel manager
+        # Build header bar
         self._build_header_bar()
         
         
@@ -176,19 +176,19 @@ class SessionManagerGUI:
         # Sessions directory status
         self._build_sessions_status_info(main_box)
         
-        # Sessions list (without Frame, like kernel manager)
+        # Sessions list
         self.sessions_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
         self.sessions_list.connect("row-selected", self._on_session_selected)
         self.sessions_list.connect("button-press-event", self._on_list_button_press)
-        
-        # ScrolledWindow setup (like kernel manager)
+
+        # ScrolledWindow setup
         scrolled = Gtk.ScrolledWindow()
         scrolled.set_min_content_width(400)
         scrolled.set_min_content_height(200)
         scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         scrolled.add(self.sessions_list)
-        
-        # Loading overlay components (like kernel manager)
+
+        # Loading overlay components
         self.loading_spinner = Gtk.Spinner()
         self.loading_label = Gtk.Label(label=_("Loading sessions..."))
         self.loading_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
@@ -197,8 +197,8 @@ class SessionManagerGUI:
         self.loading_box.set_halign(Gtk.Align.CENTER)
         self.loading_box.set_valign(Gtk.Align.CENTER)
         self.loading_box.get_style_context().add_class('loading-overlay')
-        
-        # Create overlay (like kernel manager)
+
+        # Create overlay
         overlay = Gtk.Overlay()
         overlay.add(scrolled)
         overlay.add_overlay(self.loading_box)
@@ -401,10 +401,10 @@ class SessionManagerGUI:
             self._show_loading(False)
     
     def _create_session_row(self, session_id, is_active, is_running, mode, version, edition, union, size, modified):
-        """Create a session row in kernel-manager style"""
+        """Create a session row"""
         row = Gtk.ListBoxRow()
         
-        # Add CSS classes based on session status (like kernel manager)
+        # Add CSS classes based on session status
         if is_active:
             row.get_style_context().add_class('session-status-active')  # Use 'active' style for current
         else:
@@ -413,13 +413,8 @@ class SessionManagerGUI:
         main_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=15)
         main_box.get_style_context().add_class('session-item')
         
-        # Session icon - better icons
-        if is_running:
-            icon_name = 'system-run'  # Running icon for currently running session
-        elif is_active:
-            icon_name = 'media-floppy'  # Default/active session icon
-        else:
-            icon_name = 'media-floppy'  # Storage/session icon for available sessions
+        # Session icon
+        icon_name = 'media-floppy'
         img = Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.DND)
         main_box.pack_start(img, False, False, 0)
         
@@ -564,6 +559,10 @@ class SessionManagerGUI:
                     # Disable activate if already active
                     activate_item.set_sensitive(False)
                     delete_item.set_sensitive(False)  # Can't delete active session
+                elif hasattr(row, 'is_running') and row.is_running:
+                    # Can activate running session, but can't delete it
+                    activate_item.set_sensitive(True)
+                    delete_item.set_sensitive(False)  # Can't delete running session
                 else:
                     activate_item.set_sensitive(True)
                     delete_item.set_sensitive(True)
@@ -782,38 +781,22 @@ class SessionManagerGUI:
             self._show_error(_("Sessions directory is not writable. Cannot activate sessions."))
             return
         
-        if not self.selected_session_id:
-            self._show_info(_("Please select a session to activate"))
-            return
-        
         session_id = self.selected_session_id
         
-        # Check if already active
-        for row in self.sessions_list.get_children():
-            if hasattr(row, 'session_id') and row.session_id == session_id:
-                if row.is_active:
-                    self._show_info(_("Session #{} is already active").format(session_id))
-                    return
-                break
+        # Show loading overlay
+        self._show_loading(True, _("Activating session, please wait..."))
         
-        # Directly proceed with activation without confirmation dialog
-        response = Gtk.ResponseType.YES
+        # Activate session in background thread
+        def activate_session_bg():
+            try:
+                success, output, error = self._run_cli_command(['activate', session_id])
+                GLib.idle_add(self._on_session_operation_complete, success, output, error, None, _("Session activated successfully"), _("Failed to activate session"))
+            except Exception as e:
+                GLib.idle_add(self._on_session_operation_complete, False, "", str(e), None, "", _("Failed to activate session"))
         
-        if response == Gtk.ResponseType.YES:
-            # Show loading overlay
-            self._show_loading(True, _("Activating session, please wait..."))
-            
-            # Activate session in background thread
-            def activate_session_bg():
-                try:
-                    success, output, error = self._run_cli_command(['activate', session_id])
-                    GLib.idle_add(self._on_session_operation_complete, success, output, error, None, _("Session activated successfully"), _("Failed to activate session"))
-                except Exception as e:
-                    GLib.idle_add(self._on_session_operation_complete, False, "", str(e), None, "", _("Failed to activate session"))
-            
-            thread = threading.Thread(target=activate_session_bg)
-            thread.daemon = True
-            thread.start()
+        thread = threading.Thread(target=activate_session_bg)
+        thread.daemon = True
+        thread.start()
     
     def on_delete_clicked(self, button):
         """Handle delete session action"""
@@ -822,19 +805,7 @@ class SessionManagerGUI:
             self._show_error(_("Sessions directory is not writable. Cannot delete sessions."))
             return
         
-        if not self.selected_session_id:
-            self._show_info(_("Please select a session to delete"))
-            return
-        
         session_id = self.selected_session_id
-        
-        # Prevent deleting active session
-        for row in self.sessions_list.get_children():
-            if hasattr(row, 'session_id') and row.session_id == session_id:
-                if row.is_active:
-                    self._show_error(_("Cannot delete the currently active session"))
-                    return
-                break
         
         # Confirm deletion
         dialog = Gtk.MessageDialog(
@@ -976,42 +947,6 @@ class SessionManagerGUI:
         dialog.run()
         dialog.destroy()
     
-    def _show_info(self, message):
-        """Show info dialog with friendly styling"""
-        # Determine appropriate title based on message content
-        if "success" in message.lower() or "activated" in message.lower() or "created" in message.lower():
-            title = _("Great! Task completed")
-            prefix = _("Everything went smoothly:\n\n")
-            button_label = _("Awesome!")
-        elif "already" in message.lower():
-            title = _("Just so you know")
-            prefix = _("Here's what's happening:\n\n")
-            button_label = _("Thanks")
-        elif "select" in message.lower():
-            title = _("Quick reminder")
-            prefix = _("To continue, please:\n\n")
-            button_label = _("Will do")
-        else:
-            title = _("Information")
-            prefix = _("Here's what you need to know:\n\n")
-            button_label = _("Thanks")
-            
-        dialog = Gtk.MessageDialog(
-            parent=self.window,
-            message_type=Gtk.MessageType.INFO,
-            buttons=Gtk.ButtonsType.OK,
-            text=title
-        )
-        dialog.format_secondary_text(prefix + str(message))
-        
-        # Style the dialog
-        dialog.get_style_context().add_class('friendly-dialog')
-        ok_button = dialog.get_widget_for_response(Gtk.ResponseType.OK)
-        ok_button.set_label(button_label)
-        ok_button.get_style_context().add_class('suggested-action')
-        
-        dialog.run()
-        dialog.destroy()
     
     def _create_progress_dialog(self, title, message):
         """Create a progress dialog with spinner"""
@@ -1060,7 +995,6 @@ class SessionManagerGUI:
             progress_dialog.destroy()
         
         if success:
-            self._show_info(output.strip())
             self.refresh_session_list()
         else:
             self._show_error(_("Failed to create session: {}").format(error))
