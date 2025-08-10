@@ -31,10 +31,7 @@ class SessionManagerGUI:
     """GUI application for session management"""
     
     def __init__(self):
-        self.cli_command = self._find_cli_command()
-        if not self.cli_command:
-            self._show_error(_("Error: minios-session not found in PATH"))
-            sys.exit(1)
+        self.cli_command = self._get_minios_session_cli_path()
         
         # Check sessions directory status
         self.sessions_status = self._check_sessions_directory_status()
@@ -70,29 +67,21 @@ class SessionManagerGUI:
                     print(f"Warning: Failed to load CSS from {css_path}: {e}")
                     continue
     
-    def _find_cli_command(self):
-        """Find the CLI command executable"""
-        # Try different possible locations
-        possible_paths = [
-            'minios-session',
-            '/usr/bin/minios-session',
-            os.path.join(os.path.dirname(os.path.dirname(__file__)), 'bin', 'minios-session')  # Source
-        ]
-        
-        for path in possible_paths:
-            try:
-                result = subprocess.run([path, '--help'], capture_output=True, timeout=5)
-                if result.returncode == 0:
-                    return path
-            except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
-                continue
-        
-        return None
+    def _get_minios_session_cli_path(self):
+        """Get the path to minios-session CLI tool"""
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        if os.path.basename(script_dir) == 'lib':
+            # Running from source tree
+            cli_path = os.path.join(os.path.dirname(script_dir), 'bin', 'minios-session')
+        else:
+            # Running from installed location - assume it's in PATH
+            cli_path = 'minios-session'
+        return cli_path
     
     def _run_cli_command(self, args):
         """Run CLI command and return result"""
         try:
-            cmd = [self.cli_command] + args
+            cmd = ['pkexec', self.cli_command] + args
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)  # Increased timeout for pkexec
             return result.returncode == 0, result.stdout, result.stderr
         except subprocess.TimeoutExpired:

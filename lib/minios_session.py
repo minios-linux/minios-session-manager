@@ -1141,6 +1141,12 @@ def main():
     if privileged_mode:
         sys.argv.remove('--privileged')
     
+    # Check for root privileges (like minios-kernel CLI)
+    if os.geteuid() != 0:
+        error_msg = _("This tool requires root privileges. Please run with sudo or through pkexec.")
+        print(json.dumps({"success": False, "error": error_msg}), file=sys.stderr)
+        sys.exit(1)
+    
     parser = argparse.ArgumentParser(
         description=_('MiniOS Session Manager - Command line tool for managing persistent sessions'),
         formatter_class=argparse.RawDescriptionHelpFormatter,
