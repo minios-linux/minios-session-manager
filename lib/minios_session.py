@@ -212,6 +212,82 @@ class SessionManager:
         
         return False  # Read operations typically don't need privileges
     
+    def check_sessions_directory_status(self):
+        """Check sessions directory status and write permissions"""
+        if not self.sessions_dir:
+            return {
+                'success': False,
+                'found': False,
+                'writable': False,
+                'sessions_dir': None,
+                'error': _('Sessions directory not found')
+            }
+        
+        # Check if directory exists
+        if not os.path.exists(self.sessions_dir):
+            return {
+                'success': True,
+                'found': False,
+                'writable': False,
+                'sessions_dir': self.sessions_dir,
+                'error': _('Sessions directory does not exist')
+            }
+        
+        # Get filesystem type
+        fs_type = "unknown"
+        try:
+            result = subprocess.run(['stat', '-f', '-c', '%T', self.sessions_dir], 
+                                  capture_output=True, text=True, check=True)
+            fs_type = result.stdout.strip()
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            # Fallback method using /proc/mounts
+            try:
+                with open('/proc/mounts', 'r') as f:
+                    for line in f:
+                        parts = line.split()
+                        if len(parts) >= 3:
+                            mount_point, fs_type_mount = parts[1], parts[2]
+                            if self.sessions_dir.startswith(mount_point):
+                                fs_type = fs_type_mount
+                                break
+            except:
+                pass
+        
+        # Check if directory is writable
+        writable = False
+        error_msg = None
+        
+        try:
+            # SquashFS is always read-only
+            if fs_type == 'squashfs':
+                writable = False
+                error_msg = _("Directory is on a SquashFS filesystem (read-only)")
+            else:
+                # Try to create a temporary file to test write access
+                try:
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(dir=self.sessions_dir, delete=True):
+                        pass
+                    writable = True
+                except (OSError, PermissionError) as e:
+                    writable = False
+                    error_msg = _("Permission denied: {}").format(str(e))
+        except Exception as e:
+            writable = False
+            error_msg = _("Error checking directory: {}").format(str(e))
+        
+        result = {
+            'success': True,
+            'found': True,
+            'writable': writable,
+            'sessions_dir': self.sessions_dir,
+            'filesystem_type': fs_type
+        }
+        if error_msg:
+            result['error'] = error_msg
+        
+        return result
+    
     def _execute_operation(self, operation, *args):
         """Execute an operation, using privileges if necessary"""
         if not self.privileged_mode and self._requires_privileges(operation):
@@ -977,8 +1053,6 @@ def format_session_list(sessions):
         return _("No sessions found")
     
     lines = []
-    lines.append(_("Available Sessions:"))
-    lines.append("-" * 80)
     
     for session in sessions:
         status_parts = []
@@ -1179,7 +1253,9 @@ NOTE: Most write operations (activate, create, delete, cleanup) require root pri
     cleanup_parser.add_argument('--days', type=int, default=30, 
                                help=_('Delete sessions older than N days (default: 30)'))
     
-    
+    # Status command
+    status_parser = subparsers.add_parser('status', help=_('Check sessions directory status'), parents=[parent_parser])
+
 # GUI command removed - use minios-session-manager for GUI
     
     # Parse arguments - handle global flags that can appear anywhere
@@ -1326,6 +1402,26 @@ NOTE: Most write operations (activate, create, delete, cleanup) require root pri
             print(_("Errors:"))
             for error in errors:
                 print(f"  {error}")
+    
+    elif args.command == 'status':
+        status_info = manager.check_sessions_directory_status()
+        if args.json:
+            print(json.dumps(status_info))
+        else:
+            print(_("Sessions directory: {}").format(status_info.get('sessions_dir', 'N/A')))
+            if status_info.get('found', False):
+                print(_("Status: {}").format(_("Found")))
+                if status_info.get('writable', False):
+                    print(_("Access: {}").format(_("Writable")))
+                else:
+                    print(_("Access: {}").format(_("Read-only")))
+                    if 'error' in status_info:
+                        print(_("Reason: {}").format(status_info['error']))
+                print(_("Filesystem type: {}").format(status_info.get('filesystem_type', 'unknown')))
+            else:
+                print(_("Status: {}").format(_("Not found")))
+                if 'error' in status_info:
+                    print(_("Error: {}").format(status_info['error']))
     
     
 # GUI command removed

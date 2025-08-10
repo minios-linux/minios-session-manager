@@ -36,6 +36,9 @@ class SessionManagerGUI:
             self._show_error(_("Error: minios-session not found in PATH"))
             sys.exit(1)
         
+        # Check sessions directory status
+        self.sessions_status = self._check_sessions_directory_status()
+        self.sessions_writable = self.sessions_status.get('writable', False)
         
         self._load_css()
         
@@ -46,7 +49,7 @@ class SessionManagerGUI:
     def _load_css(self):
         """Load CSS styling for the application"""
         css_paths = [
-            "/usr/share/minios-session-manager/styles/style.css",
+            "/usr/share/minios-session-manager/style.css",
             os.path.join(os.path.dirname(os.path.dirname(__file__)), "share", "styles", "style.css")
         ]
         
@@ -97,6 +100,63 @@ class SessionManagerGUI:
         except Exception as e:
             return False, "", str(e)
     
+    def _check_sessions_directory_status(self):
+        """Check sessions directory status using CLI"""
+        try:
+            success, output, error = self._run_cli_command(['status', '--json'])
+            if success and output.strip():
+                return json.loads(output.strip())
+            else:
+                return {
+                    'success': False,
+                    'found': False,
+                    'writable': False,
+                    'error': error or 'Unknown error'
+                }
+        except json.JSONDecodeError as e:
+            return {
+                'success': False,
+                'found': False,
+                'writable': False,
+                'error': f'Failed to parse CLI response: {e}'
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'found': False,
+                'writable': False,
+                'error': str(e)
+            }
+    
+    def _build_sessions_status_info(self, main_box):
+        """Build sessions directory status information panel"""
+        sessions_hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        sessions_hbox.set_margin_bottom(12)
+        
+        if self.sessions_status.get('found', False) and self.sessions_writable:
+            status_icon_name = "emblem-default"  # Green checkmark
+            status_color = "#2E7D32"  # Green
+            status_text = _("Sessions directory is writable")
+        else:
+            status_icon_name = "dialog-error"  # Error icon
+            status_color = "#D32F2F"  # Red
+            if self.sessions_status.get('found', False):
+                status_text = _("Sessions directory is read-only")
+            else:
+                status_text = _("Sessions directory not found")
+        
+        # Status icon
+        status_icon = Gtk.Image.new_from_icon_name(status_icon_name, Gtk.IconSize.MENU)
+        sessions_hbox.pack_start(status_icon, False, False, 0)
+        
+        # Status text
+        sessions_status_label = Gtk.Label()
+        sessions_status_label.set_markup(f'<span color="{status_color}"><b>{status_text}</b></span>')
+        sessions_status_label.set_halign(Gtk.Align.START)
+        sessions_hbox.pack_start(sessions_status_label, False, False, 0)
+        
+        main_box.pack_start(sessions_hbox, False, False, 0)
+    
     def _build_header_bar(self):
         """Build the header bar"""
         header = Gtk.HeaderBar(show_close_button=True)
@@ -123,10 +183,9 @@ class SessionManagerGUI:
         main_box.set_margin_bottom(10)
         self.window.add(main_box)
         
-        # Instruction label (like in kernel manager)
-        lbl = Gtk.Label(label=_("Available Sessions"), xalign=0)
-        lbl.set_margin_bottom(8)
-        main_box.pack_start(lbl, False, False, 0)
+        
+        # Sessions directory status
+        self._build_sessions_status_info(main_box)
         
         # Sessions list (without Frame, like kernel manager)
         self.sessions_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
@@ -183,7 +242,11 @@ class SessionManagerGUI:
         create_btn.get_style_context().add_class('large-button')
         create_btn.get_style_context().add_class('create-button')
         create_btn.set_size_request(140, -1)
+        # Disable create button if sessions directory is not writable
+        create_btn.set_sensitive(self.sessions_writable)
         toolbar_box.pack_start(create_btn, False, False, 0)
+        
+        self.create_btn = create_btn  # Store reference for later use
         
         
         # Cleanup button
@@ -198,7 +261,11 @@ class SessionManagerGUI:
         cleanup_btn.get_style_context().add_class('large-button')
         cleanup_btn.get_style_context().add_class('cleanup-button')
         cleanup_btn.set_size_request(140, -1)
+        # Disable cleanup button if sessions directory is not writable
+        cleanup_btn.set_sensitive(self.sessions_writable)
         toolbar_box.pack_start(cleanup_btn, False, False, 0)
+        
+        self.cleanup_btn = cleanup_btn  # Store reference for later use
     
     def refresh_session_list(self):
         """Refresh the session list from CLI"""
@@ -500,8 +567,12 @@ class SessionManagerGUI:
                 activate_item = self.context_menu.get_children()[0]
                 delete_item = self.context_menu.get_children()[2]
                 
-                # Disable activate if already active
-                if hasattr(row, 'is_active') and row.is_active:
+                # Check if sessions directory is writable
+                if not self.sessions_writable:
+                    activate_item.set_sensitive(False)
+                    delete_item.set_sensitive(False)
+                elif hasattr(row, 'is_active') and row.is_active:
+                    # Disable activate if already active
                     activate_item.set_sensitive(False)
                     delete_item.set_sensitive(False)  # Can't delete active session
                 else:
@@ -526,6 +597,11 @@ class SessionManagerGUI:
     
     def on_create_clicked(self, button):
         """Handle create session button click"""
+        # Check if sessions directory is writable
+        if not self.sessions_writable:
+            self._show_error(_("Sessions directory is not writable. Cannot create new sessions."))
+            return
+        
         # First, get filesystem information
         fs_success, fs_output, fs_error = self._run_cli_command(['info'])
         compatible_modes = ['native', 'dynfilefs', 'raw']  # Default
@@ -712,6 +788,11 @@ class SessionManagerGUI:
     
     def on_activate_clicked(self, button):
         """Handle activate session action"""
+        # Check if sessions directory is writable
+        if not self.sessions_writable:
+            self._show_error(_("Sessions directory is not writable. Cannot activate sessions."))
+            return
+        
         if not self.selected_session_id:
             self._show_info(_("Please select a session to activate"))
             return
@@ -747,6 +828,11 @@ class SessionManagerGUI:
     
     def on_delete_clicked(self, button):
         """Handle delete session action"""
+        # Check if sessions directory is writable
+        if not self.sessions_writable:
+            self._show_error(_("Sessions directory is not writable. Cannot delete sessions."))
+            return
+        
         if not self.selected_session_id:
             self._show_info(_("Please select a session to delete"))
             return
@@ -802,6 +888,11 @@ class SessionManagerGUI:
     
     def on_cleanup_clicked(self, button):
         """Handle cleanup button click"""
+        # Check if sessions directory is writable
+        if not self.sessions_writable:
+            self._show_error(_("Sessions directory is not writable. Cannot cleanup sessions."))
+            return
+        
         # Ask for days threshold
         dialog = Gtk.Dialog(
             title=_("Cleanup Old Sessions"),

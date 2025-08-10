@@ -63,6 +63,9 @@ Delete all sessions older than N days. The currently active session and currentl
 \fB\-\-days\fR \fIN\fR (optional)
 Age threshold in days for session deletion (default: 30). Sessions modified within this period are preserved.
 .RE
+.TP
+.B status
+Check sessions directory status and write permissions. Reports filesystem type and whether session operations are available.
 .SH COMMAND BEHAVIOR
 .TP
 .B Filesystem Compatibility Checking
@@ -163,6 +166,11 @@ Create sessions:
 JSON output:
 .RS
 .B minios-session --json list
+.RE
+.PP
+Check directory status:
+.RS
+.B minios-session status
 .RE
 .SH FILES
 .TP

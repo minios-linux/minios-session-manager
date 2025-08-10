@@ -36,8 +36,7 @@ install: build
 				$(DESTDIR)/$(APPLICATIONSDIR) \
 				$(DESTDIR)/$(POLKITACTIONSDIR) \
 				$(DESTDIR)/$(LOCALEDIR) \
-				$(DESTDIR)/$(SHAREDIR) \
-				$(DESTDIR)/$(SHAREDIR)/styles
+				$(DESTDIR)/$(SHAREDIR)
 
 	cp $(EXECUTABLES) $(DESTDIR)/$(BINDIR)/
 	cp $(LIBRARIES) $(DESTDIR)/$(LIBDIR)/
@@ -45,7 +44,7 @@ install: build
 	chmod +x $(DESTDIR)/$(LIBDIR)/minios_session_manager.py
 	cp $(APPLICATIONS) $(DESTDIR)/$(APPLICATIONSDIR)
 	cp $(POLICIES) $(DESTDIR)/$(POLKITACTIONSDIR)
-	cp $(STYLES) $(DESTDIR)/$(SHAREDIR)/
+	cp $(STYLES) $(DESTDIR)/$(SHAREDIR)
 
 	@for MO_FILE in $(MO_FILES); do \
 		LOCALE=$$(basename $$MO_FILE .mo); \

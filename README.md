@@ -18,6 +18,7 @@ minios-session list
 minios-session create --mode native
 minios-session activate <id>
 minios-session cleanup --days 30
+minios-session status
 ```
 
 ## Session Modes
