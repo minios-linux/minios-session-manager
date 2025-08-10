@@ -754,9 +754,9 @@ class SessionManagerGUI:
             def create_session_bg():
                 try:
                     if mode in ["dynfilefs", "raw"]:
-                        success, output, error = self._run_cli_command(['create', '--mode', mode, '--size', str(size_mb)])
+                        success, output, error = self._run_cli_command(['create', '--mode', mode, '--size', str(size_mb), '--json'])
                     else:
-                        success, output, error = self._run_cli_command(['create', '--mode', mode])
+                        success, output, error = self._run_cli_command(['create', '--mode', mode, '--json'])
                     
                     # Update UI in main thread
                     GLib.idle_add(self._on_session_creation_complete, success, output, error, None)
@@ -784,7 +784,7 @@ class SessionManagerGUI:
         # Activate session in background thread
         def activate_session_bg():
             try:
-                success, output, error = self._run_cli_command(['activate', session_id])
+                success, output, error = self._run_cli_command(['activate', session_id, '--json'])
                 GLib.idle_add(self._on_session_operation_complete, success, output, error, None, _("Session activated successfully"), _("Failed to activate session"))
             except Exception as e:
                 GLib.idle_add(self._on_session_operation_complete, False, "", str(e), None, "", _("Failed to activate session"))
@@ -832,7 +832,7 @@ class SessionManagerGUI:
             # Delete session in background thread
             def delete_session_bg():
                 try:
-                    success, output, error = self._run_cli_command(['delete', session_id])
+                    success, output, error = self._run_cli_command(['delete', session_id, '--json'])
                     GLib.idle_add(self._on_session_operation_complete, success, output, error, None, _("Session deleted successfully"), _("Failed to delete session"))
                 except Exception as e:
                     GLib.idle_add(self._on_session_operation_complete, False, "", str(e), None, "", _("Failed to delete session"))
@@ -911,7 +911,7 @@ class SessionManagerGUI:
                 # Run cleanup in background thread
                 def cleanup_sessions_bg():
                     try:
-                        success, output, error = self._run_cli_command(['cleanup', '--days', str(days)])
+                        success, output, error = self._run_cli_command(['cleanup', '--days', str(days), '--json'])
                         GLib.idle_add(self._on_session_operation_complete, success, output, error, None, _("Cleanup completed successfully"), _("Cleanup failed"))
                     except Exception as e:
                         GLib.idle_add(self._on_session_operation_complete, False, "", str(e), None, "", _("Cleanup failed"))
