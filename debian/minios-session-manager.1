@@ -1,0 +1,83 @@
+.TH MINIOS-SESSION-MANAGER 1 "August 2025" "MiniOS" "User Commands"
+.SH NAME
+minios-session-manager \- graphical interface for managing MiniOS persistent sessions
+.SH SYNOPSIS
+.B minios-session-manager
+.SH DESCRIPTION
+.B minios-session-manager
+provides a graphical user interface for managing MiniOS persistent sessions.
+It offers an intuitive way to browse, create, activate, and delete sessions without using the command line.
+.PP
+The application internally uses
+.BR minios-session (1)
+to perform actual session operations, providing a user-friendly frontend to the command-line functionality.
+.SH SESSION MODES
+The application supports creation of sessions in three different modes:
+.TP
+.B Native Mode
+For POSIX-compatible filesystems (ext4, btrfs, etc.). Most efficient option.
+.TP
+.B DynFileFS Mode
+For non-POSIX filesystems (FAT32, NTFS). Uses expandable container files.
+.TP
+.B Raw Mode
+For any filesystem. Uses fixed-size image files.
+.SH KEYBOARD SHORTCUTS
+.TP
+.B F5
+Refresh session list
+.TP
+.B Delete
+Delete selected session (with confirmation)
+.TP
+.B Ctrl+N
+Create new session
+.TP
+.B Ctrl+Q
+Quit application
+.SH EXAMPLES
+.TP
+.B minios-session-manager
+Launch the graphical session manager.
+.TP
+Application Menu → System → MiniOS Session Manager
+Launch from the desktop application menu.
+.SH FILES
+.TP
+.B /usr/share/applications/minios-session-manager.desktop
+Desktop entry file for application menu integration.
+.TP
+.B /usr/share/polkit-1/actions/dev.minios.session-manager.policy
+PolicyKit configuration for administrative operations.
+.TP
+.B /usr/lib/minios-session-manager/
+Installation directory containing Python modules and main application.
+.TP
+.B /usr/share/minios-session-manager/style.css
+Application stylesheet for custom GUI styling.
+.TP
+.B /run/initramfs/memory/data/minios/changes/
+Primary location for session data and metadata.
+.TP
+.B /run/initramfs/memory/data/minios/changes/session.json
+Session metadata in JSON format (preferred).
+.TP
+.B /run/initramfs/memory/data/minios/changes/session.conf
+Session metadata in legacy format (fallback).
+.TP
+.B /run/initramfs/memory/data/minios/changes/[0-9]+/
+Individual session directories containing persistent changes.
+.SH NOTES
+.PP
+The graphical interface requires a running X11 or Wayland session. For headless or text-only systems, use
+.BR minios-session (1)
+instead.
+.PP
+The application starts without requiring root privileges and automatically requests authentication via PolicyKit when needed for write operations (create, activate, delete).
+.SH SEE ALSO
+.BR minios-session (1),
+.BR live-config (7)
+.SH AUTHOR
+crims0n <crims0n@minios.dev>
+.SH REPORTING BUGS
+Report bugs to: https://github.com/minios-linux/minios-live/issues

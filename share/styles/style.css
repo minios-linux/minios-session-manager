@@ -1,0 +1,197 @@
+/* Session Manager Styles */
+
+/* ==================== List Styles ==================== */
+
+/* Simple border for the scrolled window containing the session list */
+scrolledwindow {
+    border: 1px solid #d0d0d0;
+    border-radius: 4px;
+}
+
+listbox {
+    background-color: #fafafa;
+    border: none;
+    border-radius: 3px;
+}
+
+listbox row {
+    border-radius: 0;
+    margin: 0;
+    padding: 0;
+    transition: all 0.15s ease-out;
+    min-height: 80px;
+    border-bottom: 1px solid #e8e8e8;
+}
+
+listbox row:last-child {
+    border-bottom: none;
+}
+
+listbox row:hover {
+    background-color: #f5f5f5;
+}
+
+row:selected {
+    background: linear-gradient(to bottom, #6bb5ff, #4a90d9);
+}
+
+row:selected:hover {
+    background: linear-gradient(to bottom, #7fc3ff, #5ba0e9);
+}
+
+.session-item {
+    border-radius: 0;
+    padding: 12px 16px;
+    margin: 0;
+    min-height: 60px;
+    background-color: transparent;
+}
+
+.session-status-active {
+    background-color: transparent;
+    border-left: 3px solid #73d216;
+}
+
+.session-status-available {
+    background-color: transparent;
+    border-left: 3px solid #babdb6;
+}
+
+.session-status-running {
+    background-color: transparent;
+    border-left: 3px solid #f57900;
+}
+
+/* ==================== Badge Styles ==================== */
+.active-session-badge {
+    background: linear-gradient(to bottom, #8cc665, #73d216);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 2px;
+    font-size: 11px;
+    font-weight: 600;
+    text-shadow: 0 1px rgba(0, 0, 0, 0.2);
+}
+
+.available-session-badge {
+    background: linear-gradient(to bottom, #d3d7cf, #babdb6);
+    color: #2e3436;
+    padding: 2px 8px;
+    border-radius: 2px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.running-session-badge {
+    background: linear-gradient(to bottom, #fcaf3e, #f57900);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 2px;
+    margin-left: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    text-shadow: 0 1px rgba(0, 0, 0, 0.2);
+}
+
+/* ==================== Main Window Bottom Buttons ==================== */
+button.create-button {
+    background: linear-gradient(to bottom, #6bb5ff, #4a90d9);
+    color: white;
+    border: 1px solid #3875c4;
+    text-shadow: 0 1px rgba(0, 0, 0, 0.2);
+    padding: 6px 12px;
+    font-size: 13px;
+    min-width: 120px;
+}
+
+button.create-button:hover {
+    background: linear-gradient(to bottom, #7fc3ff, #5ba0e9);
+    color: white;
+    border-color: #2a5e94;
+    box-shadow: 0 0 2px rgba(74, 144, 217, 0.5);
+}
+
+button.cleanup-button {
+    background: linear-gradient(to bottom, #ed5353, #c6262e);
+    color: white;
+    border: 1px solid #a10705;
+    text-shadow: 0 1px rgba(0, 0, 0, 0.2);
+    padding: 6px 12px;
+    font-size: 13px;
+    min-width: 120px;
+}
+
+button.cleanup-button:hover {
+    background: linear-gradient(to bottom, #f66151, #d33682);
+    color: white;
+    border-color: #8b0000;
+    box-shadow: 0 0 2px rgba(237, 83, 83, 0.5);
+}
+
+button.refresh-button {
+    padding: 6px 12px;
+    font-size: 13px;
+    min-width: 120px;
+}
+
+/* ==================== Loading Overlay Styles ==================== */
+.loading-overlay {
+    background-color: rgba(74, 143, 217, 0.85);
+    color: white;
+    border: 1px solid #4a90d9;
+    border-radius: 3px;
+    padding: 16px;
+    box-shadow: 0 2px 8px rgba(74, 144, 217, 0.3);
+}
+
+/* ==================== Context Menu Styles ==================== */
+menu,
+.context-menu {
+    border: 1px solid #a6a6a6;
+    border-radius: 3px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    padding: 2px;
+}
+
+menuitem {
+    padding: 6px 12px;
+    font-size: 12px;
+    border-radius: 2px;
+    margin: 1px;
+}
+
+menuitem:hover {
+    background: linear-gradient(to bottom, #6bb5ff, #4a90d9);
+    color: white;
+}
+
+.session-context-menu menuitem.context-menu-activate:hover {
+    background: linear-gradient(to bottom, #9cd675, #4e9a06);
+    color: white;
+}
+
+.session-context-menu menuitem.context-menu-delete:hover {
+    background: linear-gradient(to bottom, #f16c6c, #cc0000);
+    color: white;
+}
+
+/* ==================== Frame and ScrolledWindow Styles ==================== */
+frame {
+    border: 1px solid;
+    border-radius: 3px;
+}
+
+frame > border {
+    border: none;
+    padding: 0;
+}
+
+scrolledwindow {
+    border: none;
+    background-color: transparent;
+}
+
+scrolledwindow > viewport {
+    border: none;
+    background-color: transparent;
+}

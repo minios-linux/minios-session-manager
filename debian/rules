@@ -1,0 +1,29 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_install:
+	mkdir -p debian/minios-session-manager/usr/bin
+	mkdir -p debian/minios-session-manager/usr/lib/minios-session-manager
+	mkdir -p debian/minios-session-manager/usr/share/applications
+	mkdir -p debian/minios-session-manager/usr/share/polkit-1/actions
+	mkdir -p debian/minios-session-manager/usr/share/locale
+	
+	cp bin/minios-session-manager debian/minios-session-manager/usr/bin/
+	cp bin/minios-session debian/minios-session-manager/usr/bin/
+	cp lib/minios_session_manager.py debian/minios-session-manager/usr/lib/minios-session-manager/
+	cp lib/minios_session.py debian/minios-session-manager/usr/lib/minios-session-manager/
+	cp share/applications/minios-session-manager.desktop debian/minios-session-manager/usr/share/applications/
+	cp share/polkit/dev.minios.session-manager.policy debian/minios-session-manager/usr/share/polkit-1/actions/
+	
+	# Install translations if they exist
+	if [ -d po/ ]; then \
+		for po in po/*.po; do \
+			if [ -f "$$po" ]; then \
+				lang=$$(basename $$po .po); \
+				mkdir -p debian/minios-session-manager/usr/share/locale/$$lang/LC_MESSAGES; \
+				msgfmt $$po -o debian/minios-session-manager/usr/share/locale/$$lang/LC_MESSAGES/minios-session-manager.mo; \
+			fi; \
+		done; \
+	fi

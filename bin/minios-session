@@ -1,0 +1,20 @@
+#!/bin/sh
+#
+# MiniOS Session CLI Launcher
+# Command-line interface for session management
+#
+
+set -e
+
+# Find the real directory of the script
+SCRIPT_DIR=$(dirname "$(readlink -f -- "$0")")
+
+# Check for installed location first
+if [ -f "/usr/lib/minios-session-manager/minios_session.py" ]; then
+    DIR="/usr/lib/minios-session-manager"
+else
+    # Assume running from source, construct path relative to this script
+    DIR="$(dirname "$SCRIPT_DIR")/lib"
+fi
+
+exec python3 -u "$DIR/minios_session.py" "$@"

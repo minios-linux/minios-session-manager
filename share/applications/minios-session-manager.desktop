@@ -1,0 +1,27 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=MiniOS Session Manager
+Name[de]=MiniOS-Sitzungsmanager
+Name[es]=Gestor de sesiones de MiniOS
+Name[fr]=Gestionnaire de sessions MiniOS
+Name[id]=Pengelola Sesi MiniOS
+Name[it]=Gestore di sessioni MiniOS
+Name[pt]=Gerenciador de Sessões MiniOS
+Name[pt_BR]=Gerenciador de Sessões MiniOS
+Name[ru]=Менеджер сессий MiniOS
+Comment=Manage MiniOS persistent sessions
+Comment[de]=MiniOS-Sitzungen verwalten
+Comment[es]=Gestionar sesiones persistentes de MiniOS
+Comment[fr]=Gérer les sessions persistantes de MiniOS
+Comment[id]=Kelola sesi persisten MiniOS
+Comment[it]=Gestisci le sessioni persistenti di MiniOS
+Comment[pt]=Gerenciar sessões persistentes do MiniOS
+Comment[pt_BR]=Gerenciar sessões persistentes do MiniOS
+Comment[ru]=Управление сессиями сохранения MiniOS
+Icon=preferences-desktop-personal
+Exec=minios-session-manager
+Categories=System;Settings;
+Keywords=session;persistent;changes;storage;
+StartupNotify=true
+Terminal=false

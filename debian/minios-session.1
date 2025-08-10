@@ -1,0 +1,200 @@
+.TH MINIOS-SESSION 1 "August 2025" "MiniOS" "User Commands"
+.SH NAME
+minios-session \- command-line interface for managing MiniOS persistent sessions
+.SH SYNOPSIS
+.B minios-session
+[\fIGLOBAL_OPTIONS\fR] \fIcommand\fR [\fIcommand_options\fR]
+.SH DESCRIPTION
+.B minios-session
+is a command-line utility for managing MiniOS persistent sessions from within the running system.
+It provides full control over session operations including viewing, creating, activating, and deleting sessions.
+.SH GLOBAL OPTIONS
+.TP
+.B \-\-json
+Output results in JSON format (can be used with any command)
+.TP
+.B \-\-sessions-dir \fIPATH\fR
+Use custom sessions directory instead of default location
+.SH COMMANDS
+.TP
+.B list
+List all available sessions with detailed information including ID, mode, version, edition, size, and last modification time.
+.TP
+.B active
+Show information about the currently active session (session that will boot next).
+.TP
+.B running
+Show information about the currently running session in this boot session.
+.TP
+.B info
+Show filesystem type and compatible session modes for the active media.
+.TP
+.B activate \fIsession_id\fR
+Activate the specified session by setting it as the default session. This change takes effect on the next boot.
+.RS
+.TP
+\fIsession_id\fR (required)
+ID of the session to activate
+.RE
+.TP
+.B create [\-\-mode \fImode\fR] [\-\-size \fIsize\fR]
+Create a new session with the specified mode and optional size. The new session will be automatically assigned the next available ID. The tool automatically detects the filesystem type and only allows compatible session modes.
+.RS
+.TP
+\fB\-\-mode\fR \fImode\fR (optional)
+Session mode: native, dynfilefs, or raw (default: native). If the default native mode is not compatible with the current filesystem, the command will fail with an error message suggesting alternative modes.
+.TP
+\fB\-\-size\fR \fIsize\fR (optional)
+Size in MB for dynfilefs and raw modes (default: 4000). For FAT32 filesystems, raw images are limited to 4000MB maximum.
+.RE
+.TP
+.B delete \fIsession_id\fR
+Delete the specified session by ID. Cannot delete the currently active session.
+.RS
+.TP
+\fIsession_id\fR (required)
+ID of the session to delete
+.RE
+.TP
+.B cleanup [\-\-days \fIN\fR]
+Delete all sessions older than N days. The currently active session and currently running session are never deleted. If called without parameters, uses default threshold of 30 days.
+.RS
+.TP
+\fB\-\-days\fR \fIN\fR (optional)
+Age threshold in days for session deletion (default: 30). Sessions modified within this period are preserved.
+.RE
+.SH COMMAND BEHAVIOR
+.TP
+.B Filesystem Compatibility Checking
+The
+.B create
+command automatically detects the filesystem type and validates mode compatibility. If the requested mode is not supported:
+.RS
+.TP
+• On FAT32/NTFS with native mode: Returns error suggesting dynfilefs or raw mode
+.TP
+• On read-only media: Returns error stating no sessions can be created
+.TP
+• With dynfilefs mode but package not installed: Returns error requesting dynfilefs package installation
+.TP
+• With oversized raw images on FAT32: Returns error with size limit and suggests dynfilefs mode
+.RE
+.TP
+.B Default Parameter Behavior
+.RS
+.TP
+• 
+.B create
+without --mode: Uses native mode, may fail on non-POSIX filesystems
+.TP
+• 
+.B create
+without --size: Uses 4000MB (4GB) for dynfilefs and raw modes
+.TP
+• 
+.B cleanup
+without --days: Uses 30-day threshold for session deletion
+.RE
+.TP
+.B Session Protection
+The
+.B cleanup
+command protects both the currently active session (will boot next) and the currently running session (current boot) from deletion, regardless of age.
+.SH SESSION MODES
+MiniOS supports three persistence modes for different storage scenarios:
+.TP
+.B native
+Direct storage on POSIX-compatible filesystems (ext4, btrfs, etc.). This is the default and most efficient mode for compatible filesystems.
+.TP
+.B dynfilefs
+Dynamic file-based storage suitable for non-POSIX filesystems (FAT32, NTFS). Creates expandable container files.
+.TP
+.B raw
+Fixed-size image file storage compatible with any filesystem. Requires pre-allocation of storage space.
+.SH FILESYSTEM COMPATIBILITY
+The tool automatically detects your media's filesystem type and restricts session creation to compatible modes:
+.TP
+.B POSIX Filesystems (ext2/3/4, btrfs, xfs, f2fs)
+All session modes supported. Native mode recommended for best performance.
+.TP
+.B FAT32 (vfat, msdos)
+Only DynFileFS and Raw modes supported. Raw images limited to 4GB maximum due to filesystem constraints.
+.TP
+.B NTFS and exFAT
+Only DynFileFS and Raw modes supported. No file size limitations.
+.TP
+.B Read-only Media
+No session creation possible. Sessions can only be activated or listed.
+.PP
+Use the
+.B info
+command to check filesystem compatibility before creating sessions.
+.SH EXAMPLES
+.PP
+List all sessions:
+.RS
+.B minios-session list
+.RE
+.PP
+Show active session:
+.RS
+.B minios-session active
+.RE
+.PP
+Activate session:
+.RS
+.B minios-session activate 2
+.RE
+.PP
+Delete old sessions:
+.RS
+.B minios-session cleanup --days 7
+.RE
+.PP
+Create sessions:
+.RS
+.B minios-session create --mode native
+.br
+.B minios-session create --mode dynfilefs --size 8000
+.br
+.B minios-session create --mode raw --size 2000
+.RE
+.PP
+JSON output:
+.RS
+.B minios-session --json list
+.RE
+.SH FILES
+.TP
+.B /run/initramfs/memory/data/minios/changes/
+Primary location for session data and metadata.
+.TP
+.B /run/initramfs/memory/data/minios/changes/session.json
+Session metadata in JSON format (preferred).
+.TP
+.B /run/initramfs/memory/data/minios/changes/session.conf
+Session metadata in legacy format (fallback).
+.TP
+.B /run/initramfs/memory/data/minios/changes/[0-9]+/
+Individual session directories containing persistent changes.
+.TP
+.B /etc/minios-release
+System version and edition information used for session compatibility checking.
+.SH EXIT STATUS
+.TP
+.B 0
+Success
+.TP
+.B 1
+Error occurred (invalid arguments, session not found, permission denied, etc.)
+.SH NOTES
+.PP
+Session activation takes effect on the next boot. The tool automatically detects session storage location and requests authentication via PolicyKit when needed.
+.SH SEE ALSO
+.BR minios-session-manager (1),
+.BR live-config (7),
+.BR systemd.special (7)
+.SH AUTHOR
+crims0n <crims0n@minios.dev>
+.SH REPORTING BUGS
+Report bugs to: https://github.com/minios-linux/minios-session-manager/issues
