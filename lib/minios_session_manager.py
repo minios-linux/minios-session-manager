@@ -590,33 +590,28 @@ class SessionManagerGUI:
             self._show_error(_("Sessions directory is not writable. Cannot create new sessions."))
             return
         
-        # First, get filesystem information
-        fs_success, fs_output, fs_error = self._run_cli_command(['info'])
+        # First, get filesystem information using JSON output
+        fs_success, fs_output, fs_error = self._run_cli_command(['info', '--json'])
         compatible_modes = ['native', 'dynfilefs', 'raw']  # Default
         filesystem_type = "unknown"
         limitations = {}
         
         if fs_success:
-            # Parse filesystem info from CLI output
-            # This is a simplified approach - in a real implementation you might want
-            # to add a --json flag to the info command for easier parsing
-            lines = fs_output.split('\n')
-            for line in lines:
-                if 'Filesystem Type:' in line:
-                    filesystem_type = line.split(':')[1].strip()
-                elif line.strip().startswith('✓'):
-                    # Compatible modes are marked with ✓
-                    pass
-        
-        # Get compatible modes by calling CLI with a different approach
-        # For now, we'll determine compatibility based on filesystem type
-        if 'vfat' in filesystem_type.lower() or 'fat32' in filesystem_type.lower():
-            compatible_modes = ['dynfilefs', 'raw']
-            limitations['max_file_size'] = 4096  # 4GB in MB
-        elif 'ntfs' in filesystem_type.lower():
-            compatible_modes = ['dynfilefs', 'raw']
-        elif filesystem_type in ['ext2', 'ext3', 'ext4', 'btrfs', 'xfs']:
-            compatible_modes = ['native', 'dynfilefs', 'raw']
+            try:
+                import json
+                fs_info = json.loads(fs_output)
+                filesystem_type = fs_info.get('filesystem', {}).get('type', 'unknown')
+                compatible_modes = fs_info.get('compatible_modes', ['native', 'dynfilefs', 'raw'])
+                limitations = fs_info.get('limitations', {})
+            except (json.JSONDecodeError, KeyError) as e:
+                print(f"Error parsing filesystem info: {e}")
+                # Fallback: determine compatibility based on filesystem type
+                if filesystem_type in ['ext2', 'ext3', 'ext4', 'btrfs', 'xfs', 'f2fs', 'reiserfs']:
+                    # POSIX-compatible filesystems support all modes
+                    compatible_modes = ['native', 'dynfilefs', 'raw']
+                else:
+                    # Non-POSIX filesystems only support container modes
+                    compatible_modes = ['dynfilefs', 'raw']
         
         # Create session mode selection dialog
         dialog = Gtk.Dialog(
