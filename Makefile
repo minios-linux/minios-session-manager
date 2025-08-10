@@ -1,5 +1,3 @@
-#!/usr/bin/make -f
-
 EXECUTABLES = bin/minios-session bin/minios-session-manager
 LIBRARIES = lib/*.py
 APPLICATIONS = share/applications/minios-session-manager.desktop
@@ -41,32 +39,40 @@ install: build
 				$(DESTDIR)/$(SHAREDIR) \
 				$(DESTDIR)/$(SHAREDIR)/styles
 
-	cp $(EXECUTABLES) $(DESTDIR)/$(BINDIR)
-	chmod 755 $(patsubst %,$(DESTDIR)/$(BINDIR)/%,$(notdir $(EXECUTABLES)))
-	cp $(LIBRARIES) $(DESTDIR)/$(LIBDIR)
+	cp $(EXECUTABLES) $(DESTDIR)/$(BINDIR)/
+	cp $(LIBRARIES) $(DESTDIR)/$(LIBDIR)/
 	chmod +x $(DESTDIR)/$(LIBDIR)/minios_session.py
 	chmod +x $(DESTDIR)/$(LIBDIR)/minios_session_manager.py
 	cp $(APPLICATIONS) $(DESTDIR)/$(APPLICATIONSDIR)
 	cp $(POLICIES) $(DESTDIR)/$(POLKITACTIONSDIR)
-	cp $(STYLES) $(DESTDIR)/$(SHAREDIR)/styles/
+	cp $(STYLES) $(DESTDIR)/$(SHAREDIR)/
 
 	@for MO_FILE in $(MO_FILES); do \
-		LOCALE=$(basename $$MO_FILE .mo); \
+		LOCALE=$$(basename $$MO_FILE .mo); \
 		echo "Copying mo file $$MO_FILE to $(DESTDIR)/usr/share/locale/$$LOCALE/LC_MESSAGES/minios-session-manager.mo"; \
 		install -Dm644 "$$MO_FILE" "$(DESTDIR)/usr/share/locale/$$LOCALE/LC_MESSAGES/minios-session-manager.mo"; \
 	done
 
 uninstall:
 	@echo "Uninstalling MiniOS Session Manager..."
-
-		rm -f $(DESTDIR)/$(BINDIR)/minios-session
+	
+	# Remove executables
+	rm -f $(DESTDIR)/$(BINDIR)/minios-session
 	rm -f $(DESTDIR)/$(BINDIR)/minios-session-manager
+	
+	# Remove library directory
 	rm -rf $(DESTDIR)/$(LIBDIR)
+	
+	# Remove desktop file
 	rm -f $(DESTDIR)/$(APPLICATIONSDIR)/minios-session-manager.desktop
+	
+	# Remove PolicyKit policy
 	rm -f $(DESTDIR)/$(POLKITACTIONSDIR)/dev.minios.session-manager.policy
+	
+	# Remove shared directory
 	rm -rf $(DESTDIR)/$(SHAREDIR)
 	
-	@echo "Removing translations..."
+	# Remove translations
 	@for MO_FILE in $(MO_FILES); do \
 		LOCALE=$$(basename $$MO_FILE .mo); \
 		echo "Removing translation file for locale $$LOCALE"; \
@@ -74,9 +80,10 @@ uninstall:
 		rmdir "$(DESTDIR)/usr/share/locale/$$LOCALE/LC_MESSAGES" 2>/dev/null || true; \
 		rmdir "$(DESTDIR)/usr/share/locale/$$LOCALE" 2>/dev/null || true; \
 	done
-
-	rm -f $(DESTDIR)/usr/share/man/man1/minios-session.1
-	rm -f $(DESTDIR)/usr/share/man/man1/minios-session-manager.1
+	
+	# Remove man pages (if installed by debhelper)
+	rm -f $(DESTDIR)/usr/share/man/man1/minios-session.1*
+	rm -f $(DESTDIR)/usr/share/man/man1/minios-session-manager.1*
 
 	@echo "MiniOS Session Manager uninstalled successfully"
 
