@@ -2,87 +2,37 @@
 <!DOCTYPE policyconfig PUBLIC
  "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
-
 <policyconfig>
-  <vendor>MiniOS</vendor>
+
+  <vendor>MiniOS Linux</vendor>
   <vendor_url>https://minios.dev</vendor_url>
-  <icon_name>preferences-system</icon_name>
 
-  <action id="dev.minios.session-manager.read">
-    <description>View MiniOS sessions</description>
-    <description xml:lang="es">Ver sesiones de MiniOS</description>
-    <description xml:lang="fr">Voir les sessions MiniOS</description>
-    <description xml:lang="de">MiniOS-Sitzungen anzeigen</description>
-    <description xml:lang="id">Lihat sesi MiniOS</description>
-    <description xml:lang="it">Visualizza le sessioni MiniOS</description>
-    <description xml:lang="pt">Ver sessões MiniOS</description>
-    <description xml:lang="pt_BR">Ver sessões MiniOS</description>
-    <description xml:lang="ru">Просмотр сессий MiniOS</description>
-    <message>Authentication is required to view MiniOS sessions</message>
-    <message xml:lang="es">Se requiere autenticación para ver las sesiones de MiniOS</message>
-    <message xml:lang="fr">Une authentification est requise pour voir les sessions MiniOS</message>
-    <message xml:lang="de">Authentifizierung ist erforderlich, um MiniOS-Sitzungen anzuzeigen</message>
-    <message xml:lang="id">Dibutuhkan otentikasi untuk melihat sesi MiniOS</message>
-    <message xml:lang="it">È necessaria l'autenticazione per visualizzare le sessioni MiniOS</message>
-    <message xml:lang="pt">É necessária autenticação para ver as sessões MiniOS</message>
-    <message xml:lang="pt_BR">É necessária autenticação para ver as sessões MiniOS</message>
-    <message xml:lang="ru">Для просмотра сессий MiniOS требуется аутентификация</message>
+  <action id="dev.minios.session-manager.cli">
+    <description>Run MiniOS Session Manager CLI operations</description>
+    <description xml:lang="de">MiniOS Session Manager CLI-Operationen ausführen</description>
+    <description xml:lang="es">Ejecutar operaciones CLI del MiniOS Session Manager</description>
+    <description xml:lang="fr">Exécuter les opérations CLI de MiniOS Session Manager</description>
+    <description xml:lang="id">Menjalankan operasi CLI MiniOS Session Manager</description>
+    <description xml:lang="it">Eseguire operazioni CLI del MiniOS Session Manager</description>
+    <description xml:lang="pt">Executar operações CLI do MiniOS Session Manager</description>
+    <description xml:lang="pt_BR">Executar operações CLI do MiniOS Session Manager</description>
+    <description xml:lang="ru">Выполнить операции MiniOS Session Manager CLI</description>
+    <message>Authentication is required to perform session operations</message>
+    <message xml:lang="de">Authentifizierung ist erforderlich, um Sitzungs-Operationen durchzuführen</message>
+    <message xml:lang="es">Se requiere autenticación para realizar operaciones de sesión</message>
+    <message xml:lang="fr">Une authentification est requise pour effectuer des opérations de session</message>
+    <message xml:lang="id">Diperlukan otentikasi untuk menjalankan operasi sesi</message>
+    <message xml:lang="it">È richiesta l'autenticazione per eseguire operazioni di sessione</message>
+    <message xml:lang="pt">É necessária autenticação para executar operações de sessão</message>
+    <message xml:lang="pt_BR">É necessária autenticação para executar operações de sessão</message>
+    <message xml:lang="ru">Для выполнения операций с сессиями требуется аутентификация</message>
     <defaults>
-      <allow_any>no</allow_any>
-      <allow_inactive>no</allow_inactive>
-      <allow_active>yes</allow_active>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
     </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/minios-session</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
   </action>
 
-  <action id="dev.minios.session-manager.write">
-    <description>Modify MiniOS sessions</description>
-    <description xml:lang="es">Modificar sesiones de MiniOS</description>
-    <description xml:lang="fr">Modifier les sessions MiniOS</description>
-    <description xml:lang="de">MiniOS-Sitzungen ändern</description>
-    <description xml:lang="id">Ubah sesi MiniOS</description>
-    <description xml:lang="it">Modifica le sessioni MiniOS</description>
-    <description xml:lang="pt">Modificar sessões MiniOS</description>
-    <description xml:lang="pt_BR">Modificar sessões MiniOS</description>
-    <description xml:lang="ru">Изменение сессий MiniOS</description>
-    <message>Authentication is required to create, activate, or delete MiniOS sessions</message>
-    <message xml:lang="es">Se requiere autenticación para crear, activar o eliminar sesiones de MiniOS</message>
-    <message xml:lang="fr">Une authentification est requise pour créer, activer ou supprimer des sessions MiniOS</message>
-    <message xml:lang="de">Authentifizierung ist erforderlich, um MiniOS-Sitzungen zu erstellen, zu aktivieren oder zu löschen</message>
-    <message xml:lang="id">Dibutuhkan otentikasi untuk membuat, mengaktifkan, atau menghapus sesi MiniOS</message>
-    <message xml:lang="it">È necessaria l'autenticazione per creare, attivare o eliminare le sessioni MiniOS</message>
-    <message xml:lang="pt">É necessária autenticação para criar, ativar ou excluir as sessões MiniOS</message>
-    <message xml:lang="pt_BR">É necessária autenticação para criar, ativar ou excluir as sessões MiniOS</message>
-    <message xml:lang="ru">Для создания, активации или удаления сессий MiniOS требуется аутентификация</message>
-    <defaults>
-      <allow_any>no</allow_any>
-      <allow_inactive>no</allow_inactive>
-      <allow_active>auth_self_keep</allow_active>
-    </defaults>
-  </action>
-
-  <action id="dev.minios.session-manager.admin">
-    <description>Administrative MiniOS session operations</description>
-    <description xml:lang="es">Operaciones administrativas de sesiones de MiniOS</description>
-    <description xml:lang="fr">Opérations administratives sur les sessions MiniOS</description>
-    <description xml:lang="de">Administrative Operationen für MiniOS-Sitzungen</description>
-    <description xml:lang="id">Operasi administratif sesi MiniOS</description>
-    <description xml:lang="it">Operazioni amministrative sulle sessioni MiniOS</description>
-    <description xml:lang="pt">Operações administrativas de sessões MiniOS</description>
-    <description xml:lang="pt_BR">Operações administrativas de sessões MiniOS</description>
-    <description xml:lang="ru">Административные операции с сессиями MiniOS</description>
-    <message>Administrative privileges are required for system-level session operations</message>
-    <message xml:lang="es">Se requieren privilegios administrativos para operaciones de sesión a nivel del sistema</message>
-    <message xml:lang="fr">Des privilèges administratifs sont requis pour les opérations de session au niveau système</message>
-    <message xml:lang="de">Für systemweite Sitzungsoperationen sind Administratorrechte erforderlich</message>
-    <message xml:lang="id">Dibutuhkan hak administratif untuk operasi sesi tingkat sistem</message>
-    <message xml:lang="it">Sono necessari privilegi amministrativi per operazioni di sessione a livello di sistema</message>
-    <message xml:lang="pt">São necessários privilégios administrativos para operações de sessão no nível do sistema</message>
-    <message xml:lang="pt_BR">São necessários privilégios administrativos para operações de sessão no nível do sistema</message>
-    <message xml:lang="ru">Для системных операций с сессиями требуются права администратора</message>
-    <defaults>
-      <allow_any>no</allow_any>
-      <allow_inactive>no</allow_inactive>
-      <allow_active>auth_admin_keep</allow_active>
-    </defaults>
-  </action>
 </policyconfig>
