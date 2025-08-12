@@ -948,12 +948,21 @@ class SessionManager:
             }
             
             if self._write_sessions_metadata(metadata):
-                if session_mode == "dynfilefs":
-                    return True, _("Session {} created successfully (mode: {}, size: {}MB)").format(new_id, session_mode, size_mb)
-                elif session_mode == "raw":
-                    return True, _("Session {} created successfully (mode: {}, size: {}MB)").format(new_id, session_mode, size_mb)
-                else:
-                    return True, _("Session {} created successfully (mode: {})").format(new_id, session_mode)
+                # Use safer string formatting to avoid potential translation issues
+                try:
+                    if session_mode == "dynfilefs":
+                        message = _("Session {} created successfully (mode: {}, size: {}MB)").format(new_id, session_mode, size_mb)
+                    elif session_mode == "raw":
+                        message = _("Session {} created successfully (mode: {}, size: {}MB)").format(new_id, session_mode, size_mb)
+                    else:
+                        message = _("Session {} created successfully (mode: {})").format(new_id, session_mode)
+                    return True, message
+                except Exception:
+                    # Fallback to simple English message if translation fails
+                    if session_mode in ["dynfilefs", "raw"] and size_mb is not None:
+                        return True, f"Session {new_id} created successfully (mode: {session_mode}, size: {size_mb}MB)"
+                    else:
+                        return True, f"Session {new_id} created successfully (mode: {session_mode})"
             else:
                 # Clean up on metadata failure
                 try:
