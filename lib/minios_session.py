@@ -24,18 +24,17 @@ try:
     gettext.bindtextdomain('minios-session-manager', '/usr/share/locale')
     gettext.textdomain('minios-session-manager')
     _ = gettext.gettext
-except:
+except Exception:
     _ = lambda x: x
 
 class SessionManager:
     """Main class for managing MiniOS sessions"""
     
-    def __init__(self, privileged_mode=False, custom_sessions_dir=None):
+    def __init__(self, custom_sessions_dir=None):
         self.sessions_file = None
         self.sessions_dir = None
         self.current_session = None
         self.session_format = None  # 'json' or 'conf'
-        self.privileged_mode = privileged_mode
         self.custom_sessions_dir = custom_sessions_dir
         
         # Setup cache directory and file in /tmp (clears on reboot)
@@ -43,9 +42,6 @@ class SessionManager:
         self.cache_file = os.path.join(self.cache_dir, "session_sizes.json")
         self._ensure_cache_dir()
         
-        # Detect if we're running as root or with elevated privileges
-        if os.geteuid() == 0:
-            self.privileged_mode = True
             
         self._detect_session_storage()
     
@@ -135,7 +131,6 @@ class SessionManager:
             # Common locations for session storage
             possible_paths = [
                 "/run/initramfs/memory/data/minios/changes",
-                "/tmp/changes"  # fallback for testing
             ]
             
             for path in possible_paths:
@@ -159,58 +154,8 @@ class SessionManager:
         
         return True
     
-    def _check_access_permissions(self):
-        """Check if we have necessary permissions to access sessions directory"""
-        if not self.sessions_dir:
-            return False
-        
-        # Try to access the sessions directory
-        try:
-            os.listdir(self.sessions_dir)
-            return True
-        except PermissionError:
-            return False
     
-    def _run_privileged_command(self, command_args):
-        """Run a command with elevated privileges using pkexec"""
-        try:
-            # Use pkexec to run the current script with --privileged flag
-            current_script = os.path.abspath(__file__)
-            cmd = ["pkexec", "python3", current_script, "--privileged"] + command_args
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-            return result.returncode == 0, result.stdout, result.stderr
-        except subprocess.TimeoutExpired:
-            return False, "", _("Command timed out")
-        except subprocess.CalledProcessError as e:
-            return False, "", str(e)
-        except Exception as e:
-            return False, "", str(e)
     
-    def _requires_privileges(self, operation):
-        """Check if an operation requires elevated privileges"""
-        # Read operations that might not need privileges
-        read_operations = ['list', 'active', 'info', 'running']
-        
-        # Write operations that need privileges
-        write_operations = ['activate', 'create', 'delete', 'cleanup']
-        
-        # Check if we have access to sessions directory
-        if not self._check_access_permissions():
-            return True
-        
-        # For write operations, check if sessions directory is writable
-        if operation in write_operations:
-            try:
-                # Try to create a temporary file to test write access
-                test_file = os.path.join(self.sessions_dir, ".write_test")
-                with open(test_file, 'w') as f:
-                    f.write("test")
-                os.remove(test_file)
-                return False  # We have write access, no privileges needed
-            except (PermissionError, OSError):
-                return True  # We need privileges for write operations
-        
-        return False  # Read operations typically don't need privileges
     
     def check_sessions_directory_status(self):
         """Check sessions directory status and write permissions"""
@@ -288,38 +233,6 @@ class SessionManager:
         
         return result
     
-    def _execute_operation(self, operation, *args):
-        """Execute an operation, using privileges if necessary"""
-        if not self.privileged_mode and self._requires_privileges(operation):
-            # Build command arguments
-            cmd_args = [operation]
-            cmd_args.extend(str(arg) for arg in args if arg is not None)
-            
-            # Run with privileges
-            success, output, error = self._run_privileged_command(cmd_args)
-            if success:
-                # For some operations, we need to return specific formats
-                if operation == 'list':
-                    print(output.strip())
-                    return []  # Return empty list as sessions are already printed
-                elif operation in ['activate', 'create', 'delete']:
-                    return success, output.strip()
-                elif operation == 'cleanup':
-                    print(output.strip())
-                    return 0, []  # Return success count and empty errors
-                elif operation in ['active', 'running', 'info']:
-                    print(output.strip())
-                    return None  # Indicate that output was already printed
-                else:
-                    return output.strip()
-            else:
-                if operation in ['activate', 'create', 'delete']:
-                    return success, error.strip()
-                else:
-                    raise Exception(error.strip())
-        else:
-            # Execute normally without privileges
-            return None  # Indicates that normal execution should proceed
     
     def _read_sessions_metadata(self):
         """Read session metadata from file"""
@@ -328,11 +241,11 @@ class SessionManager:
             
         try:
             if self.session_format == "json":
-                with open(self.sessions_file, 'r') as f:
+                with open(self.sessions_file, 'r', encoding='utf-8') as f:
                     return json.load(f)
             else:  # conf format
                 metadata = {"default": None, "sessions": {}}
-                with open(self.sessions_file, 'r') as f:
+                with open(self.sessions_file, 'r', encoding='utf-8') as f:
                     for line in f:
                         line = line.strip()
                         if line.startswith("default="):
@@ -356,14 +269,23 @@ class SessionManager:
     def _write_sessions_metadata(self, metadata):
         """Write session metadata to file"""
         if not self.sessions_file:
-            return False
+            # Try to create sessions file if it doesn't exist
+            if self.sessions_dir:
+                json_file = os.path.join(self.sessions_dir, "session.json")
+                if os.access(os.path.dirname(json_file), os.W_OK):
+                    self.sessions_file = json_file
+                    self.session_format = "json"
+                else:
+                    return False
+            else:
+                return False
             
         try:
             if self.session_format == "json":
-                with open(self.sessions_file, 'w') as f:
+                with open(self.sessions_file, 'w', encoding='utf-8') as f:
                     json.dump(metadata, f, indent=2)
             else:  # conf format
-                with open(self.sessions_file, 'w') as f:
+                with open(self.sessions_file, 'w', encoding='utf-8') as f:
                     f.write(f"default={metadata.get('default', '')}\n")
                     for session_id, session_data in metadata.get("sessions", {}).items():
                         for field, value in session_data.items():
@@ -375,11 +297,6 @@ class SessionManager:
     
     def list_sessions(self, include_running_check=True):
         """List all available sessions"""
-        # Check if we need to use privileges
-        result = self._execute_operation('list')
-        if result is not None:
-            return result
-        
         if not self.sessions_dir:
             return []
             
@@ -785,11 +702,6 @@ class SessionManager:
     
     def activate_session(self, session_id):
         """Activate a session (set as default)"""
-        # Check if we need to use privileges
-        result = self._execute_operation('activate', session_id)
-        if result is not None:
-            return result
-        
         if not self.sessions_dir:
             return False, _("Sessions directory not found")
             
@@ -815,14 +727,6 @@ class SessionManager:
     
     def create_session(self, session_mode="native", size_mb=None):
         """Create a new session"""
-        # Check if we need to use privileges
-        cmd_args = ['create', '--mode', session_mode]
-        if size_mb is not None:
-            cmd_args.extend(['--size', str(size_mb)])
-        result = self._execute_operation(*cmd_args)
-        if result is not None:
-            return result
-        
         if not self.sessions_dir:
             return False, _("Sessions directory not found")
         
@@ -976,11 +880,6 @@ class SessionManager:
     
     def delete_session(self, session_id):
         """Delete a session"""
-        # Check if we need to use privileges
-        result = self._execute_operation('delete', session_id)
-        if result is not None:
-            return result
-        
         if not self.sessions_dir:
             return False, _("Sessions directory not found")
             
@@ -1008,11 +907,6 @@ class SessionManager:
     
     def cleanup_old_sessions(self, days_threshold=30):
         """Clean up sessions older than specified days"""
-        # Check if we need to use privileges
-        result = self._execute_operation('cleanup', '--days', str(days_threshold))
-        if result is not None:
-            return result
-        
         sessions = self.list_sessions()
         current = self.get_current_session()
         current_id = current['id'] if current else None
@@ -1145,15 +1039,16 @@ def main():
     """Main application entry point"""
     import sys
     
-    # Check if we're running in privileged mode
-    privileged_mode = '--privileged' in sys.argv
-    if privileged_mode:
-        sys.argv.remove('--privileged')
+    # Pre-check for --json flag before parsing
+    json_output = '--json' in sys.argv
     
     # Check for root privileges
     if os.geteuid() != 0:
         error_msg = _("This tool requires root privileges. Please run with sudo or through pkexec.")
-        print(json.dumps({"success": False, "error": error_msg}), file=sys.stderr)
+        if json_output:
+            print(json.dumps({"success": False, "error": error_msg}), file=sys.stderr)
+        else:
+            print(error_msg, file=sys.stderr)
         sys.exit(1)
     
     parser = argparse.ArgumentParser(
@@ -1218,8 +1113,6 @@ EXAMPLES:
     minios-session --sessions-dir /mnt/usb/sessions list
     minios-session --sessions-dir /tmp/test create --mode native
 
-NOTE: Most write operations (activate, create, delete, cleanup) require root privileges.
-      The tool will automatically request privileges when needed.
         """)
     )
     
@@ -1301,11 +1194,19 @@ NOTE: Most write operations (activate, create, delete, cleanup) require root pri
     
     # Initialize session manager with custom directory if specified
     custom_dir = getattr(args, 'sessions_dir', None)
-    manager = SessionManager(privileged_mode=privileged_mode, custom_sessions_dir=custom_dir)
+    manager = SessionManager(custom_sessions_dir=custom_dir)
     
     if not manager.sessions_dir:
-        print(_("Error: Could not find sessions directory."), file=sys.stderr)
-        print(_("This tool must be run from within a MiniOS live system with persistent sessions enabled."), file=sys.stderr)
+        if args.json:
+            error_data = {
+                "success": False,
+                "error": _("Could not find sessions directory."),
+                "details": _("This tool must be run from within a MiniOS live system with persistent sessions enabled.")
+            }
+            print(json.dumps(error_data), file=sys.stderr)
+        else:
+            print(_("Error: Could not find sessions directory."), file=sys.stderr)
+            print(_("This tool must be run from within a MiniOS live system with persistent sessions enabled."), file=sys.stderr)
         sys.exit(1)
     
     # Handle commands
@@ -1355,7 +1256,7 @@ NOTE: Most write operations (activate, create, delete, cleanup) require root pri
         fs_info, error = manager.get_filesystem_info()
         if error:
             if args.json:
-                print(json.dumps({'error': error}))
+                print(json.dumps({'success': False, 'error': error}), file=sys.stderr)
             else:
                 print(_("Error: {}").format(error), file=sys.stderr)
             sys.exit(1)
@@ -1397,26 +1298,47 @@ NOTE: Most write operations (activate, create, delete, cleanup) require root pri
     
     elif args.command == 'activate':
         success, message = manager.activate_session(args.session_id)
-        print(message)
+        if args.json:
+            result = {"success": success, "message": message}
+            print(json.dumps(result))
+        else:
+            print(message)
         sys.exit(0 if success else 1)
     
     elif args.command == 'create':
         success, message = manager.create_session(args.mode, args.size)
-        print(message)
+        if args.json:
+            result = {"success": success, "message": message}
+            print(json.dumps(result))
+        else:
+            print(message)
         sys.exit(0 if success else 1)
     
     elif args.command == 'delete':
         success, message = manager.delete_session(args.session_id)
-        print(message)
+        if args.json:
+            result = {"success": success, "message": message}
+            print(json.dumps(result))
+        else:
+            print(message)
         sys.exit(0 if success else 1)
     
     elif args.command == 'cleanup':
         deleted_count, errors = manager.cleanup_old_sessions(args.days)
-        print(_("Cleanup completed: {} sessions deleted").format(deleted_count))
-        if errors:
-            print(_("Errors:"))
-            for error in errors:
-                print(f"  {error}")
+        if args.json:
+            result = {
+                "success": len(errors) == 0,
+                "deleted_count": deleted_count,
+                "errors": errors,
+                "message": _("Cleanup completed: {} sessions deleted").format(deleted_count)
+            }
+            print(json.dumps(result))
+        else:
+            print(_("Cleanup completed: {} sessions deleted").format(deleted_count))
+            if errors:
+                print(_("Errors:"))
+                for error in errors:
+                    print(f"  {error}")
     
     elif args.command == 'status':
         status_info = manager.check_sessions_directory_status()

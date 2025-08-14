@@ -424,7 +424,8 @@ class SessionManagerGUI:
         
         # Main session name - clean without (CURRENT)
         session_label = Gtk.Label()
-        session_title = f"{_('Session')} #{session_id}"
+        session_text = _('Session')
+        session_title = f"{session_text} #{session_id}"
         session_label.set_markup(f'<b><span size="large">{GLib.markup_escape_text(session_title)}</span></b>')
         session_label.set_halign(Gtk.Align.START)
         session_label.set_ellipsize(Pango.EllipsizeMode.END)
@@ -437,34 +438,40 @@ class SessionManagerGUI:
         
         # Row 1: Mode and Version
         mode_label = Gtk.Label()
-        mode_label.set_markup(f'<span size="small"><b>{_("Mode:")}</b> {GLib.markup_escape_text(mode)}</span>')
+        mode_text = _("Mode:")
+        mode_label.set_markup(f'<span size="small"><b>{mode_text}</b> {GLib.markup_escape_text(mode)}</span>')
         mode_label.set_halign(Gtk.Align.START)
         details_grid.attach(mode_label, 0, 0, 1, 1)
         
         version_label = Gtk.Label()
-        version_label.set_markup(f'<span size="small"><b>{_("Version:")}</b> {GLib.markup_escape_text(version)}</span>')
+        version_text = _("Version:")
+        version_label.set_markup(f'<span size="small"><b>{version_text}</b> {GLib.markup_escape_text(version)}</span>')
         version_label.set_halign(Gtk.Align.START)
         details_grid.attach(version_label, 1, 0, 1, 1)
         
         # Row 2: Edition and Union
         edition_label = Gtk.Label()
-        edition_label.set_markup(f'<span size="small"><b>{_("Edition:")}</b> {GLib.markup_escape_text(edition)}</span>')
+        edition_text = _("Edition:")
+        edition_label.set_markup(f'<span size="small"><b>{edition_text}</b> {GLib.markup_escape_text(edition)}</span>')
         edition_label.set_halign(Gtk.Align.START)
         details_grid.attach(edition_label, 0, 1, 1, 1)
         
         union_label = Gtk.Label()
-        union_label.set_markup(f'<span size="small"><b>{_("Union FS:")}</b> {GLib.markup_escape_text(union)}</span>')
+        union_text = _("Union FS:")
+        union_label.set_markup(f'<span size="small"><b>{union_text}</b> {GLib.markup_escape_text(union)}</span>')
         union_label.set_halign(Gtk.Align.START)
         details_grid.attach(union_label, 1, 1, 1, 1)
         
         # Row 3: Size and Modified
         size_label = Gtk.Label()
-        size_label.set_markup(f'<span size="small"><b>{_("Size:")}</b> {GLib.markup_escape_text(size)}</span>')
+        size_text = _("Size:")
+        size_label.set_markup(f'<span size="small"><b>{size_text}</b> {GLib.markup_escape_text(size)}</span>')
         size_label.set_halign(Gtk.Align.START)
         details_grid.attach(size_label, 0, 2, 1, 1)
         
         modified_label = Gtk.Label()
-        modified_label.set_markup(f'<span size="small"><b>{_("Modified:")}</b> {GLib.markup_escape_text(modified)}</span>')
+        modified_text = _("Modified:")
+        modified_label.set_markup(f'<span size="small"><b>{modified_text}</b> {GLib.markup_escape_text(modified)}</span>')
         modified_label.set_halign(Gtk.Align.START)
         details_grid.attach(modified_label, 1, 2, 1, 1)
         
@@ -632,7 +639,8 @@ class SessionManagerGUI:
         
         # Show filesystem info
         fs_info_label = Gtk.Label()
-        fs_info_label.set_markup(f"<b>{_('Detected filesystem:')} {filesystem_type}</b>")
+        detected_text = _('Detected filesystem:')
+        fs_info_label.set_markup(f"<b>{detected_text} {filesystem_type}</b>")
         content_area.pack_start(fs_info_label, False, False, 0)
         
         label = Gtk.Label(label=_("Select session mode:"))
