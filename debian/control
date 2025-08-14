@@ -1,7 +1,7 @@
 Source: minios-session-manager
 Section: utils
 Priority: optional
-Maintainer: MiniOS Team <team@minios.dev>
+Maintainer: crims0n <crims0n@minios.dev>
 Build-Depends: debhelper (>= 12), python3
 Standards-Version: 4.5.1
 Homepage: https://minios.dev
@@ -14,4 +14,5 @@ Depends: ${misc:Depends}, python3, python3-gi, gir1.2-gtk-3.0, dynfilefs, polkit
 Description: MiniOS session management utility
  A utility for managing MiniOS persistent sessions from within
  the running system. Provides both command-line and graphical
- interfaces for viewing, creating, activating, deleting, and cleaning up sessions.
+ interfaces for viewing, creating, activating, deleting, and 
+ cleaning up sessions.
