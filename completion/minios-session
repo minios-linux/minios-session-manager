@@ -1,0 +1,147 @@
+_minios_session() {
+    local cur prev opts subcommands
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD - 1]}"
+    
+    # Main commands
+    subcommands="list active running info activate create delete cleanup status"
+    
+    # Global options
+    global_opts="--help --json --sessions-dir"
+    
+    # Get the position of the subcommand in the command line
+    local subcommand=""
+    local subcommand_pos=1
+    for ((i=1; i<${#COMP_WORDS[@]}; i++)); do
+        if [[ "${COMP_WORDS[i]}" =~ ^(list|active|running|info|activate|create|delete|cleanup|status)$ ]]; then
+            subcommand="${COMP_WORDS[i]}"
+            subcommand_pos=$i
+            break
+        fi
+    done
+    
+    # If no subcommand found yet, complete subcommands and global options
+    if [[ -z "$subcommand" ]]; then
+        if [[ ${cur} == -* ]]; then
+            COMPREPLY=($(compgen -W "${global_opts}" -- ${cur}))
+        else
+            COMPREPLY=($(compgen -W "${subcommands}" -- ${cur}))
+        fi
+        return 0
+    fi
+    
+    # Helper function to get available sessions
+    _get_sessions() {
+        local sessions_dir="/run/minios/sessions"
+        local custom_dir=""
+        
+        # Check if custom sessions directory is specified
+        for ((i=1; i<${#COMP_WORDS[@]}; i++)); do
+            if [[ "${COMP_WORDS[i]}" == "--sessions-dir" && $((i+1)) < ${#COMP_WORDS[@]} ]]; then
+                custom_dir="${COMP_WORDS[$((i+1))]}"
+                break
+            fi
+        done
+        
+        if [[ -n "$custom_dir" && -d "$custom_dir" ]]; then
+            sessions_dir="$custom_dir"
+        fi
+        
+        if [[ -f "$sessions_dir/sessions.json" ]]; then
+            # Try to extract session IDs from JSON file
+            if command -v jq >/dev/null 2>&1; then
+                jq -r '.sessions[].id' "$sessions_dir/sessions.json" 2>/dev/null
+            else
+                # Fallback: extract session IDs with grep/sed
+                grep -o '"id"[[:space:]]*:[[:space:]]*"[^"]*"' "$sessions_dir/sessions.json" 2>/dev/null | \
+                    sed 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/'
+            fi
+        elif [[ -f "$sessions_dir/sessions.conf" ]]; then
+            # Extract session IDs from conf file
+            grep -o '^\[session_[0-9]*\]' "$sessions_dir/sessions.conf" 2>/dev/null | \
+                sed 's/^\[session_\([0-9]*\)\]$/\1/'
+        fi
+    }
+    
+    # Complete based on subcommand
+    case "${subcommand}" in
+        create)
+            case "${prev}" in
+                --mode)
+                    local modes="native dynfilefs raw"
+                    COMPREPLY=($(compgen -W "${modes}" -- ${cur}))
+                    ;;
+                --size)
+                    local sizes="1000 2000 4000 8000 16000"
+                    COMPREPLY=($(compgen -W "${sizes}" -- ${cur}))
+                    ;;
+                --sessions-dir)
+                    COMPREPLY=($(compgen -d -- ${cur}))
+                    ;;
+                *)
+                    if [[ ${cur} == -* ]]; then
+                        local create_opts="--help --json --mode --size --sessions-dir"
+                        COMPREPLY=($(compgen -W "${create_opts}" -- ${cur}))
+                    fi
+                    ;;
+            esac
+            ;;
+        
+        activate|delete)
+            case "${prev}" in
+                activate|delete)
+                    # Get available sessions
+                    local sessions=$(_get_sessions)
+                    COMPREPLY=($(compgen -W "${sessions}" -- ${cur}))
+                    ;;
+                --sessions-dir)
+                    COMPREPLY=($(compgen -d -- ${cur}))
+                    ;;
+                *)
+                    if [[ ${cur} == -* ]]; then
+                        local cmd_opts="--help --json --sessions-dir"
+                        COMPREPLY=($(compgen -W "${cmd_opts}" -- ${cur}))
+                    fi
+                    ;;
+            esac
+            ;;
+        
+        cleanup)
+            case "${prev}" in
+                --days)
+                    local day_options="7 14 30 60 90"
+                    COMPREPLY=($(compgen -W "${day_options}" -- ${cur}))
+                    ;;
+                --sessions-dir)
+                    COMPREPLY=($(compgen -d -- ${cur}))
+                    ;;
+                *)
+                    if [[ ${cur} == -* ]]; then
+                        local cleanup_opts="--help --json --days --sessions-dir"
+                        COMPREPLY=($(compgen -W "${cleanup_opts}" -- ${cur}))
+                    fi
+                    ;;
+            esac
+            ;;
+        
+        list|active|running|info|status)
+            case "${prev}" in
+                --sessions-dir)
+                    COMPREPLY=($(compgen -d -- ${cur}))
+                    ;;
+                *)
+                    if [[ ${cur} == -* ]]; then
+                        local info_opts="--help --json --sessions-dir"
+                        COMPREPLY=($(compgen -W "${info_opts}" -- ${cur}))
+                    fi
+                    ;;
+            esac
+            ;;
+    esac
+    
+    return 0
+}
+
+# Register completion function
+complete -F _minios_session minios-session
