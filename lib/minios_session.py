@@ -463,9 +463,6 @@ class SessionManager:
         is_readonly = filesystem_info['is_readonly']
         is_posix = filesystem_info['is_posix_compatible']
         
-        if is_readonly:
-            return []  # No sessions can be created on readonly media
-        
         compatible_modes = []
         
         # Native mode: requires POSIX-compatible filesystem (ext2/3/4, btrfs, xfs, etc.)
@@ -735,6 +732,12 @@ class SessionManager:
         if session_mode not in valid_modes:
             return False, _("Invalid session mode. Must be one of: {}").format(", ".join(valid_modes))
         
+        # Check if sessions directory is writable
+        dir_status = self.check_sessions_directory_status()
+        if not dir_status.get('writable', False):
+            error_msg = dir_status.get('error', _("Sessions directory is not writable"))
+            return False, error_msg
+        
         # Detect filesystem type and check compatibility
         filesystem_info, fs_error = self._detect_filesystem_type()
         if fs_error:
@@ -743,9 +746,7 @@ class SessionManager:
         compatible_modes = self._get_compatible_session_modes(filesystem_info)
         if session_mode not in compatible_modes:
             fs_type = filesystem_info['type'] if filesystem_info else "unknown"
-            if filesystem_info and filesystem_info['is_readonly']:
-                return False, _("Cannot create sessions on read-only media ({})").format(fs_type)
-            elif session_mode == "native" and not filesystem_info['is_posix_compatible']:
+            if session_mode == "native" and not filesystem_info['is_posix_compatible']:
                 return False, _("Native mode is not compatible with {} filesystem. Use dynfilefs or raw mode instead.").format(fs_type)
             else:
                 return False, _("Session mode '{}' is not compatible with {} filesystem").format(session_mode, fs_type)
