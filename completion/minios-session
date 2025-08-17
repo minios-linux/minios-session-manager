@@ -80,10 +80,9 @@ _minios_session() {
                     COMPREPLY=($(compgen -d -- ${cur}))
                     ;;
                 *)
-                    if [[ ${cur} == -* ]]; then
-                        local create_opts="--help --json --mode --size --sessions-dir"
-                        COMPREPLY=($(compgen -W "${create_opts}" -- ${cur}))
-                    fi
+                    # Always show options for create command
+                    local create_opts="--help --json --mode --size --sessions-dir"
+                    COMPREPLY=($(compgen -W "${create_opts}" -- ${cur}))
                     ;;
             esac
             ;;
