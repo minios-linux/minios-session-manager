@@ -327,6 +327,13 @@ class SessionManagerGUI:
                         edition = session.get('edition', 'unknown')
                         union = session.get('union', 'unknown')
                         size = session.get('size_formatted', 'unknown')
+                        
+                        # For dynfilefs, add total size if available
+                        if mode == 'dynfilefs' and 'total_size_formatted' in session:
+                            total_size = session.get('total_size_formatted', '')
+                            if total_size:
+                                size = f"{size} / {total_size}"
+                        
                         modified_str = session.get('modified', 'unknown')
                         
                         # Format modified date
@@ -362,8 +369,9 @@ class SessionManagerGUI:
                         
                         # Look for following lines with details
                         mode = version = edition = union = size = modified = "Unknown"
+                        total_size = None
                         
-                        for j in range(i+1, min(i+6, len(lines))):
+                        for j in range(i+1, min(i+7, len(lines))):  # Increased range for Total Size line
                             detail_line = lines[j].strip()
                             if detail_line.startswith('Mode:'):
                                 mode = detail_line.split(':', 1)[1].strip()
@@ -379,8 +387,14 @@ class SessionManagerGUI:
                                     version = version_info
                             elif detail_line.startswith('Size:'):
                                 size = detail_line.split(':', 1)[1].strip()
+                            elif detail_line.startswith('Total Size:'):
+                                total_size = detail_line.split(':', 1)[1].strip()
                             elif detail_line.startswith('Last Modified:'):
                                 modified = detail_line.split(':', 1)[1].strip()
+                        
+                        # For dynfilefs, combine size and total_size
+                        if mode == 'dynfilefs' and total_size:
+                            size = f"{size} / {total_size}"
                         
                         # Create session row
                         self._create_session_row(session_id, is_active, is_running, mode, version, edition, union, size, modified)
@@ -511,6 +525,7 @@ class SessionManagerGUI:
         row.session_id = session_id
         row.is_active = is_active
         row.is_running = is_running
+        row.mode = mode
         
         self.sessions_list.add(row)
     
@@ -531,6 +546,12 @@ class SessionManagerGUI:
         activate_item.get_style_context().add_class('context-menu-activate')
         activate_item.connect("activate", self._on_context_activate)
         self.context_menu.append(activate_item)
+        
+        # Resize menu item
+        resize_item = Gtk.MenuItem(label=_("Resize Session"))
+        resize_item.get_style_context().add_class('context-menu-resize')
+        resize_item.connect("activate", self._on_context_resize)
+        self.context_menu.append(resize_item)
         
         # Separator
         separator = Gtk.SeparatorMenuItem()
@@ -556,22 +577,35 @@ class SessionManagerGUI:
                 
                 # Update menu items based on session status
                 activate_item = self.context_menu.get_children()[0]
-                delete_item = self.context_menu.get_children()[2]
+                resize_item = self.context_menu.get_children()[1]
+                delete_item = self.context_menu.get_children()[3]
                 
-                # Check if sessions directory is writable
+                # Check session mode for resize availability
+                session_mode = getattr(row, 'mode', 'unknown')
+                resize_available = session_mode in ['dynfilefs', 'raw']
+                
+                # Check if sessions directory is writable for create/delete operations
                 if not self.sessions_writable:
                     activate_item.set_sensitive(False)
+                    resize_item.set_sensitive(False)
                     delete_item.set_sensitive(False)
                 elif hasattr(row, 'is_active') and row.is_active:
-                    # Disable activate if already active
+                    # Disable activate if already active (regardless of running status)
                     activate_item.set_sensitive(False)
+                    # For active sessions, check if also running to determine resize availability
+                    if hasattr(row, 'is_running') and row.is_running:
+                        resize_item.set_sensitive(False)  # Can't resize running session
+                    else:
+                        resize_item.set_sensitive(resize_available)  # Can resize active session
                     delete_item.set_sensitive(False)  # Can't delete active session
                 elif hasattr(row, 'is_running') and row.is_running:
-                    # Can activate running session, but can't delete it
+                    # Can activate running session (not active), but can't delete or resize it
                     activate_item.set_sensitive(True)
+                    resize_item.set_sensitive(False)  # Can't resize running session
                     delete_item.set_sensitive(False)  # Can't delete running session
                 else:
                     activate_item.set_sensitive(True)
+                    resize_item.set_sensitive(resize_available)
                     delete_item.set_sensitive(True)
                 
                 # Show context menu
@@ -588,6 +622,11 @@ class SessionManagerGUI:
         """Handle delete from context menu"""
         if self.selected_session_id:
             self.on_delete_clicked(None)
+    
+    def _on_context_resize(self, menu_item):
+        """Handle resize from context menu"""
+        if self.selected_session_id:
+            self._show_resize_dialog(self.selected_session_id)
     
     
     def on_create_clicked(self, button):
@@ -762,9 +801,9 @@ class SessionManagerGUI:
             def create_session_bg():
                 try:
                     if mode in ["dynfilefs", "raw"]:
-                        success, output, error = self._run_cli_command(['create', '--mode', mode, '--size', str(size_mb), '--json'])
+                        success, output, error = self._run_cli_command(['create', mode, str(size_mb), '--json'])
                     else:
-                        success, output, error = self._run_cli_command(['create', '--mode', mode, '--json'])
+                        success, output, error = self._run_cli_command(['create', mode, '--json'])
                     
                     # Update UI in main thread
                     GLib.idle_add(self._on_session_creation_complete, success, output, error, None)
@@ -939,7 +978,7 @@ class SessionManagerGUI:
             buttons=Gtk.ButtonsType.OK,
             text=_("Oops! Something went wrong")
         )
-        dialog.format_secondary_text(_("Don't worry, we can fix this:\n\n{}").format(str(message)))
+        dialog.format_secondary_text(str(message))
         
         # Style the dialog
         dialog.get_style_context().add_class('friendly-dialog')
@@ -1031,6 +1070,131 @@ class SessionManagerGUI:
             self.loading_spinner.stop()
             # Reset to default text
             self.loading_label.set_text(_("Loading sessions..."))
+    
+    def _show_resize_dialog(self, session_id):
+        """Show resize dialog for a session"""
+        # Get session information
+        sessions = self._run_cli_command(['list', '--json'])[1]
+        if not sessions:
+            self._show_error(_("Failed to get session information"))
+            return
+        
+        try:
+            sessions_data = json.loads(sessions)
+            session_info = None
+            for session in sessions_data:
+                if session['id'] == session_id:
+                    session_info = session
+                    break
+            
+            if not session_info:
+                self._show_error(_("Session not found"))
+                return
+            
+            session_mode = session_info.get('mode', 'unknown')
+            if session_mode not in ['dynfilefs', 'raw']:
+                self._show_error(_("Resize is only supported for dynfilefs and raw mode sessions"))
+                return
+            
+            # Check if session is running
+            is_running = session_info.get('is_running', False)
+            if is_running:
+                self._show_error(_("Cannot resize session while it is running. Resize operation is not allowed for the currently active session."))
+                return
+            
+            # Get current session size in MB
+            current_size_mb = 100  # Default minimum
+            
+            if session_mode == 'dynfilefs':
+                # For dynfilefs, use total_size (allocated size in bytes)
+                if 'total_size' in session_info:
+                    current_size_mb = session_info['total_size'] // (1024 * 1024)
+            elif session_mode == 'raw':
+                # For raw sessions, the 'size' field is the total allocated size in bytes
+                if 'size' in session_info:
+                    current_size_mb = session_info['size'] // (1024 * 1024)
+            
+            # Ensure we have a valid minimum size
+            current_size_mb = max(100, int(current_size_mb))
+            
+        except (json.JSONDecodeError, KeyError):
+            self._show_error(_("Failed to parse session information"))
+            return
+        
+        # Create resize dialog
+        dialog = Gtk.Dialog(
+            title=_("Resize Session {}").format(session_id),
+            parent=self.window
+        )
+        dialog.add_buttons(
+            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+            Gtk.STOCK_OK, Gtk.ResponseType.OK
+        )
+        
+        content_area = dialog.get_content_area()
+        content_area.set_spacing(10)
+        content_area.set_margin_start(10)
+        content_area.set_margin_end(10)
+        content_area.set_margin_top(10)
+        content_area.set_margin_bottom(10)
+        
+        # Session info
+        info_label = Gtk.Label()
+        info_label.set_markup(f"<b>{_('Session:')} {session_id} ({session_mode})</b>")
+        content_area.pack_start(info_label, False, False, 0)
+        
+        # Size input
+        size_label = Gtk.Label(label=_("New size (MB):"))
+        content_area.pack_start(size_label, False, False, 0)
+        
+        size_spin = Gtk.SpinButton()
+        size_spin.set_range(current_size_mb, 100000)  # Current size to 100GB
+        size_spin.set_increments(100, 1000)
+        size_spin.set_value(current_size_mb)  # Set to current size
+        content_area.pack_start(size_spin, False, False, 0)
+        
+        dialog.show_all()
+        
+        response = dialog.run()
+        if response == Gtk.ResponseType.OK:
+            new_size = int(size_spin.get_value())
+            dialog.destroy()
+            
+            # Show loading overlay
+            self._show_loading(True, _("Resizing session, please wait..."))
+            
+            # Perform resize in background
+            def resize_session_bg():
+                try:
+                    success, output, error = self._run_cli_command(['resize', session_id, str(new_size), '--json'])
+                    GLib.idle_add(self._on_resize_complete, success, output, error)
+                except Exception as e:
+                    GLib.idle_add(self._on_resize_complete, False, "", str(e))
+            
+            thread = threading.Thread(target=resize_session_bg)
+            thread.daemon = True
+            thread.start()
+        else:
+            dialog.destroy()
+    
+    def _on_resize_complete(self, success, output, error):
+        """Handle resize completion"""
+        # Hide loading overlay
+        self._show_loading(False)
+        
+        if success:
+            # Just refresh the session list, similar to create/delete operations
+            self.refresh_session_list()
+        else:
+            try:
+                if output:
+                    result = json.loads(output)
+                    message = result.get('message', error or _('Resize failed'))
+                else:
+                    message = error or _('Resize failed')
+            except json.JSONDecodeError:
+                message = error or _('Resize failed')
+            self._show_error(message)
     
     def run(self):
         """Start the application"""

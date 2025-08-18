@@ -6,8 +6,7 @@ minios-session-manager \- graphical interface for managing MiniOS persistent ses
 .SH DESCRIPTION
 .B minios-session-manager
 provides a graphical user interface for managing MiniOS persistent sessions.
-It offers an intuitive way to browse, create, activate, and delete sessions without using the command line.
-The interface automatically detects sessions directory status and disables operations when the directory is read-only.
+It offers an intuitive way to browse, create, activate, resize, and delete sessions without using the command line.
 .PP
 The application internally uses
 .BR minios-session (1)
@@ -43,6 +42,8 @@ Launch the graphical session manager.
 .TP
 Application Menu → System → MiniOS Session Manager
 Launch from the desktop application menu.
+.TP
+Right-click on any session to access context menu with available operations.
 .SH FILES
 .TP
 .B /usr/share/applications/minios-session-manager.desktop
@@ -74,7 +75,7 @@ The graphical interface requires a running X11 or Wayland session. For headless 
 .BR minios-session (1)
 instead.
 .PP
-The application starts without requiring root privileges and automatically requests authentication via PolicyKit when needed for write operations (create, activate, delete).
+The application starts without requiring root privileges and automatically requests authentication when needed.
 .SH SEE ALSO
 .BR minios-session (1),
 .BR live-config (7)

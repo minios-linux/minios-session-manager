@@ -250,6 +250,8 @@ class SessionManager:
                         line = line.strip()
                         if line.startswith("default="):
                             metadata["default"] = line.split("=", 1)[1]
+                        elif line.startswith("running="):
+                            metadata["running"] = line.split("=", 1)[1]
                         elif line.startswith("session_"):
                             # Parse session_mode[1]=native format
                             parts = line.split("=", 1)
@@ -287,6 +289,8 @@ class SessionManager:
             else:  # conf format
                 with open(self.sessions_file, 'w', encoding='utf-8') as f:
                     f.write(f"default={metadata.get('default', '')}\n")
+                    if 'running' in metadata:
+                        f.write(f"running={metadata['running']}\n")
                     for session_id, session_data in metadata.get("sessions", {}).items():
                         for field, value in session_data.items():
                             f.write(f"session_{field}[{session_id}]={value}\n")
@@ -319,7 +323,7 @@ class SessionManager:
                 
                 # Get directory stats
                 stat = os.stat(path)
-                size = self._get_directory_size(path)
+                size_info = self._get_session_size_info(path, session_data)
                 
                 sessions.append({
                     'id': session_id,
@@ -328,7 +332,10 @@ class SessionManager:
                     'version': session_data.get('version', 'unknown'),
                     'edition': session_data.get('edition', 'unknown'),
                     'union': session_data.get('union', 'unknown'), 
-                    'size': size,
+                    'size': size_info['used_size'],
+                    'size_display': size_info['display'],
+                    'total_size': size_info.get('total_size'),
+                    'total_size_mb': session_data.get('size'),  # Size from metadata in MB
                     'modified': datetime.fromtimestamp(stat.st_mtime),
                     'is_default': metadata.get('default') == session_id,
                     'is_running': session_id == running_id
@@ -565,6 +572,64 @@ class SessionManager:
         
         return total_size
     
+    def _get_session_size_info(self, session_path, session_data):
+        """Get comprehensive size information for a session"""
+        session_mode = session_data.get('mode', 'unknown')
+        stored_size = session_data.get('size')  # Size in MB from metadata
+        
+        # Convert stored_size to int if it's a string
+        if stored_size is not None:
+            try:
+                stored_size = int(stored_size)
+            except (ValueError, TypeError):
+                stored_size = None
+        
+        if session_mode == 'dynfilefs':
+            # For dynfilefs, show used/total format
+            used_size = self._get_dynfilefs_size(session_path)
+            if stored_size:
+                total_size_bytes = stored_size * 1024 * 1024
+                display = f"{self._format_size(used_size)}/{self._format_size(total_size_bytes)}"
+                return {
+                    'used_size': used_size,
+                    'total_size': total_size_bytes,
+                    'display': display
+                }
+            else:
+                # Fallback to just used size if no stored size
+                display = self._format_size(used_size)
+                return {
+                    'used_size': used_size,
+                    'display': display
+                }
+        
+        elif session_mode == 'raw':
+            # For raw, show total size (the image file size)
+            image_file = os.path.join(session_path, "changes.img")
+            if os.path.exists(image_file):
+                size = os.path.getsize(image_file)
+                display = self._format_size(size)
+                return {
+                    'used_size': size,
+                    'display': display
+                }
+            elif stored_size:
+                # Fallback to stored size if image not found
+                size_bytes = stored_size * 1024 * 1024
+                display = self._format_size(size_bytes)
+                return {
+                    'used_size': size_bytes,
+                    'display': display
+                }
+        
+        # For native mode or fallback, calculate directory size
+        size = self._get_directory_size(session_path)
+        display = self._format_size(size)
+        return {
+            'used_size': size,
+            'display': display
+        }
+    
     def get_current_session(self):
         """Get information about currently active session"""
         metadata = self._read_sessions_metadata()
@@ -581,87 +646,37 @@ class SessionManager:
     
     def get_running_session(self, avoid_recursion=False):
         """Get information about currently running session"""
-        # Try to detect which session is actually running by checking mount points
-        try:
-            # Use findmnt to get detailed mount information
-            result = subprocess.run(['findmnt', '-o', 'TARGET,SOURCE'], capture_output=True, text=True)
-            if result.returncode == 0:
-                mount_output = result.stdout
-                
-                # Look for bind mount of session directory to /run/initramfs/memory/changes
-                for line in mount_output.split('\n'):
-                    if '/run/initramfs/memory/changes' in line and self.sessions_dir:
-                        # Parse findmnt output like: /run/initramfs/memory/changes /dev/sda1[/minios/changes/1]
-                        # Remove tree formatting characters if present
-                        clean_line = line.replace('│', '').replace('├─', '').replace('└─', '').strip()
-                        parts = clean_line.split()
-                        if len(parts) >= 2:
-                            target = parts[0]
-                            source = parts[1]
-                            # Make sure this is the exact target we're looking for
-                            if target == '/run/initramfs/memory/changes':
-                                # Extract session ID from source like: /dev/sda1[/minios/changes/1]
-                                if '[' in source and ']' in source:
-                                    bracket_content = source.split('[')[1].split(']')[0]
-                                    # Extract session ID from path like /minios/changes/1
-                                    if '/changes/' in bracket_content:
-                                        session_id = bracket_content.split('/changes/')[-1]
-                                        if session_id.isdigit():
-                                            return self._get_session_info(session_id, avoid_recursion)
-            
-            # Fallback: check /proc/cmdline for session information
-            with open('/proc/cmdline', 'r') as f:
-                cmdline = f.read().strip()
-            
-            # Look for perchdir parameter
-            perchdir_match = re.search(r'perchdir=(\w+)', cmdline)
-            
-            if perchdir_match:
-                perchdir_value = perchdir_match.group(1)
-                
-                # If perchdir is a number, that's the running session
-                if perchdir_value.isdigit():
-                    return self._get_session_info(perchdir_value, avoid_recursion)
-                elif perchdir_value == 'new':
-                    # Running in new session mode
-                    return {
-                        'id': 'new',
-                        'path': None,
-                        'mode': 'temporary',
-                        'version': 'current',
-                        'edition': 'current',
-                        'union': 'current',
-                        'size': 0,
-                        'modified': None,
-                        'is_default': False,
-                        'status': 'temporary'
-                    }
-                elif perchdir_value == 'resume':
-                    # Resume mode - need to check what's actually mounted
-                    # This is handled above in findmnt checking
-                    # As fallback, check default session from config
-                    if avoid_recursion:
-                        metadata = self._read_sessions_metadata()
-                        current_id = metadata.get('default')
-                        if current_id:
-                            return self._get_session_info(current_id, avoid_recursion)
-                    else:
-                        # Return default session but mark it as uncertain
-                        metadata = self._read_sessions_metadata()
-                        current_id = metadata.get('default')
-                        if current_id:
-                            sessions = self.list_sessions(include_running_check=False)
-                            for session in sessions:
-                                if session['id'] == current_id:
-                                    session['status'] = 'default_fallback'
-                                    return session
-        except Exception as e:
-            # Error occurred, return None
-            if not avoid_recursion:
-                print(f"Error detecting running session: {e}", file=sys.stderr)
+        # Read running session ID from metadata
+        metadata = self._read_sessions_metadata()
+        running_id = metadata.get('running')
         
-        return None
-    
+        if not running_id:
+            return None
+            
+        # Get session info for the running session
+        return self._get_session_info(running_id, avoid_recursion)
+
+    def set_running_session(self, session_id):
+        """Set currently running session in metadata"""
+        try:
+            metadata = self._read_sessions_metadata()
+            metadata['running'] = session_id
+            return self._write_sessions_metadata(metadata)
+        except Exception as e:
+            print(f"Error setting running session: {e}", file=sys.stderr)
+            return False
+
+    def clear_running_session(self):
+        """Clear running session from metadata"""
+        try:
+            metadata = self._read_sessions_metadata()
+            if 'running' in metadata:
+                del metadata['running']
+            return self._write_sessions_metadata(metadata)
+        except Exception as e:
+            print(f"Error clearing running session: {e}", file=sys.stderr)
+            return False
+
     def _get_session_info(self, session_id, avoid_recursion=False):
         """Helper to get session info by ID"""
         if avoid_recursion:
@@ -852,6 +867,10 @@ class SessionManager:
                 "union": union
             }
             
+            # Add size information for dynfilefs and raw modes
+            if session_mode in ["dynfilefs", "raw"] and size_mb:
+                metadata["sessions"][new_id]["size"] = size_mb
+            
             if self._write_sessions_metadata(metadata):
                 # Use safer string formatting to avoid potential translation issues
                 try:
@@ -892,6 +911,11 @@ class SessionManager:
         current = self.get_current_session()
         if current and current['id'] == session_id:
             return False, _("Cannot delete currently active session")
+        
+        # Check if it's the running session
+        running = self.get_running_session()
+        if running and running['id'] == session_id:
+            return False, _("Cannot delete currently running session")
         
         try:
             shutil.rmtree(session_path)
@@ -936,6 +960,143 @@ class SessionManager:
         
         return deleted_count, errors
     
+    def resize_session(self, session_id, new_size_mb):
+        """Resize a session to new size"""
+        if not self.sessions_dir:
+            return False, _("Sessions directory not found")
+            
+        session_path = os.path.join(self.sessions_dir, session_id)
+        if not os.path.exists(session_path):
+            return False, _("Session {} does not exist").format(session_id)
+        
+        # Get session metadata to determine mode
+        metadata = self._read_sessions_metadata()
+        session_data = metadata.get("sessions", {}).get(session_id, {})
+        session_mode = session_data.get("mode", "unknown")
+        
+        if session_mode not in ["dynfilefs", "raw"]:
+            return False, _("Resize is only supported for dynfilefs and raw mode sessions")
+        
+        # Check if it's the running session
+        running = self.get_running_session()
+        if running and running['id'] == session_id:
+            return False, _("Cannot resize currently running session")
+        
+        try:
+            if session_mode == "dynfilefs":
+                return self._resize_dynfilefs_session(session_path, new_size_mb, session_id, metadata)
+            elif session_mode == "raw":
+                return self._resize_raw_session(session_path, new_size_mb, session_id, metadata)
+                
+        except Exception as e:
+            return False, _("Error resizing session: {}").format(str(e))
+    
+    def _resize_dynfilefs_session(self, session_path, new_size_mb, session_id, metadata):
+        """Resize a dynfilefs session"""
+        changes_file = os.path.join(session_path, "changes.dat")
+        if not os.path.exists(changes_file):
+            return False, _("DynFileFS changes.dat file not found")
+        
+        try:
+            # Get current total size from metadata
+            current_total_size = metadata.get("sessions", {}).get(session_id, {}).get("size", 0)
+            if isinstance(current_total_size, str):
+                current_total_size = int(current_total_size)
+            
+            # Get actually used size
+            used_size_bytes = self._get_dynfilefs_size(session_path)
+            used_size_mb = used_size_bytes // (1024 * 1024)
+            
+            # Check both conditions: new size must be larger than both current total AND used size
+            if new_size_mb <= current_total_size:
+                return False, _("New size must be larger than current total size ({}MB)").format(current_total_size)
+            
+            if new_size_mb <= used_size_mb:
+                return False, _("New size must be larger than used size ({}MB)").format(used_size_mb)
+            
+            # Create temporary mount point for resizing
+            temp_mount = f"/tmp/dynfilefs_resize_{session_id}_{os.getpid()}"
+            os.makedirs(temp_mount, exist_ok=True)
+            
+            try:
+                # Mount dynfilefs with the new size - this will expand the virtual.dat file automatically
+                mount_cmd = [
+                    'dynfilefs', 
+                    '-f', changes_file, 
+                    '-m', temp_mount, 
+                    '-s', str(new_size_mb),
+                    '-d'  # Debug mode to run in foreground
+                ]
+                
+                # Start dynfilefs process
+                process = subprocess.Popen(mount_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                
+                # Give it time to mount and resize
+                import time
+                time.sleep(2)
+                
+                # Check if virtual.dat was created/resized
+                virtual_file = os.path.join(temp_mount, "virtual.dat")
+                if not os.path.exists(virtual_file):
+                    process.terminate()
+                    return False, _("Failed to create/resize virtual.dat file")
+                
+                # Terminate the dynfilefs process (unmount)
+                process.terminate()
+                process.wait()
+                
+            finally:
+                # Clean up: ensure unmount and remove temp directory
+                subprocess.run(['fusermount', '-u', temp_mount], capture_output=True)
+                try:
+                    os.rmdir(temp_mount)
+                except:
+                    pass
+            
+            # Update our session metadata with new size
+            metadata["sessions"][session_id]["size"] = new_size_mb
+            if not self._write_sessions_metadata(metadata):
+                return False, _("Failed to update session metadata")
+            
+            return True, _("Session {} resized to {}MB successfully").format(session_id, new_size_mb)
+            
+        except Exception as e:
+            return False, _("Failed to resize dynfilefs session: {}").format(str(e))
+    
+    def _resize_raw_session(self, session_path, new_size_mb, session_id, metadata):
+        """Resize a raw session"""
+        image_file = os.path.join(session_path, "changes.img")
+        if not os.path.exists(image_file):
+            return False, _("Raw image file not found")
+        
+        try:
+            # Get current size
+            current_size = os.path.getsize(image_file) // (1024 * 1024)
+            if new_size_mb <= current_size:
+                return False, _("New size must be larger than current size ({}MB)").format(current_size)
+            
+            # Truncate image file to new size
+            new_size_bytes = new_size_mb * 1024 * 1024
+            with open(image_file, 'r+b') as f:
+                f.truncate(new_size_bytes)
+            
+            # Resize the filesystem inside the image
+            resize_cmd = ['resize2fs', image_file]
+            resize_result = subprocess.run(resize_cmd, capture_output=True)
+            
+            if resize_result.returncode != 0:
+                return False, _("Failed to resize filesystem: {}").format(resize_result.stderr.decode())
+            
+            # Update metadata with new size
+            metadata["sessions"][session_id]["size"] = new_size_mb
+            if not self._write_sessions_metadata(metadata):
+                return False, _("Failed to update session metadata")
+            
+            return True, _("Session {} resized to {}MB successfully").format(session_id, new_size_mb)
+            
+        except Exception as e:
+            return False, _("Failed to resize raw session: {}").format(str(e))
+    
     def get_filesystem_info(self):
         """Get filesystem information and compatibility"""
         filesystem_info, error = self._detect_filesystem_type()
@@ -975,6 +1136,21 @@ def format_session_list(sessions):
         lines.append(f"  {_('Edition:').rstrip(':')} {session['edition']}")
         lines.append(f"  {_('Union FS:').rstrip(':')} {session['union']}")
         lines.append(f"  {_('Size:').rstrip(':')} {size_str}")
+        
+        # Add Total Size for dynfilefs sessions
+        if session['mode'] == 'dynfilefs' and 'total_size_mb' in session and session['total_size_mb']:
+            total_size_mb = session['total_size_mb']
+            # Convert to int if it's a string
+            if isinstance(total_size_mb, str):
+                try:
+                    total_size_mb = int(total_size_mb)
+                except (ValueError, TypeError):
+                    total_size_mb = 0
+            
+            if total_size_mb > 0:
+                total_size_str = SessionManager()._format_size(total_size_mb * 1024 * 1024)
+                lines.append(f"  {_('Total Size:').rstrip(':')} {total_size_str}")
+        
         lines.append(f"  {_('Last Modified:').rstrip(':')} {modified_str}")
         lines.append("")
     
@@ -991,12 +1167,31 @@ def format_sessions_json(sessions):
             'edition': session['edition'],
             'union': session['union'],
             'size': session['size'],
-            'size_formatted': SessionManager()._format_size(session['size']),
+            'size_formatted': SessionManager()._format_size(session['size'])
+        }
+        
+        # Add total_size fields right after size_formatted for dynfilefs sessions
+        if session['mode'] == 'dynfilefs' and 'total_size_mb' in session and session['total_size_mb']:
+            total_size_mb = session['total_size_mb']
+            if isinstance(total_size_mb, str):
+                try:
+                    total_size_mb = int(total_size_mb)
+                except (ValueError, TypeError):
+                    total_size_mb = 0
+            
+            if total_size_mb > 0:
+                total_size_bytes = total_size_mb * 1024 * 1024
+                json_session['total_size'] = total_size_bytes
+                json_session['total_size_formatted'] = SessionManager()._format_size(total_size_bytes)
+        
+        # Continue with remaining fields
+        json_session.update({
             'modified': session['modified'].isoformat() if session['modified'] else None,
             'path': session['path'],
             'is_default': session['is_default'],
             'is_running': session.get('is_running', False)
-        }
+        })
+
         # Add status if present (for running sessions)
         if 'status' in session:
             json_session['status'] = session['status']
@@ -1016,11 +1211,30 @@ def format_session_json(session):
         'edition': session['edition'],
         'union': session['union'],
         'size': session['size'],
-        'size_formatted': SessionManager()._format_size(session['size']),
+        'size_formatted': SessionManager()._format_size(session['size'])
+    }
+    
+    # Add total_size fields right after size_formatted for dynfilefs sessions
+    if session['mode'] == 'dynfilefs' and 'total_size_mb' in session and session['total_size_mb']:
+        total_size_mb = session['total_size_mb']
+        if isinstance(total_size_mb, str):
+            try:
+                total_size_mb = int(total_size_mb)
+            except (ValueError, TypeError):
+                total_size_mb = 0
+        
+        if total_size_mb > 0:
+            total_size_bytes = total_size_mb * 1024 * 1024
+            json_session['total_size'] = total_size_bytes
+            json_session['total_size_formatted'] = SessionManager()._format_size(total_size_bytes)
+    
+    # Continue with remaining fields
+    json_session.update({
         'modified': session['modified'].isoformat() if session['modified'] else None,
         'path': session['path'],
         'is_default': session['is_default']
-    }
+    })
+
     # Add status if present (for running sessions)
     if 'status' in session:
         json_session['status'] = session['status']
@@ -1148,9 +1362,9 @@ EXAMPLES:
     
     # Create command
     create_parser = subparsers.add_parser('create', help=_('Create a new session'), parents=[parent_parser])
-    create_parser.add_argument('--mode', choices=['native', 'dynfilefs', 'raw'], 
+    create_parser.add_argument('mode', nargs='?', choices=['native', 'dynfilefs', 'raw'], 
                               default='native', help=_('Session mode (default: native)'))
-    create_parser.add_argument('--size', type=int, metavar='MB',
+    create_parser.add_argument('size', nargs='?', type=int, metavar='MB',
                               help=_('Size in MB for dynfilefs/raw modes (default: 4000)'))
     
     # Delete command
@@ -1164,6 +1378,11 @@ EXAMPLES:
     
     # Status command
     status_parser = subparsers.add_parser('status', help=_('Check sessions directory status'), parents=[parent_parser])
+    
+    # Resize command
+    resize_parser = subparsers.add_parser('resize', help=_('Resize a session'), parents=[parent_parser])
+    resize_parser.add_argument('session_id', help=_('Session ID to resize'))
+    resize_parser.add_argument('size', type=int, metavar='MB', help=_('New size in MB'))
 
 # GUI command removed - use minios-session-manager for GUI
     
@@ -1340,6 +1559,18 @@ EXAMPLES:
                 print(_("Errors:"))
                 for error in errors:
                     print(f"  {error}")
+    
+    elif args.command == 'resize':
+        success, message = manager.resize_session(args.session_id, args.size)
+        if args.json:
+            result = {
+                "success": success,
+                "message": message
+            }
+            print(json.dumps(result))
+        else:
+            print(message)
+        sys.exit(0 if success else 1)
     
     elif args.command == 'status':
         status_info = manager.check_sessions_directory_status()

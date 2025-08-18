@@ -37,23 +37,34 @@ Activate the specified session by setting it as the default session. This change
 ID of the session to activate
 .RE
 .TP
-.B create [\-\-mode \fImode\fR] [\-\-size \fIsize\fR]
+.B create [\fImode\fR] [\fIsize\fR]
 Create a new session with the specified mode and optional size. The new session will be automatically assigned the next available ID. The tool automatically detects the filesystem type and only allows compatible session modes.
 .RS
 .TP
-\fB\-\-mode\fR \fImode\fR (optional)
+\fImode\fR (optional)
 Session mode: native, dynfilefs, or raw (default: native). If the default native mode is not compatible with the current filesystem, the command will fail with an error message suggesting alternative modes.
 .TP
-\fB\-\-size\fR \fIsize\fR (optional)
+\fIsize\fR (optional)
 Size in MB for dynfilefs and raw modes (default: 4000). For FAT32 filesystems, raw images are limited to 4000MB maximum.
 .RE
 .TP
 .B delete \fIsession_id\fR
-Delete the specified session by ID. Cannot delete the currently active session.
+Delete the specified session by ID. Cannot delete the currently active session or currently running session.
 .RS
 .TP
 \fIsession_id\fR (required)
 ID of the session to delete
+.RE
+.TP
+.B resize \fIsession_id\fR \fIsize\fR
+Resize the specified session to a new size in MB. Only works for dynfilefs and raw mode sessions that use image files. Cannot resize currently running sessions.
+.RS
+.TP
+\fIsession_id\fR (required)
+ID of the session to resize
+.TP
+\fIsize\fR (required)
+New size in MB. Must be larger than current size.
 .RE
 .TP
 .B cleanup [\-\-days \fIN\fR]
@@ -74,35 +85,33 @@ The
 command automatically detects the filesystem type and validates mode compatibility. If the requested mode is not supported:
 .RS
 .TP
-• On FAT32/NTFS with native mode: Returns error suggesting dynfilefs or raw mode
+- On FAT32/NTFS with native mode: Returns error suggesting dynfilefs or raw mode
 .TP
-• On read-only media: Returns error stating no sessions can be created
+- On read-only media: Returns error stating no sessions can be created
 .TP
-• With dynfilefs mode but package not installed: Returns error requesting dynfilefs package installation
+- With dynfilefs mode but package not installed: Returns error requesting dynfilefs package installation
 .TP
-• With oversized raw images on FAT32: Returns error with size limit and suggests dynfilefs mode
+- With oversized raw images on FAT32: Returns error with size limit and suggests dynfilefs mode
 .RE
 .TP
 .B Default Parameter Behavior
 .RS
 .TP
-• 
+- 
 .B create
-without --mode: Uses native mode, may fail on non-POSIX filesystems
+without mode: Uses native mode, may fail on non-POSIX filesystems
 .TP
-• 
+- 
 .B create
-without --size: Uses 4000MB (4GB) for dynfilefs and raw modes
+without size: Uses 4000MB (4GB) for dynfilefs and raw modes
 .TP
-• 
+- 
 .B cleanup
-without --days: Uses 30-day threshold for session deletion
+without days: Uses 30-day threshold for session deletion
 .RE
 .TP
 .B Session Protection
-The
-.B cleanup
-command protects both the currently active session (will boot next) and the currently running session (current boot) from deletion, regardless of age.
+Active and running sessions are protected from deletion and modification.
 .SH SESSION MODES
 MiniOS supports three persistence modes for different storage scenarios:
 .TP
@@ -156,11 +165,18 @@ Delete old sessions:
 .PP
 Create sessions:
 .RS
-.B minios-session create --mode native
+.B minios-session create
 .br
-.B minios-session create --mode dynfilefs --size 8000
+.B minios-session create native
 .br
-.B minios-session create --mode raw --size 2000
+.B minios-session create dynfilefs 8000
+.br
+.B minios-session create raw 2000
+.RE
+.PP
+Resize session:
+.RS
+.B minios-session resize 2 8000
 .RE
 .PP
 JSON output:

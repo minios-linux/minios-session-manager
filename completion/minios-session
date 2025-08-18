@@ -5,7 +5,7 @@ _minios_session() {
     prev="${COMP_WORDS[COMP_CWORD - 1]}"
     
     # Main commands
-    subcommands="list active running info activate create delete cleanup status"
+    subcommands="list active running info activate create delete resize cleanup status"
     
     # Global options
     global_opts="--help --json --sessions-dir"
@@ -14,7 +14,7 @@ _minios_session() {
     local subcommand=""
     local subcommand_pos=1
     for ((i=1; i<${#COMP_WORDS[@]}; i++)); do
-        if [[ "${COMP_WORDS[i]}" =~ ^(list|active|running|info|activate|create|delete|cleanup|status)$ ]]; then
+        if [[ "${COMP_WORDS[i]}" =~ ^(list|active|running|info|activate|create|delete|resize|cleanup|status)$ ]]; then
             subcommand="${COMP_WORDS[i]}"
             subcommand_pos=$i
             break
@@ -33,7 +33,7 @@ _minios_session() {
     
     # Helper function to get available sessions
     _get_sessions() {
-        local sessions_dir="/run/minios/sessions"
+        local sessions_dir="/run/initramfs/memory/data/minios/changes"
         local custom_dir=""
         
         # Check if custom sessions directory is specified
@@ -48,41 +48,54 @@ _minios_session() {
             sessions_dir="$custom_dir"
         fi
         
-        if [[ -f "$sessions_dir/sessions.json" ]]; then
+        # Try multiple session file formats
+        if [[ -f "$sessions_dir/session.json" ]]; then
             # Try to extract session IDs from JSON file
             if command -v jq >/dev/null 2>&1; then
-                jq -r '.sessions[].id' "$sessions_dir/sessions.json" 2>/dev/null
+                jq -r '.sessions | keys[]' "$sessions_dir/session.json" 2>/dev/null
             else
-                # Fallback: extract session IDs with grep/sed
-                grep -o '"id"[[:space:]]*:[[:space:]]*"[^"]*"' "$sessions_dir/sessions.json" 2>/dev/null | \
-                    sed 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/'
+                # Fallback: extract session IDs with grep/sed from JSON
+                grep -o '"[0-9]\+"[[:space:]]*:[[:space:]]*{' "$sessions_dir/session.json" 2>/dev/null | \
+                    sed 's/"\([0-9]\+\)".*/\1/'
             fi
-        elif [[ -f "$sessions_dir/sessions.conf" ]]; then
+        elif [[ -f "$sessions_dir/session.conf" ]]; then
             # Extract session IDs from conf file
-            grep -o '^\[session_[0-9]*\]' "$sessions_dir/sessions.conf" 2>/dev/null | \
-                sed 's/^\[session_\([0-9]*\)\]$/\1/'
+            grep -o 'session_mode\[[0-9]\+\]' "$sessions_dir/session.conf" 2>/dev/null | \
+                sed 's/session_mode\[\([0-9]\+\)\]/\1/'
+        else
+            # Fallback: look for numeric directories
+            ls -1 "$sessions_dir" 2>/dev/null | grep '^[0-9]\+$' | sort -n
         fi
     }
     
     # Complete based on subcommand
     case "${subcommand}" in
         create)
+            # Count non-option arguments after create command (excluding current word)
+            local arg_count=0
+            for ((i=$((subcommand_pos + 1)); i<COMP_CWORD; i++)); do
+                if [[ ! "${COMP_WORDS[i]}" =~ ^- ]]; then
+                    ((arg_count++))
+                fi
+            done
+            
             case "${prev}" in
-                --mode)
-                    local modes="native dynfilefs raw"
-                    COMPREPLY=($(compgen -W "${modes}" -- ${cur}))
-                    ;;
-                --size)
-                    local sizes="1000 2000 4000 8000 16000"
-                    COMPREPLY=($(compgen -W "${sizes}" -- ${cur}))
-                    ;;
                 --sessions-dir)
                     COMPREPLY=($(compgen -d -- ${cur}))
                     ;;
                 *)
-                    # Always show options for create command
-                    local create_opts="--help --json --mode --size --sessions-dir"
-                    COMPREPLY=($(compgen -W "${create_opts}" -- ${cur}))
+                    if [[ ${cur} == -* ]]; then
+                        local create_opts="--help --json --sessions-dir"
+                        COMPREPLY=($(compgen -W "${create_opts}" -- ${cur}))
+                    elif [[ $arg_count -eq 0 ]]; then
+                        # First argument: mode
+                        local modes="native dynfilefs raw"
+                        COMPREPLY=($(compgen -W "${modes}" -- ${cur}))
+                    elif [[ $arg_count -eq 1 ]]; then
+                        # Second argument: size
+                        local sizes="1000 2000 4000 8000 16000"
+                        COMPREPLY=($(compgen -W "${sizes}" -- ${cur}))
+                    fi
                     ;;
             esac
             ;;
@@ -101,6 +114,36 @@ _minios_session() {
                     if [[ ${cur} == -* ]]; then
                         local cmd_opts="--help --json --sessions-dir"
                         COMPREPLY=($(compgen -W "${cmd_opts}" -- ${cur}))
+                    fi
+                    ;;
+            esac
+            ;;
+        
+        resize)
+            # Count non-option arguments after resize command (excluding current word)
+            local arg_count=0
+            for ((i=$((subcommand_pos + 1)); i<COMP_CWORD; i++)); do
+                if [[ ! "${COMP_WORDS[i]}" =~ ^- ]]; then
+                    ((arg_count++))
+                fi
+            done
+            
+            case "${prev}" in
+                --sessions-dir)
+                    COMPREPLY=($(compgen -d -- ${cur}))
+                    ;;
+                *)
+                    if [[ ${cur} == -* ]]; then
+                        local resize_opts="--help --json --sessions-dir"
+                        COMPREPLY=($(compgen -W "${resize_opts}" -- ${cur}))
+                    elif [[ $arg_count -eq 0 ]]; then
+                        # First argument: session ID
+                        local sessions=$(_get_sessions)
+                        COMPREPLY=($(compgen -W "${sessions}" -- ${cur}))
+                    elif [[ $arg_count -eq 1 ]]; then
+                        # Second argument: size in MB
+                        local size_suggestions="1000 2000 4000 6000 8000 12000 16000"
+                        COMPREPLY=($(compgen -W "${size_suggestions}" -- ${cur}))
                     fi
                     ;;
             esac
