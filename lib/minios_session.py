@@ -1041,6 +1041,15 @@ class SessionManager:
                     process.terminate()
                     return False, _("Failed to create/resize virtual.dat file")
                 
+                # Now we need to resize the filesystem inside virtual.dat
+                # Resize the filesystem (will perform necessary checks)
+                resize_cmd = ['resize2fs', '-f', virtual_file]
+                resize_result = subprocess.run(resize_cmd, capture_output=True)
+                
+                if resize_result.returncode != 0:
+                    process.terminate()
+                    return False, _("Failed to resize filesystem: {}").format(resize_result.stderr.decode())
+                
                 # Terminate the dynfilefs process (unmount)
                 process.terminate()
                 process.wait()
@@ -1080,8 +1089,8 @@ class SessionManager:
             with open(image_file, 'r+b') as f:
                 f.truncate(new_size_bytes)
             
-            # Resize the filesystem inside the image
-            resize_cmd = ['resize2fs', image_file]
+            # Resize the filesystem inside the image (will perform necessary checks)
+            resize_cmd = ['resize2fs', '-f', image_file]
             resize_result = subprocess.run(resize_cmd, capture_output=True)
             
             if resize_result.returncode != 0:
