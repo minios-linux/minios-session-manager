@@ -29,7 +29,7 @@ except:
 
 class SessionManagerGUI:
     """GUI application for session management"""
-    
+
     def __init__(self):
         self.cli_command = self._get_minios_session_cli_path()
         
@@ -42,7 +42,7 @@ class SessionManagerGUI:
         self.builder = Gtk.Builder()
         self.create_interface()
         self.refresh_session_list()
-    
+
     def _load_css(self):
         """Load CSS styling for the application"""
         css_paths = [
@@ -66,7 +66,7 @@ class SessionManagerGUI:
                 except Exception as e:
                     print(f"Warning: Failed to load CSS from {css_path}: {e}")
                     continue
-    
+
     def _get_minios_session_cli_path(self):
         """Get the path to minios-session CLI tool"""
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -77,7 +77,7 @@ class SessionManagerGUI:
             # Running from installed location - assume it's in PATH
             cli_path = 'minios-session'
         return cli_path
-    
+
     def _run_cli_command(self, args):
         """Run CLI command and return result"""
         try:
@@ -88,7 +88,7 @@ class SessionManagerGUI:
             return False, "", _("Command timed out - authentication may have been cancelled")
         except Exception as e:
             return False, "", str(e)
-    
+
     def _check_sessions_directory_status(self):
         """Check sessions directory status using CLI"""
         try:
@@ -116,7 +116,7 @@ class SessionManagerGUI:
                 'writable': False,
                 'error': str(e)
             }
-    
+
     def _build_sessions_status_info(self, main_box):
         """Build sessions directory status information panel"""
         sessions_hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -145,13 +145,13 @@ class SessionManagerGUI:
         sessions_hbox.pack_start(sessions_status_label, False, False, 0)
         
         main_box.pack_start(sessions_hbox, False, False, 0)
-    
+
     def _build_header_bar(self):
         """Build the header bar"""
         header = Gtk.HeaderBar(show_close_button=True)
         header.props.title = _("MiniOS Session Manager")
         self.window.set_titlebar(header)
-    
+
     def create_interface(self):
         """Create the main interface"""
         
@@ -234,10 +234,27 @@ class SessionManagerGUI:
         # Disable create button if sessions directory is not writable
         create_btn.set_sensitive(self.sessions_writable)
         toolbar_box.pack_start(create_btn, False, False, 0)
-        
+
         self.create_btn = create_btn  # Store reference for later use
-        
-        
+
+        # Import button
+        import_btn = Gtk.Button()
+        import_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        import_icon = Gtk.Image.new_from_icon_name("document-open", Gtk.IconSize.DND)
+        import_label = Gtk.Label(label=_("Import"))
+        import_box.pack_start(import_icon, False, False, 0)
+        import_box.pack_start(import_label, False, False, 0)
+        import_btn.add(import_box)
+        import_btn.connect("clicked", self.on_import_clicked)
+        import_btn.get_style_context().add_class('large-button')
+        import_btn.get_style_context().add_class('import-button')
+        import_btn.set_size_request(140, -1)
+        # Disable import button if sessions directory is not writable
+        import_btn.set_sensitive(self.sessions_writable)
+        toolbar_box.pack_start(import_btn, False, False, 0)
+
+        self.import_btn = import_btn  # Store reference for later use
+
         # Cleanup button
         cleanup_btn = Gtk.Button()
         cleanup_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -255,7 +272,7 @@ class SessionManagerGUI:
         toolbar_box.pack_start(cleanup_btn, False, False, 0)
         
         self.cleanup_btn = cleanup_btn  # Store reference for later use
-    
+
     def refresh_session_list(self):
         """Refresh the session list from CLI"""
         def fetch_data():
@@ -297,7 +314,7 @@ class SessionManagerGUI:
         thread = threading.Thread(target=fetch_data)
         thread.daemon = True
         thread.start()
-    
+
     def _process_session_data(self, list_success, list_output, list_error, active_session_id, running_session_id):
         """Process session data in main thread"""
         try:
@@ -413,7 +430,7 @@ class SessionManagerGUI:
         finally:
             # Hide loading indicator
             self._show_loading(False)
-    
+
     def _create_session_row(self, session_id, is_active, is_running, mode, version, edition, union, size, modified):
         """Create a session row"""
         row = Gtk.ListBoxRow()
@@ -528,43 +545,75 @@ class SessionManagerGUI:
         row.mode = mode
         
         self.sessions_list.add(row)
-    
+
     def _on_session_selected(self, list_box, row):
         """Handle session selection"""
         if row:
             self.selected_session_id = row.session_id
         else:
             self.selected_session_id = None
-    
+
     def _create_context_menu(self):
         """Create context menu for session items"""
         self.context_menu = Gtk.Menu()
         self.context_menu.get_style_context().add_class('session-context-menu')
-        
+
         # Activate menu item
         activate_item = Gtk.MenuItem(label=_("Activate Session"))
         activate_item.get_style_context().add_class('context-menu-activate')
         activate_item.connect("activate", self._on_context_activate)
         self.context_menu.append(activate_item)
-        
+
         # Resize menu item
         resize_item = Gtk.MenuItem(label=_("Resize Session"))
         resize_item.get_style_context().add_class('context-menu-resize')
         resize_item.connect("activate", self._on_context_resize)
         self.context_menu.append(resize_item)
-        
+
         # Separator
-        separator = Gtk.SeparatorMenuItem()
-        self.context_menu.append(separator)
-        
+        separator1 = Gtk.SeparatorMenuItem()
+        self.context_menu.append(separator1)
+
+        # Export menu item
+        export_item = Gtk.MenuItem(label=_("Export Session"))
+        export_item.get_style_context().add_class('context-menu-export')
+        export_item.connect("activate", self._on_context_export)
+        self.context_menu.append(export_item)
+
+        # Copy menu item
+        copy_item = Gtk.MenuItem(label=_("Copy Session"))
+        copy_item.get_style_context().add_class('context-menu-copy')
+        copy_item.connect("activate", self._on_context_copy)
+        self.context_menu.append(copy_item)
+
+        # Convert menu item
+        convert_item = Gtk.MenuItem(label=_("Convert Session"))
+        convert_item.get_style_context().add_class('context-menu-convert')
+        convert_item.connect("activate", self._on_context_convert)
+        self.context_menu.append(convert_item)
+
+        # Separator
+        separator2 = Gtk.SeparatorMenuItem()
+        self.context_menu.append(separator2)
+
+        # Open folder menu item
+        open_folder_item = Gtk.MenuItem(label=_("Open Folder"))
+        open_folder_item.get_style_context().add_class('context-menu-open-folder')
+        open_folder_item.connect("activate", self._on_context_open_folder)
+        self.context_menu.append(open_folder_item)
+
+        # Separator
+        separator3 = Gtk.SeparatorMenuItem()
+        self.context_menu.append(separator3)
+
         # Delete menu item
         delete_item = Gtk.MenuItem(label=_("Delete Session"))
         delete_item.get_style_context().add_class('context-menu-delete')
         delete_item.connect("activate", self._on_context_delete)
         self.context_menu.append(delete_item)
-        
+
         self.context_menu.show_all()
-    
+
     def _on_list_button_press(self, widget, event):
         """Handle button press on list"""
         if event.button == 3:  # Right click
@@ -574,20 +623,27 @@ class SessionManagerGUI:
                 # Select the row
                 self.sessions_list.select_row(row)
                 self.selected_session_id = row.session_id
-                
+
                 # Update menu items based on session status
                 activate_item = self.context_menu.get_children()[0]
                 resize_item = self.context_menu.get_children()[1]
-                delete_item = self.context_menu.get_children()[3]
-                
-                # Check session mode for resize availability
+                export_item = self.context_menu.get_children()[3]
+                copy_item = self.context_menu.get_children()[4]
+                convert_item = self.context_menu.get_children()[5]
+                open_folder_item = self.context_menu.get_children()[7]
+                delete_item = self.context_menu.get_children()[9]
+
+                # Check session mode for resize/convert availability
                 session_mode = getattr(row, 'mode', 'unknown')
                 resize_available = session_mode in ['dynfilefs', 'raw']
-                
+
                 # Check if sessions directory is writable for create/delete operations
                 if not self.sessions_writable:
                     activate_item.set_sensitive(False)
                     resize_item.set_sensitive(False)
+                    export_item.set_sensitive(True)  # Can export even if not writable
+                    copy_item.set_sensitive(False)
+                    convert_item.set_sensitive(False)
                     delete_item.set_sensitive(False)
                 elif hasattr(row, 'is_active') and row.is_active:
                     # Disable activate if already active (regardless of running status)
@@ -595,40 +651,91 @@ class SessionManagerGUI:
                     # For active sessions, check if also running to determine resize availability
                     if hasattr(row, 'is_running') and row.is_running:
                         resize_item.set_sensitive(False)  # Can't resize running session
+                        export_item.set_sensitive(False)  # Can't export running session
+                        copy_item.set_sensitive(False)  # Can't copy running session
+                        convert_item.set_sensitive(False)  # Can't convert running session
                     else:
                         resize_item.set_sensitive(resize_available)  # Can resize active session
+                        export_item.set_sensitive(True)  # Can export active (not running) session
+                        copy_item.set_sensitive(True)  # Can copy active (not running) session
+                        convert_item.set_sensitive(True)  # Can convert active (not running) session
                     delete_item.set_sensitive(False)  # Can't delete active session
                 elif hasattr(row, 'is_running') and row.is_running:
                     # Can activate running session (not active), but can't delete or resize it
                     activate_item.set_sensitive(True)
                     resize_item.set_sensitive(False)  # Can't resize running session
+                    export_item.set_sensitive(False)  # Can't export running session
+                    copy_item.set_sensitive(False)  # Can't copy running session
+                    convert_item.set_sensitive(False)  # Can't convert running session
                     delete_item.set_sensitive(False)  # Can't delete running session
                 else:
                     activate_item.set_sensitive(True)
                     resize_item.set_sensitive(resize_available)
+                    export_item.set_sensitive(True)
+                    copy_item.set_sensitive(True)
+                    convert_item.set_sensitive(True)
                     delete_item.set_sensitive(True)
-                
+
                 # Show context menu
                 self.context_menu.popup_at_pointer(event)
                 return True
         return False
-    
+
     def _on_context_activate(self, menu_item):
         """Handle activate from context menu"""
         if self.selected_session_id:
             self.on_activate_clicked(None)
-    
+
     def _on_context_delete(self, menu_item):
         """Handle delete from context menu"""
         if self.selected_session_id:
             self.on_delete_clicked(None)
-    
+
     def _on_context_resize(self, menu_item):
         """Handle resize from context menu"""
         if self.selected_session_id:
             self._show_resize_dialog(self.selected_session_id)
-    
-    
+
+    def _on_context_export(self, menu_item):
+        """Handle export from context menu"""
+        if self.selected_session_id:
+            self._show_export_dialog(self.selected_session_id)
+
+    def _on_context_copy(self, menu_item):
+        """Handle copy from context menu"""
+        if self.selected_session_id:
+            self._show_copy_dialog(self.selected_session_id)
+
+    def _on_context_convert(self, menu_item):
+        """Handle convert from context menu"""
+        if self.selected_session_id:
+            self._show_convert_dialog(self.selected_session_id)
+
+    def _on_context_open_folder(self, menu_item):
+        """Handle open folder from context menu"""
+        if self.selected_session_id:
+            import subprocess
+            # Get session path from CLI
+            sessions = self._run_cli_command(['list', '--json'])[1]
+            if sessions:
+                try:
+                    sessions_data = json.loads(sessions)
+                    session_path = None
+                    for session in sessions_data:
+                        if session['id'] == self.selected_session_id:
+                            session_path = session.get('path')
+                            break
+
+                    if session_path and os.path.exists(session_path):
+                        subprocess.Popen(['xdg-open', session_path])
+                    else:
+                        self._show_error(_("Session folder not found"))
+                except json.JSONDecodeError:
+                    self._show_error(_("Failed to get session information"))
+                except Exception as e:
+                    self._show_error(_("Failed to open folder: {}").format(str(e)))
+
+
     def on_create_clicked(self, button):
         """Handle create session button click"""
         # Check if sessions directory is writable
@@ -731,7 +838,7 @@ class SessionManagerGUI:
         adjustment = Gtk.Adjustment(value=4000, lower=100, upper=50000, step_increment=100)
         size_spinbutton = Gtk.SpinButton()
         size_spinbutton.set_adjustment(adjustment)
-        size_spinbutton.set_value(4000)
+        size_spinbutton.set_value(1000)
         size_box.pack_start(size_spinbutton, False, False, 0)
         
         size_info_label = Gtk.Label(label=_("(Only used for DynFileFS and Raw modes)"))
@@ -815,7 +922,7 @@ class SessionManagerGUI:
             thread.start()
         else:
             dialog.destroy()
-    
+
     def on_activate_clicked(self, button):
         """Handle activate session action"""
         # Check if sessions directory is writable
@@ -839,7 +946,7 @@ class SessionManagerGUI:
         thread = threading.Thread(target=activate_session_bg)
         thread.daemon = True
         thread.start()
-    
+
     def on_delete_clicked(self, button):
         """Handle delete session action"""
         # Check if sessions directory is writable
@@ -887,7 +994,7 @@ class SessionManagerGUI:
             thread = threading.Thread(target=delete_session_bg)
             thread.daemon = True
             thread.start()
-    
+
     def on_cleanup_clicked(self, button):
         """Handle cleanup button click"""
         # Check if sessions directory is writable
@@ -968,8 +1075,8 @@ class SessionManagerGUI:
                 thread.start()
         else:
             dialog.destroy()
-    
-    
+
+
     def _show_error(self, message):
         """Show error dialog with friendly styling"""
         dialog = Gtk.MessageDialog(
@@ -979,17 +1086,36 @@ class SessionManagerGUI:
             text=_("Oops! Something went wrong")
         )
         dialog.format_secondary_text(str(message))
-        
+
         # Style the dialog
         dialog.get_style_context().add_class('friendly-dialog')
         ok_button = dialog.get_widget_for_response(Gtk.ResponseType.OK)
         ok_button.set_label(_("Got it"))
         ok_button.get_style_context().add_class('suggested-action')
-        
+
         dialog.run()
         dialog.destroy()
-    
-    
+
+    def _show_info(self, message):
+        """Show info dialog"""
+        dialog = Gtk.MessageDialog(
+            parent=self.window,
+            message_type=Gtk.MessageType.INFO,
+            buttons=Gtk.ButtonsType.OK,
+            text=_("Success")
+        )
+        dialog.format_secondary_text(str(message))
+
+        # Style the dialog
+        dialog.get_style_context().add_class('friendly-dialog')
+        ok_button = dialog.get_widget_for_response(Gtk.ResponseType.OK)
+        ok_button.set_label(_("OK"))
+        ok_button.get_style_context().add_class('suggested-action')
+
+        dialog.run()
+        dialog.destroy()
+
+
     def _create_progress_dialog(self, title, message):
         """Create a progress dialog with spinner"""
         progress_dialog = Gtk.Dialog(
@@ -1027,7 +1153,7 @@ class SessionManagerGUI:
         content_area.pack_start(progress_box, True, True, 0)
         
         return progress_dialog
-    
+
     def _on_session_creation_complete(self, success, output, error, progress_dialog):
         """Handle session creation completion"""
         # Hide loading overlay if no progress_dialog (using overlay)
@@ -1040,7 +1166,7 @@ class SessionManagerGUI:
             self.refresh_session_list()
         else:
             self._show_error(_("Failed to create session: {}").format(error))
-    
+
     def _on_session_operation_complete(self, success, output, error, progress_dialog, success_prefix, error_prefix):
         """Handle generic session operation completion"""
         # Hide loading overlay if no progress_dialog (using overlay)
@@ -1055,7 +1181,7 @@ class SessionManagerGUI:
         else:
             error_message = f"{error_prefix}: {error}" if error else error_prefix
             self._show_error(error_message)
-    
+
     def _show_loading(self, show, text=None):
         """Show or hide loading indicator"""
         if show:
@@ -1070,7 +1196,7 @@ class SessionManagerGUI:
             self.loading_spinner.stop()
             # Reset to default text
             self.loading_label.set_text(_("Loading sessions..."))
-    
+
     def _show_resize_dialog(self, session_id):
         """Show resize dialog for a session"""
         # Get session information
@@ -1176,12 +1302,12 @@ class SessionManagerGUI:
             thread.start()
         else:
             dialog.destroy()
-    
+
     def _on_resize_complete(self, success, output, error):
         """Handle resize completion"""
         # Hide loading overlay
         self._show_loading(False)
-        
+
         if success:
             # Just refresh the session list, similar to create/delete operations
             self.refresh_session_list()
@@ -1195,7 +1321,472 @@ class SessionManagerGUI:
             except json.JSONDecodeError:
                 message = error or _('Resize failed')
             self._show_error(message)
-    
+
+    def _show_export_dialog(self, session_id):
+        """Show export dialog for a session"""
+        # Create file chooser dialog
+        dialog = Gtk.FileChooserDialog(
+            title=_("Export Session {}").format(session_id),
+            parent=self.window,
+            action=Gtk.FileChooserAction.SAVE
+        )
+        dialog.add_buttons(
+            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+            Gtk.STOCK_SAVE, Gtk.ResponseType.OK
+        )
+
+        # Set default filename
+        dialog.set_current_name(f"session_{session_id}.tar.zst")
+
+        # Add file filter for tar.zst
+        filter_tar = Gtk.FileFilter()
+        filter_tar.set_name(_("TAR.ZSTD archives (*.tar.zst)"))
+        filter_tar.add_pattern("*.tar.zst")
+        dialog.add_filter(filter_tar)
+
+        filter_all = Gtk.FileFilter()
+        filter_all.set_name(_("All files"))
+        filter_all.add_pattern("*")
+        dialog.add_filter(filter_all)
+
+        response = dialog.run()
+        if response == Gtk.ResponseType.OK:
+            output_path = dialog.get_filename()
+            dialog.destroy()
+
+            # Show loading overlay
+            self._show_loading(True, _("Exporting session, please wait..."))
+
+            # Perform export in background
+            def export_session_bg():
+                try:
+                    success, output, error = self._run_cli_command(['export', session_id, output_path, '--json'])
+                    GLib.idle_add(self._on_export_complete, success, output, error)
+                except Exception as e:
+                    GLib.idle_add(self._on_export_complete, False, "", str(e))
+
+            thread = threading.Thread(target=export_session_bg)
+            thread.daemon = True
+            thread.start()
+        else:
+            dialog.destroy()
+
+    def _on_export_complete(self, success, output, error):
+        """Handle export completion"""
+        # Hide loading overlay
+        self._show_loading(False)
+
+        if success:
+            self._show_info(_("Session exported successfully"))
+        else:
+            try:
+                if output:
+                    result = json.loads(output)
+                    message = result.get('message', error or _('Export failed'))
+                else:
+                    message = error or _('Export failed')
+            except json.JSONDecodeError:
+                message = error or _('Export failed')
+            self._show_error(message)
+
+    def on_import_clicked(self, button):
+        """Handle import button click"""
+        # Check if sessions directory is writable
+        if not self.sessions_writable:
+            self._show_error(_("Sessions directory is not writable. Cannot import sessions."))
+            return
+
+        self._show_import_dialog()
+
+    def _show_import_dialog(self):
+        """Show import dialog"""
+        # Create file chooser dialog
+        dialog = Gtk.FileChooserDialog(
+            title=_("Import Session"),
+            parent=self.window,
+            action=Gtk.FileChooserAction.OPEN
+        )
+        dialog.add_buttons(
+            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+            Gtk.STOCK_OPEN, Gtk.ResponseType.OK
+        )
+
+        # Add file filter for tar.zst
+        filter_tar = Gtk.FileFilter()
+        filter_tar.set_name(_("TAR.ZSTD archives (*.tar.zst)"))
+        filter_tar.add_pattern("*.tar.zst")
+        dialog.add_filter(filter_tar)
+
+        filter_all = Gtk.FileFilter()
+        filter_all.set_name(_("All files"))
+        filter_all.add_pattern("*")
+        dialog.add_filter(filter_all)
+
+        response = dialog.run()
+        if response == Gtk.ResponseType.OK:
+            archive_path = dialog.get_filename()
+            dialog.destroy()
+
+            # Show options dialog
+            self._show_import_options_dialog(archive_path)
+        else:
+            dialog.destroy()
+
+    def _show_import_options_dialog(self, archive_path):
+        """Show import options dialog"""
+        dialog = Gtk.Dialog(
+            title=_("Import Options"),
+            parent=self.window
+        )
+        dialog.add_buttons(
+            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+            Gtk.STOCK_OK, Gtk.ResponseType.OK
+        )
+
+        content_area = dialog.get_content_area()
+        content_area.set_spacing(10)
+        content_area.set_margin_start(10)
+        content_area.set_margin_end(10)
+        content_area.set_margin_top(10)
+        content_area.set_margin_bottom(10)
+
+        # File info
+        file_label = Gtk.Label()
+        file_label.set_markup(f"<b>{_('Archive:')} {os.path.basename(archive_path)}</b>")
+        content_area.pack_start(file_label, False, False, 0)
+
+        # Auto-convert option
+        auto_convert_check = Gtk.CheckButton(label=_("Auto-convert to compatible mode if needed"))
+        auto_convert_check.set_active(True)
+        content_area.pack_start(auto_convert_check, False, False, 0)
+
+        # Force mode option
+        mode_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        mode_label = Gtk.Label(label=_("Force import to mode:"))
+        mode_combo = Gtk.ComboBoxText()
+        mode_combo.append("auto", _("Auto (from metadata)"))
+        mode_combo.append("native", "Native")
+        mode_combo.append("dynfilefs", "DynFileFS")
+        mode_combo.append("raw", "Raw")
+        mode_combo.set_active_id("auto")
+        mode_box.pack_start(mode_label, False, False, 0)
+        mode_box.pack_start(mode_combo, True, True, 0)
+        content_area.pack_start(mode_box, False, False, 0)
+
+        dialog.show_all()
+
+        response = dialog.run()
+        if response == Gtk.ResponseType.OK:
+            auto_convert = auto_convert_check.get_active()
+            force_mode = mode_combo.get_active_id()
+            if force_mode == "auto":
+                force_mode = None
+            dialog.destroy()
+
+            # Show loading overlay
+            self._show_loading(True, _("Importing session, please wait..."))
+
+            # Perform import in background
+            def import_session_bg():
+                try:
+                    args = ['import', archive_path, '--json']
+                    if auto_convert:
+                        args.append('--auto-convert')
+                    if force_mode:
+                        args.extend(['--force-mode', force_mode])
+
+                    success, output, error = self._run_cli_command(args)
+                    GLib.idle_add(self._on_import_complete, success, output, error)
+                except Exception as e:
+                    GLib.idle_add(self._on_import_complete, False, "", str(e))
+
+            thread = threading.Thread(target=import_session_bg)
+            thread.daemon = True
+            thread.start()
+        else:
+            dialog.destroy()
+
+    def _on_import_complete(self, success, output, error):
+        """Handle import completion"""
+        # Hide loading overlay
+        self._show_loading(False)
+
+        if success:
+            self._show_info(_("Session imported successfully"))
+            self.refresh_session_list()
+        else:
+            try:
+                if output:
+                    result = json.loads(output)
+                    message = result.get('message', error or _('Import failed'))
+                else:
+                    message = error or _('Import failed')
+            except json.JSONDecodeError:
+                message = error or _('Import failed')
+            self._show_error(message)
+
+    def _show_copy_dialog(self, session_id):
+        """Show copy dialog for a session"""
+        # Create copy dialog
+        dialog = Gtk.Dialog(
+            title=_("Copy Session {}").format(session_id),
+            parent=self.window
+        )
+        dialog.add_buttons(
+            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+            Gtk.STOCK_OK, Gtk.ResponseType.OK
+        )
+
+        content_area = dialog.get_content_area()
+        content_area.set_spacing(10)
+        content_area.set_margin_start(10)
+        content_area.set_margin_end(10)
+        content_area.set_margin_top(10)
+        content_area.set_margin_bottom(10)
+
+        # Session info
+        info_label = Gtk.Label()
+        info_label.set_markup(f"<b>{_('Copy session:')} {session_id}</b>")
+        content_area.pack_start(info_label, False, False, 0)
+
+        # Convert mode option
+        convert_check = Gtk.CheckButton(label=_("Convert to different mode"))
+        content_area.pack_start(convert_check, False, False, 0)
+
+        # Mode selection
+        mode_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        mode_label = Gtk.Label(label=_("Target mode:"))
+        mode_combo = Gtk.ComboBoxText()
+        mode_combo.append("native", "Native")
+        mode_combo.append("dynfilefs", "DynFileFS")
+        mode_combo.append("raw", "Raw")
+        mode_combo.set_active_id("native")
+        mode_combo.set_sensitive(False)
+        mode_box.pack_start(mode_label, False, False, 0)
+        mode_box.pack_start(mode_combo, True, True, 0)
+        content_area.pack_start(mode_box, False, False, 0)
+
+        # Size input (for dynfilefs/raw)
+        size_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        size_label = Gtk.Label(label=_("Size (MB):"))
+        size_spin = Gtk.SpinButton()
+        size_spin.set_range(100, 100000)
+        size_spin.set_increments(100, 1000)
+        size_spin.set_value(1000)
+        size_spin.set_sensitive(False)
+        size_box.pack_start(size_label, False, False, 0)
+        size_box.pack_start(size_spin, True, True, 0)
+        content_area.pack_start(size_box, False, False, 0)
+
+        def on_convert_toggled(widget):
+            mode_combo.set_sensitive(widget.get_active())
+            mode = mode_combo.get_active_id()
+            size_spin.set_sensitive(widget.get_active() and mode in ['dynfilefs', 'raw'])
+
+        def on_mode_changed(widget):
+            mode = widget.get_active_id()
+            size_spin.set_sensitive(convert_check.get_active() and mode in ['dynfilefs', 'raw'])
+
+        convert_check.connect("toggled", on_convert_toggled)
+        mode_combo.connect("changed", on_mode_changed)
+
+        dialog.show_all()
+
+        response = dialog.run()
+        if response == Gtk.ResponseType.OK:
+            convert = convert_check.get_active()
+            target_mode = mode_combo.get_active_id() if convert else None
+            size_mb = int(size_spin.get_value()) if convert and target_mode in ['dynfilefs', 'raw'] else None
+            dialog.destroy()
+
+            # Show loading overlay
+            self._show_loading(True, _("Copying session, please wait..."))
+
+            # Perform copy in background
+            def copy_session_bg():
+                try:
+                    args = ['copy', session_id, '--json']
+                    if target_mode:
+                        args.extend(['--to-mode', target_mode])
+                    if size_mb:
+                        args.extend(['--size', str(size_mb)])
+
+                    success, output, error = self._run_cli_command(args)
+                    GLib.idle_add(self._on_copy_complete, success, output, error)
+                except Exception as e:
+                    GLib.idle_add(self._on_copy_complete, False, "", str(e))
+
+            thread = threading.Thread(target=copy_session_bg)
+            thread.daemon = True
+            thread.start()
+        else:
+            dialog.destroy()
+
+    def _on_copy_complete(self, success, output, error):
+        """Handle copy completion"""
+        # Hide loading overlay
+        self._show_loading(False)
+
+        if success:
+            self._show_info(_("Session copied successfully"))
+            self.refresh_session_list()
+        else:
+            try:
+                if output:
+                    result = json.loads(output)
+                    message = result.get('message', error or _('Copy failed'))
+                else:
+                    message = error or _('Copy failed')
+            except json.JSONDecodeError:
+                message = error or _('Copy failed')
+            self._show_error(message)
+
+    def _show_convert_dialog(self, session_id):
+        """Show convert dialog for a session"""
+        # Get session information
+        sessions = self._run_cli_command(['list', '--json'])[1]
+        if not sessions:
+            self._show_error(_("Failed to get session information"))
+            return
+
+        try:
+            sessions_data = json.loads(sessions)
+            session_info = None
+            for session in sessions_data:
+                if session['id'] == session_id:
+                    session_info = session
+                    break
+
+            if not session_info:
+                self._show_error(_("Session not found"))
+                return
+
+            current_mode = session_info.get('mode', 'unknown')
+
+        except (json.JSONDecodeError, KeyError):
+            self._show_error(_("Failed to parse session information"))
+            return
+
+        # Create convert dialog
+        dialog = Gtk.Dialog(
+            title=_("Convert Session {}").format(session_id),
+            parent=self.window
+        )
+        dialog.add_buttons(
+            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+            Gtk.STOCK_OK, Gtk.ResponseType.OK
+        )
+
+        content_area = dialog.get_content_area()
+        content_area.set_spacing(10)
+        content_area.set_margin_start(10)
+        content_area.set_margin_end(10)
+        content_area.set_margin_top(10)
+        content_area.set_margin_bottom(10)
+
+        # Session info
+        info_label = Gtk.Label()
+        info_label.set_markup(f"<b>{_('Convert session:')} {session_id}</b>")
+        content_area.pack_start(info_label, False, False, 0)
+
+        current_label = Gtk.Label(label=_("Current mode: {}").format(current_mode))
+        content_area.pack_start(current_label, False, False, 0)
+
+        # Target mode selection
+        mode_label = Gtk.Label(label=_("Target mode:"))
+        content_area.pack_start(mode_label, False, False, 0)
+
+        mode_combo = Gtk.ComboBoxText()
+        for mode in ['native', 'dynfilefs', 'raw']:
+            if mode != current_mode:
+                mode_combo.append(mode, mode.capitalize())
+        mode_combo.set_active(0)
+        content_area.pack_start(mode_combo, False, False, 0)
+
+        # Size input (for dynfilefs/raw)
+        size_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        size_label = Gtk.Label(label=_("Size (MB):"))
+        size_spin = Gtk.SpinButton()
+        size_spin.set_range(100, 100000)
+        size_spin.set_increments(100, 1000)
+        # Use current session size as default if available
+        default_size = 1000
+        if session_info.get('total_size'):
+            # dynfilefs: total_size is in bytes, convert to MB
+            default_size = int(session_info['total_size'] / (1024 * 1024))
+        elif current_mode == 'raw' and session_info.get('size'):
+            # raw: size field contains the image file size in bytes
+            default_size = int(session_info['size'] / (1024 * 1024))
+        elif current_mode == 'native' and session_info.get('size'):
+            # native: use actual size + 100 MB
+            default_size = int(session_info['size'] / (1024 * 1024)) + 100
+        elif session_info.get('total_size_mb'):
+            default_size = session_info['total_size_mb']
+            if isinstance(default_size, str):
+                try:
+                    default_size = int(default_size)
+                except ValueError:
+                    default_size = 1000
+        size_spin.set_value(default_size)
+        size_box.pack_start(size_label, False, False, 0)
+        size_box.pack_start(size_spin, True, True, 0)
+        content_area.pack_start(size_box, False, False, 0)
+
+        def on_mode_changed(widget):
+            mode = widget.get_active_id()
+            size_spin.set_sensitive(mode in ['dynfilefs', 'raw'])
+
+        mode_combo.connect("changed", on_mode_changed)
+        on_mode_changed(mode_combo)  # Initialize
+
+        dialog.show_all()
+
+        response = dialog.run()
+        if response == Gtk.ResponseType.OK:
+            target_mode = mode_combo.get_active_id()
+            size_mb = int(size_spin.get_value()) if target_mode in ['dynfilefs', 'raw'] else None
+            dialog.destroy()
+
+            # Show loading overlay
+            self._show_loading(True, _("Converting session, please wait..."))
+
+            # Perform convert in background
+            def convert_session_bg():
+                try:
+                    args = ['convert', session_id, target_mode, '--json']
+                    if size_mb:
+                        args.extend(['--size', str(size_mb)])
+
+                    success, output, error = self._run_cli_command(args)
+                    GLib.idle_add(self._on_convert_complete, success, output, error)
+                except Exception as e:
+                    GLib.idle_add(self._on_convert_complete, False, "", str(e))
+
+            thread = threading.Thread(target=convert_session_bg)
+            thread.daemon = True
+            thread.start()
+        else:
+            dialog.destroy()
+
+    def _on_convert_complete(self, success, output, error):
+        """Handle convert completion"""
+        # Hide loading overlay
+        self._show_loading(False)
+
+        if success:
+            self._show_info(_("Session converted successfully"))
+            self.refresh_session_list()
+        else:
+            try:
+                if output:
+                    result = json.loads(output)
+                    message = result.get('message', error or _('Convert failed'))
+                else:
+                    message = error or _('Convert failed')
+            except json.JSONDecodeError:
+                message = error or _('Convert failed')
+            self._show_error(message)
+
     def run(self):
         """Start the application"""
         self.window.show_all()

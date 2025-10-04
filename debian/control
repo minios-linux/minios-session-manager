@@ -10,9 +10,12 @@ Vcs-Browser: https://github.com/minios-linux/minios-live
 
 Package: minios-session-manager
 Architecture: all
-Depends: ${misc:Depends}, python3, python3-gi, gir1.2-gtk-3.0, dynfilefs, polkitd | policykit-1, pkexec | policykit-1
+Depends: ${misc:Depends}, python3, python3-gi, gir1.2-gtk-3.0, dynfilefs, polkitd | policykit-1, pkexec | policykit-1, zstd, e2fsprogs, util-linux
 Description: MiniOS session management utility
  A utility for managing MiniOS persistent sessions from within
  the running system. Provides both command-line and graphical
- interfaces for viewing, creating, activating, deleting, and 
- cleaning up sessions.
+ interfaces for viewing, creating, activating, deleting, exporting,
+ importing, copying, converting, and cleaning up sessions.
+ .
+ Supports multiple session modes (native, dynfilefs, raw) and works
+ on various filesystems including ext4, FAT32, NTFS, and exFAT.

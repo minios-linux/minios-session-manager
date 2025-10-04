@@ -1,3 +1,42 @@
+minios-session-manager (1.1.0) unstable; urgency=medium
+
+  * Add session export and import functionality
+    - Export sessions to .tar.zst archives
+    - Import sessions from archives
+    - Support mode change on import (native/dynfilefs/raw)
+    - Automatic conversion to compatible mode
+    - Skip metadata files and existing files during import
+  * Add session copy and conversion functionality
+    - Copy sessions with optional mode change
+    - Convert existing sessions between modes
+    - Support all combinations: native <> dynfilefs <> raw
+  * Add full FAT32/NTFS filesystem support
+    - Use fallocate instead of sparse files for raw sessions
+    - Add sync after mkfs.ext4 for FAT32/NTFS compatibility
+    - Remove /tmp dependency, use sessions_dir for temporary files
+  * Add disk space checking for all operations
+    - Check free space before creating sessions
+    - Check free space before exporting (with compression overhead)
+    - Check free space before importing and copying sessions
+  * Fix session size handling
+    - Fix size preservation during copy operations
+    - Use source session size as default during conversion
+    - Change default size from 4000MB to 1000MB
+    - Fix GUI SpinButton range (100-100000 instead of 1000-100000)
+    - Fix size_mb type conversion (string to int) in raw mode
+    - Correct conversion from bytes to megabytes
+  * Improve reliability
+    - Fix conversion failures on FAT32 filesystems
+    - Proper handling of empty sessions
+    - Fix GUI crash when showing success messages
+  * Add helper functions
+    - Detect MiniOS version and edition
+    - Bash completion for new commands
+  * Update documentation
+  * Update translations
+
+ -- crims0n <crims0n@minios.dev>  Sat, 04 Oct 2025 13:25:56 +0300
+
 minios-session-manager (1.0.0) unstable; urgency=medium
 
   * Initial release

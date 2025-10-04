@@ -5,7 +5,7 @@ _minios_session() {
     prev="${COMP_WORDS[COMP_CWORD - 1]}"
     
     # Main commands
-    subcommands="list active running info activate create delete resize cleanup status"
+    subcommands="list active running info activate create delete resize cleanup status export import copy convert"
     
     # Global options
     global_opts="--help --json --sessions-dir"
@@ -14,7 +14,7 @@ _minios_session() {
     local subcommand=""
     local subcommand_pos=1
     for ((i=1; i<${#COMP_WORDS[@]}; i++)); do
-        if [[ "${COMP_WORDS[i]}" =~ ^(list|active|running|info|activate|create|delete|resize|cleanup|status)$ ]]; then
+        if [[ "${COMP_WORDS[i]}" =~ ^(list|active|running|info|activate|create|delete|resize|cleanup|status|export|import|copy|convert)$ ]]; then
             subcommand="${COMP_WORDS[i]}"
             subcommand_pos=$i
             break
@@ -176,6 +176,117 @@ _minios_session() {
                     if [[ ${cur} == -* ]]; then
                         local info_opts="--help --json --sessions-dir"
                         COMPREPLY=($(compgen -W "${info_opts}" -- ${cur}))
+                    fi
+                    ;;
+            esac
+            ;;
+
+        export)
+            # Count non-option arguments after export command
+            local arg_count=0
+            for ((i=$((subcommand_pos + 1)); i<COMP_CWORD; i++)); do
+                if [[ ! "${COMP_WORDS[i]}" =~ ^- ]]; then
+                    ((arg_count++))
+                fi
+            done
+
+            case "${prev}" in
+                --sessions-dir)
+                    COMPREPLY=($(compgen -d -- ${cur}))
+                    ;;
+                *)
+                    if [[ ${cur} == -* ]]; then
+                        local export_opts="--help --json --sessions-dir --no-verify"
+                        COMPREPLY=($(compgen -W "${export_opts}" -- ${cur}))
+                    elif [[ $arg_count -eq 0 ]]; then
+                        # First argument: session ID
+                        local sessions=$(_get_sessions)
+                        COMPREPLY=($(compgen -W "${sessions}" -- ${cur}))
+                    elif [[ $arg_count -eq 1 ]]; then
+                        # Second argument: output path (directory)
+                        COMPREPLY=($(compgen -d -- ${cur}))
+                    fi
+                    ;;
+            esac
+            ;;
+
+        import)
+            case "${prev}" in
+                --sessions-dir)
+                    COMPREPLY=($(compgen -d -- ${cur}))
+                    ;;
+                --force-mode)
+                    local modes="native dynfilefs raw"
+                    COMPREPLY=($(compgen -W "${modes}" -- ${cur}))
+                    ;;
+                *)
+                    if [[ ${cur} == -* ]]; then
+                        local import_opts="--help --json --sessions-dir --auto-convert --force-mode --no-verify --skip-compatibility-check"
+                        COMPREPLY=($(compgen -W "${import_opts}" -- ${cur}))
+                    else
+                        # Complete .tar.zst files
+                        COMPREPLY=($(compgen -f -X '!*.tar.zst' -- ${cur}))
+                    fi
+                    ;;
+            esac
+            ;;
+
+        copy)
+            case "${prev}" in
+                --sessions-dir)
+                    COMPREPLY=($(compgen -d -- ${cur}))
+                    ;;
+                --to-mode)
+                    local modes="native dynfilefs raw"
+                    COMPREPLY=($(compgen -W "${modes}" -- ${cur}))
+                    ;;
+                --size)
+                    local size_suggestions="1000 2000 4000 6000 8000"
+                    COMPREPLY=($(compgen -W "${size_suggestions}" -- ${cur}))
+                    ;;
+                copy)
+                    # Get available sessions
+                    local sessions=$(_get_sessions)
+                    COMPREPLY=($(compgen -W "${sessions}" -- ${cur}))
+                    ;;
+                *)
+                    if [[ ${cur} == -* ]]; then
+                        local copy_opts="--help --json --sessions-dir --to-mode --size"
+                        COMPREPLY=($(compgen -W "${copy_opts}" -- ${cur}))
+                    fi
+                    ;;
+            esac
+            ;;
+
+        convert)
+            # Count non-option arguments after convert command
+            local arg_count=0
+            for ((i=$((subcommand_pos + 1)); i<COMP_CWORD; i++)); do
+                if [[ ! "${COMP_WORDS[i]}" =~ ^- ]]; then
+                    ((arg_count++))
+                fi
+            done
+
+            case "${prev}" in
+                --sessions-dir)
+                    COMPREPLY=($(compgen -d -- ${cur}))
+                    ;;
+                --size)
+                    local size_suggestions="1000 2000 4000 6000 8000"
+                    COMPREPLY=($(compgen -W "${size_suggestions}" -- ${cur}))
+                    ;;
+                *)
+                    if [[ ${cur} == -* ]]; then
+                        local convert_opts="--help --json --sessions-dir --size --new-session"
+                        COMPREPLY=($(compgen -W "${convert_opts}" -- ${cur}))
+                    elif [[ $arg_count -eq 0 ]]; then
+                        # First argument: session ID
+                        local sessions=$(_get_sessions)
+                        COMPREPLY=($(compgen -W "${sessions}" -- ${cur}))
+                    elif [[ $arg_count -eq 1 ]]; then
+                        # Second argument: target mode
+                        local modes="native dynfilefs raw"
+                        COMPREPLY=($(compgen -W "${modes}" -- ${cur}))
                     fi
                     ;;
             esac

@@ -45,7 +45,7 @@ Create a new session with the specified mode and optional size. The new session 
 Session mode: native, dynfilefs, or raw (default: native). If the default native mode is not compatible with the current filesystem, the command will fail with an error message suggesting alternative modes.
 .TP
 \fIsize\fR (optional)
-Size in MB for dynfilefs and raw modes (default: 4000). For FAT32 filesystems, raw images are limited to 4000MB maximum.
+Size in MB for dynfilefs and raw modes (default: 1000).
 .RE
 .TP
 .B delete \fIsession_id\fR
@@ -65,6 +65,65 @@ ID of the session to resize
 .TP
 \fIsize\fR (required)
 New size in MB. Must be larger than current size.
+.RE
+.TP
+.B export \fIsession_id\fR \fIoutput_path\fR [\-\-no-verify]
+Export a session to a .tar.zst archive file. The archive contains all session data and metadata in a unified format.
+.RS
+.TP
+\fIsession_id\fR (required)
+ID of the session to export
+.TP
+\fIoutput_path\fR (required)
+Path to output file or directory. If directory is provided, filename is auto-generated.
+.TP
+\fB\-\-no-verify\fR (optional)
+Skip archive verification after creation
+.RE
+.TP
+.B import \fIarchive_path\fR [\-\-auto-convert] [\-\-force-mode \fIMODE\fR] [\-\-no-verify]
+Import a session from a .tar.zst archive file. Supports automatic mode conversion.
+.RS
+.TP
+\fIarchive_path\fR (required)
+Path to the archive file (.tar.zst)
+.TP
+\fB\-\-auto-convert\fR (optional)
+Automatically convert to compatible mode for current filesystem
+.TP
+\fB\-\-force-mode\fR \fIMODE\fR (optional)
+Force import as specific mode (native/dynfilefs/raw)
+.TP
+\fB\-\-no-verify\fR (optional)
+Skip session integrity verification after import
+.RE
+.TP
+.B copy \fIsession_id\fR [\-\-to-mode \fIMODE\fR] [\-\-size \fISIZE\fR]
+Copy a session, optionally converting to a different mode.
+.RS
+.TP
+\fIsession_id\fR (required)
+ID of the session to copy
+.TP
+\fB\-\-to-mode\fR \fIMODE\fR (optional)
+Convert to different mode: native, dynfilefs, or raw
+.TP
+\fB\-\-size\fR \fISIZE\fR (optional)
+Size in MB for dynfilefs/raw modes (default: 1000)
+.RE
+.TP
+.B convert \fIsession_id\fR \fItarget_mode\fR [\-\-size \fISIZE\fR]
+Convert an existing session to a different mode in-place.
+.RS
+.TP
+\fIsession_id\fR (required)
+ID of the session to convert
+.TP
+\fItarget_mode\fR (required)
+Target mode: native, dynfilefs, or raw
+.TP
+\fB\-\-size\fR \fISIZE\fR (optional)
+Size in MB for dynfilefs/raw modes (default: 1000)
 .RE
 .TP
 .B cleanup [\-\-days \fIN\fR]
@@ -103,7 +162,7 @@ without mode: Uses native mode, may fail on non-POSIX filesystems
 .TP
 - 
 .B create
-without size: Uses 4000MB (4GB) for dynfilefs and raw modes
+without size: Uses 1000MB for dynfilefs and raw modes
 .TP
 - 
 .B cleanup
@@ -119,7 +178,7 @@ MiniOS supports three persistence modes for different storage scenarios:
 Direct storage on POSIX-compatible filesystems (ext4, btrfs, etc.). This is the default and most efficient mode for compatible filesystems.
 .TP
 .B dynfilefs
-Dynamic file-based storage suitable for non-POSIX filesystems (FAT32, NTFS). Creates expandable container files.
+Dynamic file-based storage suitable for non-POSIX filesystems (FAT32, NTFS, exFAT). Creates expandable container files.
 .TP
 .B raw
 Fixed-size image file storage compatible with any filesystem. Requires pre-allocation of storage space.
@@ -129,11 +188,8 @@ The tool automatically detects your media's filesystem type and restricts sessio
 .B POSIX Filesystems (ext2/3/4, btrfs, xfs, f2fs)
 All session modes supported. Native mode recommended for best performance.
 .TP
-.B FAT32 (vfat, msdos)
-Only DynFileFS and Raw modes supported. Raw images limited to 4GB maximum due to filesystem constraints.
-.TP
-.B NTFS and exFAT
-Only DynFileFS and Raw modes supported. No file size limitations.
+.B FAT32, NTFS, and exFAT
+Only DynFileFS and Raw modes supported. Fully compatible with all session operations.
 .TP
 .B Read-only Media
 No session creation possible. Sessions can only be activated or listed.
@@ -177,6 +233,34 @@ Create sessions:
 Resize session:
 .RS
 .B minios-session resize 2 8000
+.RE
+.PP
+Export session:
+.RS
+.B minios-session export 3 /tmp/backup.tar.zst
+.br
+.B minios-session export 3 /tmp/
+.RE
+.PP
+Import session:
+.RS
+.B minios-session import /tmp/backup.tar.zst
+.br
+.B minios-session import /tmp/backup.tar.zst --force-mode dynfilefs
+.br
+.B minios-session import /tmp/backup.tar.zst --auto-convert
+.RE
+.PP
+Copy session:
+.RS
+.B minios-session copy 2
+.br
+.B minios-session copy 2 --to-mode raw --size 2000
+.RE
+.PP
+Convert session:
+.RS
+.B minios-session convert 3 dynfilefs --size 1000
 .RE
 .PP
 JSON output:
