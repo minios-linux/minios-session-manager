@@ -215,6 +215,7 @@ class SessionManager:
             # Common locations for session storage
             possible_paths = [
                 "/run/initramfs/memory/data/minios/changes",
+                "/lib/live/mount/data/minios/changes",
             ]
             
             for path in possible_paths:

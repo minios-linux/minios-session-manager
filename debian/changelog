@@ -1,3 +1,9 @@
+minios-session-manager (1.1.1) unstable; urgency=medium
+
+  * Add dracut-based initrd support
+
+ -- crims0n <crims0n@minios.dev>  Mon, 06 Oct 2025 21:02:16 +0300
+
 minios-session-manager (1.1.0) unstable; urgency=medium
 
   * Add session export and import functionality

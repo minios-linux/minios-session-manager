@@ -33,7 +33,11 @@ _minios_session() {
     
     # Helper function to get available sessions
     _get_sessions() {
-        local sessions_dir="/run/initramfs/memory/data/minios/changes"
+        if [ -d "/run/initramfs/memory/data/minios/changes" ]; then
+            local sessions_dir="/run/initramfs/memory/data/minios/changes"
+        elif [ -d "/lib/live/mount/data/minios/changes" ]; then
+            local sessions_dir="/lib/live/mount/data/minios/changes"
+        fi
         local custom_dir=""
         
         # Check if custom sessions directory is specified
