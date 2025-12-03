@@ -15,9 +15,17 @@ import subprocess
 import sys
 import tempfile
 import time
+import contextlib
+import signal
 from datetime import datetime
 from pathlib import Path
 import gettext
+
+# Handle SIGTERM to ensure finally blocks run (cleanup)
+def _handle_sigterm(signum, frame):
+    raise SystemExit(1)
+
+signal.signal(signal.SIGTERM, _handle_sigterm)
 
 # Internationalization setup
 def _(message):
@@ -540,7 +548,7 @@ class SessionManager:
                 'device': device,
                 'mount_options': mount_options,
                 'is_readonly': 'ro' in mount_options,
-                'is_posix_compatible': filesystem_type in ['ext2', 'ext3', 'ext4', 'btrfs', 'xfs', 'f2fs', 'reiserfs']
+                'is_posix_compatible': filesystem_type in ['ext2', 'ext3', 'ext4', 'btrfs', 'xfs', 'f2fs', 'reiserfs', 'tmpfs']
             }, None
             
         except Exception as e:
@@ -596,6 +604,202 @@ class SessionManager:
         
         return limitations
 
+    def _wait_for_mount(self, path, timeout=10):
+        """Wait for a file or directory to appear (polling)"""
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            if os.path.exists(path):
+                return True
+            time.sleep(0.1)
+        return False
+
+    @contextlib.contextmanager
+    def _mount_session_read(self, session_path, mode):
+        """Context manager to mount a session for reading"""
+        mount_point = None
+        virtual_mount = None
+        process = None
+        
+        try:
+            if mode == 'native':
+                # Check for OverlayFS structure
+                changes_dir = os.path.join(session_path, 'changes')
+                if os.path.exists(changes_dir) and os.path.isdir(changes_dir):
+                    yield changes_dir
+                else:
+                    yield session_path
+            
+            elif mode == 'dynfilefs':
+                changes_file = os.path.join(session_path, 'changes.dat')
+                if not os.path.exists(changes_file):
+                    raise Exception(_("DynFileFS container not found"))
+                
+                # Use system temp for mount point
+                mount_point = tempfile.mkdtemp(prefix="minios_dyn_read_")
+                
+                # Mount dynfilefs
+                cmd = ['dynfilefs', '-f', changes_file, '-m', mount_point]
+                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                
+                virtual_file = os.path.join(mount_point, 'virtual.dat')
+                if not self._wait_for_mount(virtual_file):
+                    raise Exception(_("Failed to mount dynfilefs (timeout)"))
+                    
+                # Mount virtual file
+                virtual_mount = tempfile.mkdtemp(prefix="minios_virt_read_")
+                subprocess.run(['mount', '-o', 'loop,ro', virtual_file, virtual_mount], check=True)
+                
+                # Check for OverlayFS structure inside
+                changes_dir = os.path.join(virtual_mount, 'changes')
+                if os.path.exists(changes_dir) and os.path.isdir(changes_dir):
+                    yield changes_dir
+                else:
+                    yield virtual_mount
+            
+            elif mode == 'raw':
+                image_file = os.path.join(session_path, 'changes.img')
+                if not os.path.exists(image_file):
+                    raise Exception(_("Raw image not found"))
+                
+                mount_point = tempfile.mkdtemp(prefix="minios_raw_read_")
+                subprocess.run(['mount', '-o', 'loop,ro', image_file, mount_point], check=True)
+                
+                changes_dir = os.path.join(mount_point, 'changes')
+                if os.path.exists(changes_dir) and os.path.isdir(changes_dir):
+                    yield changes_dir
+                else:
+                    yield mount_point
+            
+            else:
+                raise Exception(_("Unknown session mode: {}").format(mode))
+                
+        finally:
+            if virtual_mount:
+                subprocess.run(['sync'], capture_output=True)
+                # Try to unmount virtual fs
+                for i in range(3):
+                    res = subprocess.run(['umount', virtual_mount], capture_output=True)
+                    if res.returncode == 0:
+                        break
+                    time.sleep(1)
+                shutil.rmtree(virtual_mount, ignore_errors=True)
+            
+            if process: # dynfilefs
+                # Try to unmount fuse
+                for i in range(3):
+                    res = subprocess.run(['fusermount', '-u', mount_point], capture_output=True)
+                    if res.returncode == 0:
+                        break
+                    time.sleep(1)
+                
+                # Give it a chance to exit gracefully
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.terminate()
+                    process.wait()
+            elif mode == 'raw' and mount_point: # raw unmount
+                subprocess.run(['umount', mount_point], capture_output=True)
+                
+            if mount_point and os.path.exists(mount_point):
+                shutil.rmtree(mount_point, ignore_errors=True)
+
+    @contextlib.contextmanager
+    def _mount_session_write(self, session_path, mode, size_mb=None):
+        """Context manager to mount a session for writing"""
+        mount_point = None
+        virtual_mount = None
+        process = None
+        
+        try:
+            os.makedirs(session_path, exist_ok=True)
+            
+            if mode == 'native':
+                # Use changes directory for native sessions to match OverlayFS structure
+                changes_dir = os.path.join(session_path, 'changes')
+                os.makedirs(changes_dir, exist_ok=True)
+                yield changes_dir
+            
+            elif mode == 'dynfilefs':
+                if not size_mb: size_mb = 4000
+                changes_file = os.path.join(session_path, 'changes.dat')
+                mount_point = tempfile.mkdtemp(prefix="minios_dyn_write_")
+                
+                cmd = ['dynfilefs', '-f', changes_file, '-m', mount_point, '-s', str(size_mb), '-p', '4000']
+                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                
+                virtual_file = os.path.join(mount_point, 'virtual.dat')
+                if not self._wait_for_mount(virtual_file):
+                    raise Exception(_("Failed to create dynfilefs (timeout)"))
+                    
+                # Only format if new (size check is a rough proxy, better to check if file existed before)
+                # But here we assume we are setting up for write. 
+                # If changes.dat didn't exist, dynfilefs created it empty.
+                # We need to check if it has a filesystem.
+                # For simplicity in this refactor, we assume if we are calling this, we might be creating or writing.
+                # If it's a new session creation, we need to format.
+                # Let's check if we can mount it first.
+                
+                virtual_mount = tempfile.mkdtemp(prefix="minios_virt_write_")
+                mount_result = subprocess.run(['mount', '-o', 'loop', virtual_file, virtual_mount], capture_output=True)
+                
+                if mount_result.returncode != 0:
+                    # Not formatted, format it
+                    subprocess.run(['mke2fs', '-F', '-t', 'ext4', virtual_file], capture_output=True)
+                    subprocess.run(['sync'], capture_output=True)
+                    subprocess.run(['mount', '-o', 'loop', virtual_file, virtual_mount], check=True)
+                
+                yield virtual_mount
+                
+            elif mode == 'raw':
+                if not size_mb: size_mb = 4000
+                image_file = os.path.join(session_path, 'changes.img')
+                size_bytes = size_mb * 1024 * 1024
+                
+                if not os.path.exists(image_file):
+                    subprocess.run(['fallocate', '-l', str(size_bytes), image_file], capture_output=True)
+                    if not os.path.exists(image_file) or os.path.getsize(image_file) < size_bytes:
+                         with open(image_file, 'wb') as f: f.truncate(size_bytes)
+                    # Format new image
+                    subprocess.run(['mke2fs', '-F', '-t', 'ext4', image_file], capture_output=True)
+                    subprocess.run(['sync'], capture_output=True)
+                
+                mount_point = tempfile.mkdtemp(prefix="minios_raw_write_")
+                subprocess.run(['mount', '-o', 'loop', image_file, mount_point], check=True)
+                
+                yield mount_point
+                
+        finally:
+            if virtual_mount:
+                subprocess.run(['sync'], capture_output=True)
+                # Try to unmount virtual fs
+                for i in range(3):
+                    res = subprocess.run(['umount', virtual_mount], capture_output=True)
+                    if res.returncode == 0:
+                        break
+                    time.sleep(1)
+                shutil.rmtree(virtual_mount, ignore_errors=True)
+            
+            if process: # dynfilefs
+                # Try to unmount fuse
+                for i in range(3):
+                    res = subprocess.run(['fusermount', '-u', mount_point], capture_output=True)
+                    if res.returncode == 0:
+                        break
+                    time.sleep(1)
+                
+                # Give it a chance to exit gracefully
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.terminate()
+                    process.wait()
+            elif mode == 'raw' and mount_point: # raw unmount
+                subprocess.run(['umount', mount_point], capture_output=True)
+                
+            if mount_point and os.path.exists(mount_point):
+                shutil.rmtree(mount_point, ignore_errors=True)
+
     def _create_dynfilefs_session(self, session_path, initial_size_mb=1000):
         """Create a dynfilefs session structure"""
         try:
@@ -615,13 +819,12 @@ class SessionManager:
                 
                 # Run dynfilefs
                 process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                time.sleep(0.5)  # Give it time to mount
                 
                 # Check if mount was successful
                 virtual_file = os.path.join(temp_mount, "virtual.dat")
-                if not os.path.exists(virtual_file):
+                if not self._wait_for_mount(virtual_file):
                     process.terminate()
-                    return False, _("Failed to create dynfilefs virtual file")
+                    return False, _("Failed to create dynfilefs virtual file (timeout)")
                 
                 # Format the virtual file with ext4
                 format_cmd = ['mke2fs', '-F', '-t', 'ext4', virtual_file]
@@ -1033,6 +1236,31 @@ class SessionManager:
         except Exception as e:
             return False, _("Error deleting session: {}").format(str(e))
 
+    def cleanup_stale_temp_dirs(self, max_age_seconds=86400):
+        """Clean up stale temporary directories in sessions folder"""
+        if not self.sessions_dir or not os.path.exists(self.sessions_dir):
+            return 0
+            
+        count = 0
+        now = time.time()
+        
+        try:
+            for item in os.listdir(self.sessions_dir):
+                if item.startswith(".tmp_"):
+                    path = os.path.join(self.sessions_dir, item)
+                    if os.path.isdir(path):
+                        try:
+                            stat = os.stat(path)
+                            if now - stat.st_mtime > max_age_seconds:
+                                shutil.rmtree(path, ignore_errors=True)
+                                count += 1
+                        except OSError:
+                            pass
+        except OSError:
+            pass
+            
+        return count
+
     def cleanup_old_sessions(self, days_threshold=30):
         """Clean up sessions older than specified days"""
         sessions = self.list_sessions()
@@ -1060,6 +1288,9 @@ class SessionManager:
                 deleted_count += 1
             else:
                 errors.append(f"Session {session['id']}: {message}")
+        
+        # Also cleanup stale temp dirs (older than 1 day)
+        self.cleanup_stale_temp_dirs(max_age_seconds=86400)
         
         return deleted_count, errors
 
@@ -1134,15 +1365,11 @@ class SessionManager:
                 # Start dynfilefs process
                 process = subprocess.Popen(mount_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 
-                # Give it time to mount and resize
-                import time
-                time.sleep(2)
-                
                 # Check if virtual.dat was created/resized
                 virtual_file = os.path.join(temp_mount, "virtual.dat")
-                if not os.path.exists(virtual_file):
+                if not self._wait_for_mount(virtual_file):
                     process.terminate()
-                    return False, _("Failed to create/resize virtual.dat file")
+                    return False, _("Failed to create/resize virtual.dat file (timeout)")
                 
                 # Now we need to resize the filesystem inside virtual.dat
                 # Resize the filesystem (will perform necessary checks)
@@ -1210,7 +1437,7 @@ class SessionManager:
             return False, _("Failed to resize raw session: {}").format(str(e))
 
     def export_session(self, session_id, output_path, verify=True):
-        """Export session to TAR.ZSTD archive
+        """Export session to TAR.ZSTD archive (streaming)
 
         Args:
             session_id: ID of session to export
@@ -1251,21 +1478,45 @@ class SessionManager:
         if not has_space:
             return False, space_error
 
-        # Create temporary directory for metadata
-        tmpdir = self._make_temp_dir()
         try:
-            # Prepare metadata
-            metadata = self._prepare_export_metadata(session_info)
-            metadata_file = os.path.join(tmpdir, 'metadata.json')
-            with open(metadata_file, 'w') as f:
-                json.dump(metadata, f, indent=2)
+            # Use temp directory in RAM (default temp) for metadata
+            with tempfile.TemporaryDirectory() as meta_dir:
+                # Prepare metadata
+                metadata = self._prepare_export_metadata(session_info)
+                metadata_file = os.path.join(meta_dir, 'metadata.json')
+                with open(metadata_file, 'w') as f:
+                    json.dump(metadata, f, indent=2)
 
-            # Create human-readable info
-            info_file = os.path.join(tmpdir, 'session.info')
-            self._create_session_info_file(session_info, info_file)
+                # Create human-readable info
+                info_file = os.path.join(meta_dir, 'session.info')
+                self._create_session_info_file(session_info, info_file)
 
-            # Create TAR.ZSTD archive
-            self._export_tar_zstd(session_path, output_file, tmpdir)
+                # Mount session and stream to archive
+                with self._mount_session_read(session_path, session_info['mode']) as source_dir:
+                    # Exclude list
+                    excludes = [
+                        '--exclude=workdir',
+                        '--exclude=.wh.*',
+                        '--exclude=.wh..wh.orph',
+                        '--exclude=.wh..wh.plnk',
+                        '--exclude=.wh..wh.aufs'
+                    ]
+                    
+                    # Construct tar command
+                    # We use transform to put metadata at root and files in data/
+                    # Use 'S' flag to prevent transforming symlink targets
+                    cmd = [
+                        'tar', '-cf', output_file,
+                        '--use-compress-program=zstd -3 -T0',
+                        '-C', meta_dir, 'metadata.json', 'session.info',
+                        '--transform', 's,^,data/,S',
+                    ] + excludes + [
+                        '-C', source_dir, '.'
+                    ]
+                    
+                    result = subprocess.run(cmd, capture_output=True)
+                    if result.returncode != 0:
+                        raise Exception(result.stderr.decode())
 
             # Verify if requested
             if verify:
@@ -1283,9 +1534,6 @@ class SessionManager:
             if os.path.exists(output_file):
                 os.remove(output_file)
             return False, _("Export failed: {}").format(str(e))
-        finally:
-            # Clean up temporary directory
-            shutil.rmtree(tmpdir, ignore_errors=True)
 
     def _prepare_export_metadata(self, session_info):
         """Prepare minimal export metadata
@@ -1323,43 +1571,7 @@ class SessionManager:
         with open(output_path, 'w') as f:
             f.write('\n'.join(lines))
 
-    def _export_tar_zstd(self, session_path, output_file, metadata_dir):
-        """Export session as TAR.ZSTD archive with unified format
 
-        All sessions are exported as raw file trees, regardless of original mode.
-        This allows importing into any mode on any filesystem.
-        """
-        # Check if zstd is available
-        try:
-            subprocess.run(['which', 'zstd'], capture_output=True, check=True)
-        except subprocess.CalledProcessError:
-            raise Exception(_("zstd not found. Please install zstd package."))
-
-        # Get session mode from metadata
-        with open(os.path.join(metadata_dir, 'metadata.json'), 'r') as f:
-            metadata = json.load(f)
-
-        session_mode = metadata['session']['mode']
-
-        # Extract session data to uniform format (raw file tree)
-        tmpdir = self._make_temp_dir()
-        try:
-            extracted_path = self._extract_session_to_files(session_path, session_mode, tmpdir)
-
-            # Create archive with uniform data
-            cmd = [
-                'tar', '-cf', output_file,
-                '--use-compress-program=zstd -3 -T0',
-                '-C', metadata_dir, 'metadata.json', 'session.info',
-                '--transform', 's,^,data/,',
-                '-C', extracted_path, '.'
-            ]
-
-            result = subprocess.run(cmd, capture_output=True)
-            if result.returncode != 0:
-                raise Exception(result.stderr.decode())
-        finally:
-            shutil.rmtree(tmpdir, ignore_errors=True)
 
     def _extract_session_to_files(self, session_path, mode, tmpdir):
         """Extract session data to raw file tree
@@ -1376,14 +1588,48 @@ class SessionManager:
         os.makedirs(extract_path)
 
         if mode == 'native':
-            # Already in raw format - just copy
-            for item in os.listdir(session_path):
-                src = os.path.join(session_path, item)
-                dst = os.path.join(extract_path, item)
-                if os.path.isdir(src):
-                    shutil.copytree(src, dst, symlinks=True)
-                else:
-                    shutil.copy2(src, dst)
+            # Extract only the upperdir content, not OverlayFS structure
+            # Check for OverlayFS structure (changes directory)
+            changes_dir = os.path.join(session_path, 'changes')
+            if os.path.exists(changes_dir) and os.path.isdir(changes_dir):
+                # OverlayFS: extract from changes directory
+                source_dir = changes_dir
+            else:
+                # AUFS or direct: files are in session_path itself
+                source_dir = session_path
+
+            # Copy files using rsync, excluding OverlayFS/AUFS metadata
+            os.makedirs(extract_path, exist_ok=True)
+
+            # Use rsync with filters to exclude problematic files
+            # Keep user .wh.* files (AUFS whiteouts for deleted files)
+            rsync_cmd = [
+                'rsync', '-aH',  # archive mode + preserve hard links
+                '--exclude=workdir',              # OverlayFS work directory
+                '--exclude=.wh..wh.orph',         # AUFS orphan directory
+                '--exclude=.wh..wh.plnk',         # AUFS pseudo-link directory
+                '--exclude=.wh..wh.aufs',         # AUFS metadata file
+                '--prune-empty-dirs',
+            ]
+
+            # Add trailing slashes for directory contents
+            rsync_cmd.append(source_dir.rstrip('/') + '/')
+            rsync_cmd.append(extract_path.rstrip('/') + '/')
+
+            try:
+                result = subprocess.run(rsync_cmd, capture_output=True, timeout=300, check=False)
+
+                # rsync may return 23 (partial transfer) if some special files couldn't be copied
+                # This is acceptable (e.g., char devices, sockets)
+                if result.returncode not in [0, 23, 24]:
+                    stderr_text = result.stderr.decode() if result.stderr else ""
+                    raise Exception(f"rsync failed with code {result.returncode}: {stderr_text}")
+
+            except subprocess.TimeoutExpired:
+                raise Exception("Copy operation timed out")
+            except Exception as e:
+                raise Exception(f"Failed to copy session files: {e}")
+
             return extract_path
 
         elif mode == 'dynfilefs':
@@ -1397,94 +1643,9 @@ class SessionManager:
         else:
             raise Exception(_("Unknown session mode: {}").format(mode))
 
-    def _extract_from_dynfilefs(self, session_path, extract_path):
-        """Extract files from dynfilefs container"""
-        changes_file = os.path.join(session_path, 'changes.dat')
 
-        if not os.path.exists(changes_file):
-            raise Exception(_("DynFileFS container not found"))
 
-        # Check if dynfilefs is available
-        try:
-            subprocess.run(['which', 'dynfilefs'], capture_output=True, check=True)
-        except subprocess.CalledProcessError:
-            raise Exception(_("dynfilefs not found. Cannot extract dynfilefs session."))
 
-        mount_point = self._make_temp_dir()
-        virtual_mount = None
-        process = None
-
-        try:
-            # Mount dynfilefs
-            cmd = ['dynfilefs', '-f', changes_file, '-m', mount_point]
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            time.sleep(3)  # Wait for mount
-
-            # Check if mounted
-            virtual_file = os.path.join(mount_point, 'virtual.dat')
-            if not os.path.exists(virtual_file):
-                raise Exception(_("Failed to mount dynfilefs"))
-
-            # Mount virtual file
-            virtual_mount = self._make_temp_dir()
-            result = subprocess.run(['mount', '-o', 'loop,ro', virtual_file, virtual_mount],
-                                  capture_output=True)
-            if result.returncode != 0:
-                raise Exception(_("Failed to mount virtual file"))
-
-            # Copy all files
-            for item in os.listdir(virtual_mount):
-                src = os.path.join(virtual_mount, item)
-                dst = os.path.join(extract_path, item)
-                if os.path.isdir(src):
-                    shutil.copytree(src, dst, symlinks=True)
-                else:
-                    shutil.copy2(src, dst)
-
-            return extract_path
-
-        finally:
-            # Cleanup
-            if virtual_mount:
-                subprocess.run(['umount', virtual_mount], capture_output=True)
-                shutil.rmtree(virtual_mount, ignore_errors=True)
-            if process:
-                subprocess.run(['fusermount', '-u', mount_point], capture_output=True)
-                process.terminate()
-                process.wait(timeout=5)
-            shutil.rmtree(mount_point, ignore_errors=True)
-
-    def _extract_from_raw(self, session_path, extract_path):
-        """Extract files from raw image"""
-        image_file = os.path.join(session_path, 'changes.img')
-
-        if not os.path.exists(image_file):
-            raise Exception(_("Raw image not found"))
-
-        mount_point = self._make_temp_dir()
-
-        try:
-            # Mount raw image
-            result = subprocess.run(['mount', '-o', 'loop,ro', image_file, mount_point],
-                                  capture_output=True)
-            if result.returncode != 0:
-                raise Exception(_("Failed to mount raw image"))
-
-            # Copy all files
-            for item in os.listdir(mount_point):
-                src = os.path.join(mount_point, item)
-                dst = os.path.join(extract_path, item)
-                if os.path.isdir(src):
-                    shutil.copytree(src, dst, symlinks=True)
-                else:
-                    shutil.copy2(src, dst)
-
-            return extract_path
-
-        finally:
-            # Cleanup
-            subprocess.run(['umount', mount_point], capture_output=True)
-            shutil.rmtree(mount_point, ignore_errors=True)
 
     def _verify_export(self, archive_file):
         """Verify TAR.ZSTD archive integrity"""
@@ -1506,8 +1667,8 @@ class SessionManager:
             return False
 
     def import_session(self, archive_path, auto_convert=False, force_mode=None,
-                      verify=True, skip_compatibility_check=False):
-        """Import session from TAR.ZSTD archive
+                       verify=True, skip_compatibility_check=False):
+        """Import session from TAR.ZSTD archive (streaming)
 
         Args:
             archive_path: Path to archive file
@@ -1527,10 +1688,9 @@ class SessionManager:
         if not archive_path.endswith('.tar.zst'):
             return False, _("Invalid archive format. Only .tar.zst files are supported.")
 
-        tmpdir = self._make_temp_dir()
         try:
-            # Extract metadata first
-            metadata = self._extract_metadata(archive_path, tmpdir)
+            # Extract metadata directly from archive
+            metadata = self._extract_metadata(archive_path)
             if not metadata:
                 return False, _("Invalid session archive: missing or corrupted metadata")
 
@@ -1549,9 +1709,6 @@ class SessionManager:
             elif auto_convert:
                 import_mode = self._select_compatible_mode(metadata)
 
-            # Check if conversion needed
-            needs_conversion = import_mode != metadata['session']['mode']
-
             # Check free disk space
             session_size_bytes = metadata['session'].get('size', 4000 * 1024 * 1024)
             if isinstance(session_size_bytes, int) and session_size_bytes > 100000:
@@ -1565,59 +1722,44 @@ class SessionManager:
             # Find next available session ID
             new_id = self._get_next_session_id()
             session_path = os.path.join(self.sessions_dir, str(new_id))
+            
+            # Determine size for container modes
+            size_mb = None
+            if import_mode in ['dynfilefs', 'raw']:
+                size_mb = max(100, int(required_mb))
 
-            # Extract archive
-            extract_path = os.path.join(tmpdir, 'extract')
-            os.makedirs(extract_path)
-            self._extract_archive(archive_path, extract_path)
+            # Import directly using streaming
+            try:
+                with self._mount_session_write(session_path, import_mode, size_mb) as target_dir:
+                    # Extract data/ content directly to target_dir
+                    # We use --strip-components=1 to remove 'data/' prefix
+                    # and --wildcards to only extract 'data/*'
+                    cmd = [
+                        'tar', '-xf', archive_path,
+                        '--use-compress-program=zstd -T0',
+                        '-C', target_dir,
+                        '--strip-components=1',
+                        '--wildcards', 'data/*'
+                    ]
+                    
+                    result = subprocess.run(cmd, capture_output=True)
+                    if result.returncode != 0:
+                        # Try without data/ prefix (legacy archives)
+                        cmd = [
+                            'tar', '-xf', archive_path,
+                            '--use-compress-program=zstd -T0',
+                            '-C', target_dir,
+                            '--exclude=metadata.json',
+                            '--exclude=session.info'
+                        ]
+                        result_legacy = subprocess.run(cmd, capture_output=True)
+                        if result_legacy.returncode != 0:
+                             raise Exception(f"Extraction failed: {result.stderr.decode()} / {result_legacy.stderr.decode()}")
 
-            # Get data directory from extraction
-            data_path = os.path.join(extract_path, 'data')
-
-            # Check if there are any files/dirs besides metadata
-            has_data = False
-            for item in os.listdir(data_path):
-                if item not in ['metadata.json', 'session.info']:
-                    has_data = True
-                    break
-
-            # Use data_path as source (contains all session files)
-            session_data = data_path if has_data else None
-
-            # Handle empty sessions
-            if not session_data:
-                # Create empty session structure based on import_mode
-                os.makedirs(session_path, exist_ok=True)
-                if import_mode == 'native':
-                    # Just empty directory
-                    success = True
-                elif import_mode in ['dynfilefs', 'raw']:
-                    # Need to create empty container
-                    # Create a temporary empty directory to use as source
-                    empty_dir = self._make_temp_dir()
-                    try:
-                        size_mb = 1000  # Default size for empty sessions
-                        if import_mode == 'dynfilefs':
-                            success = self._import_to_dynfilefs(empty_dir, session_path, size_mb)
-                        else:  # raw
-                            success = self._import_to_raw(empty_dir, session_path, size_mb)
-                    finally:
-                        shutil.rmtree(empty_dir, ignore_errors=True)
-                else:
-                    success = True
-            else:
-                # Import/convert
-                if needs_conversion:
-                    success = self._import_with_conversion(
-                        session_data, session_path,
-                        metadata['session']['mode'], import_mode, metadata)
-                else:
-                    success = self._import_direct(session_data, session_path, import_mode, metadata)
-
-            if not success:
+            except Exception as e:
                 if os.path.exists(session_path):
                     shutil.rmtree(session_path)
-                return False, _("Failed to import session data")
+                return False, _("Failed to import session data: {}").format(str(e))
 
             # Create metadata entry
             self._create_session_metadata(new_id, import_mode, metadata)
@@ -1632,26 +1774,28 @@ class SessionManager:
 
         except Exception as e:
             return False, _("Import failed: {}").format(str(e))
-        finally:
-            shutil.rmtree(tmpdir, ignore_errors=True)
 
-    def _extract_metadata(self, archive_path, tmpdir):
-        """Extract and return metadata from archive"""
+    def _extract_metadata(self, archive_path, tmpdir=None):
+        """Extract and return metadata from archive (reads directly from archive)"""
         try:
-            # Extract only metadata.json
-            cmd = ['tar', '-xf', archive_path,
-                   '--use-compress-program=zstd -T0',
-                   '-C', tmpdir,
-                   'data/metadata.json']
+            # Extract metadata.json to stdout
+            cmd = ['tar', '-xO', '-f', archive_path,
+                   '--use-compress-program=zstd',
+                   'metadata.json']
             result = subprocess.run(cmd, capture_output=True)
 
             if result.returncode != 0:
-                return None
+                # Try with data/ prefix (unified format)
+                cmd = ['tar', '-xO', '-f', archive_path,
+                       '--use-compress-program=zstd',
+                       'data/metadata.json']
+                result = subprocess.run(cmd, capture_output=True)
+                
+                if result.returncode != 0:
+                    return None
 
-            # Read metadata
-            metadata_file = os.path.join(tmpdir, 'data', 'metadata.json')
-            with open(metadata_file, 'r') as f:
-                return json.load(f)
+            # Parse JSON from stdout
+            return json.loads(result.stdout.decode('utf-8'))
         except Exception:
             return None
 
@@ -1722,217 +1866,13 @@ class SessionManager:
 
         return 'native'
 
-    def _import_direct(self, source_path, target_path, target_mode, metadata):
-        """Import session data (unified format - always raw files)
 
-        Since export creates unified format (raw file tree),
-        this method creates the session in the target mode.
-        """
-        # Get size from metadata if available
-        size_mb = None
-        if target_mode in ['dynfilefs', 'raw']:
-            size_bytes = metadata['session'].get('size', 4000 * 1024 * 1024)
-            # Convert bytes to MB
-            if isinstance(size_bytes, int) and size_bytes > 100000:
-                size_mb = max(100, int(size_bytes / (1024 * 1024)))
-            elif isinstance(size_bytes, str):
-                try:
-                    size_mb = int(size_bytes)
-                except (ValueError, TypeError):
-                    size_mb = 1000
-            else:
-                size_mb = int(size_bytes) if size_bytes > 100 else 4000
 
-        return self._import_files_to_mode(source_path, target_path, target_mode, size_mb)
 
-    def _import_with_conversion(self, source_path, target_path, source_mode,
-                                target_mode, metadata):
-        """Import with mode conversion (unified format)
 
-        Note: source_mode is ignored since archive always contains raw files.
-        """
-        size_bytes = metadata['session'].get('size', 4000 * 1024 * 1024)
 
-        # Convert bytes to MB
-        if isinstance(size_bytes, int) and size_bytes > 100000:
-            # If it's a large number, assume it's in bytes
-            size_mb = max(100, int(size_bytes / (1024 * 1024)))
-        elif isinstance(size_bytes, str):
-            try:
-                size_mb = int(size_bytes)
-            except (ValueError, TypeError):
-                size_mb = 1000
-        else:
-            # Small number, might already be MB or default
-            size_mb = int(size_bytes) if size_bytes > 100 else 4000
 
-        return self._import_files_to_mode(source_path, target_path, target_mode, size_mb)
 
-    def _import_files_to_mode(self, files_path, target_path, target_mode, size_mb=None):
-        """Import raw file tree into specified mode
-
-        Args:
-            files_path: Path to raw file tree
-            target_path: Target session directory
-            target_mode: Target mode (native/dynfilefs/raw)
-            size_mb: Size for container-based modes
-
-        Returns:
-            True on success, False on failure
-        """
-        try:
-            os.makedirs(target_path, exist_ok=True)
-
-            if target_mode == 'native':
-                # Direct copy (skip metadata files)
-                for item in os.listdir(files_path):
-                    if item in ['metadata.json', 'session.info']:
-                        continue
-                    src = os.path.join(files_path, item)
-                    dst = os.path.join(target_path, item)
-                    if os.path.isdir(src):
-                        shutil.copytree(src, dst, symlinks=True)
-                    else:
-                        shutil.copy2(src, dst)
-                return True
-
-            elif target_mode == 'dynfilefs':
-                # Create dynfilefs container and populate
-                return self._import_to_dynfilefs(files_path, target_path, size_mb or 4000)
-
-            elif target_mode == 'raw':
-                # Create raw image and populate
-                return self._import_to_raw(files_path, target_path, size_mb or 4000)
-
-            else:
-                return False
-
-        except Exception:
-            return False
-
-    def _import_to_dynfilefs(self, files_path, target_path, size_mb):
-        """Import files into dynfilefs container"""
-        # Check if dynfilefs is available
-        try:
-            subprocess.run(['which', 'dynfilefs'], capture_output=True, check=True)
-        except subprocess.CalledProcessError:
-            raise Exception(_("dynfilefs not found. Cannot create dynfilefs session."))
-
-        changes_file = os.path.join(target_path, 'changes.dat')
-        mount_point = self._make_temp_dir()
-        virtual_mount = None
-        process = None
-
-        try:
-            # Create and mount dynfilefs
-            cmd = ['dynfilefs', '-f', changes_file, '-m', mount_point,
-                   '-s', str(size_mb), '-p', '4000']
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            time.sleep(2)  # Wait for mount
-
-            # Check virtual file
-            virtual_file = os.path.join(mount_point, 'virtual.dat')
-            if not os.path.exists(virtual_file):
-                raise Exception(_("Failed to create dynfilefs"))
-
-            # Format virtual file
-            result = subprocess.run(['mke2fs', '-F', '-t', 'ext4', virtual_file],
-                                  capture_output=True)
-            # Sync to ensure filesystem is written (important for FAT32/NTFS)
-            subprocess.run(['sync'], capture_output=True)
-            if result.returncode != 0:
-                raise Exception(_("Failed to format dynfilefs"))
-
-            # Mount virtual file
-            virtual_mount = self._make_temp_dir()
-            result = subprocess.run(['mount', '-o', 'loop', virtual_file, virtual_mount],
-                                  capture_output=True)
-            if result.returncode != 0:
-                raise Exception(_("Failed to mount virtual file"))
-
-            # Copy all files (skip metadata files)
-            for item in os.listdir(files_path):
-                if item in ['metadata.json', 'session.info']:
-                    continue
-                src = os.path.join(files_path, item)
-                dst = os.path.join(virtual_mount, item)
-                # Skip existing files (like lost+found created by mkfs)
-                if os.path.exists(dst):
-                    continue
-                if os.path.isdir(src):
-                    shutil.copytree(src, dst, symlinks=True)
-                else:
-                    shutil.copy2(src, dst)
-
-            return True
-
-        finally:
-            # Cleanup
-            if virtual_mount:
-                subprocess.run(['umount', virtual_mount], capture_output=True)
-                shutil.rmtree(virtual_mount, ignore_errors=True)
-            if process:
-                subprocess.run(['fusermount', '-u', mount_point], capture_output=True)
-                process.terminate()
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-            shutil.rmtree(mount_point, ignore_errors=True)
-
-    def _import_to_raw(self, files_path, target_path, size_mb):
-        """Import files into raw image"""
-        image_file = os.path.join(target_path, 'changes.img')
-
-        # Create image with fallocate
-        try:
-            size_bytes = size_mb * 1024 * 1024
-            result = subprocess.run(['fallocate', '-l', str(size_bytes), image_file],
-                                  capture_output=True)
-            if result.returncode != 0:
-                # Fallback to truncate if fallocate not available
-                with open(image_file, 'wb') as f:
-                    f.truncate(size_bytes)
-        except Exception as e:
-            raise Exception(_("Failed to create raw image: {}").format(str(e)))
-
-        # Format with ext4
-        result = subprocess.run(['mke2fs', '-F', '-t', 'ext4', image_file],
-                              capture_output=True)
-        # Sync to ensure filesystem is written (important for FAT32/NTFS)
-        subprocess.run(['sync'], capture_output=True)
-        if result.returncode != 0:
-            raise Exception(_("Failed to format raw image"))
-
-        mount_point = self._make_temp_dir()
-
-        try:
-            # Mount image
-            result = subprocess.run(['mount', '-o', 'loop', image_file, mount_point],
-                                  capture_output=True)
-            if result.returncode != 0:
-                raise Exception(_("Failed to mount raw image"))
-
-            # Copy all files (skip metadata files)
-            for item in os.listdir(files_path):
-                if item in ['metadata.json', 'session.info']:
-                    continue
-                src = os.path.join(files_path, item)
-                dst = os.path.join(mount_point, item)
-                # Skip existing files (like lost+found created by mkfs)
-                if os.path.exists(dst):
-                    continue
-                if os.path.isdir(src):
-                    shutil.copytree(src, dst, symlinks=True)
-                else:
-                    shutil.copy2(src, dst)
-
-            return True
-
-        finally:
-            # Cleanup
-            subprocess.run(['umount', mount_point], capture_output=True)
-            shutil.rmtree(mount_point, ignore_errors=True)
 
     def _get_next_session_id(self):
         """Get next available session ID"""
@@ -2062,14 +2002,55 @@ class SessionManager:
         """Direct copy of session without conversion"""
         try:
             if mode == 'native':
-                # Copy directory tree
-                for item in os.listdir(source_path):
-                    src = os.path.join(source_path, item)
-                    dst = os.path.join(target_path, item)
-                    if os.path.isdir(src):
-                        shutil.copytree(src, dst, symlinks=True)
-                    else:
-                        shutil.copy2(src, dst)
+                # Ensure target directory exists (including 'changes' subdirectory if needed)
+                # For native copy, we are copying contents of source_path (which might be .../changes)
+                # to target_path.
+                
+                # If source path ends with 'changes', we should probably ensure target has 'changes' too
+                # But _copy_session_direct receives raw paths.
+                # Let's look at how it's called.
+                # copy_session calls it with (source_path, target_path, mode)
+                # source_path is .../100, target_path is .../101
+                
+                # Wait, _copy_session_direct does NOT use _mount_session_read/write!
+                # It operates on raw paths!
+                
+                # If mode is native:
+                # source_path is .../100
+                # target_path is .../101
+                
+                # We need to check if source has 'changes' subdir
+                source_changes = os.path.join(source_path, 'changes')
+                if os.path.exists(source_changes) and os.path.isdir(source_changes):
+                    real_source = source_changes
+                    real_target = os.path.join(target_path, 'changes')
+                else:
+                    real_source = source_path
+                    real_target = target_path
+                    
+                os.makedirs(real_target, exist_ok=True)
+
+                # Use rsync for native copy to preserve attributes and handle special files
+                # Exclude workdir and AUFS/OverlayFS metadata
+                cmd = [
+                    'rsync', '-aH',
+                    '--exclude=workdir',
+                    '--exclude=.wh.*',
+                    '--exclude=.wh..wh.orph',
+                    '--exclude=.wh..wh.plnk',
+                    '--exclude=.wh..wh.aufs',
+                    real_source.rstrip('/') + '/',
+                    real_target.rstrip('/') + '/'
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True)
+                
+                # rsync may return 23 (partial transfer) if some special files couldn't be copied
+                # This is acceptable (e.g., char devices, sockets)
+                if result.returncode not in [0, 23, 24]:
+                    print(f"DEBUG: rsync failed: {result.stderr.decode()}")
+                    return False
+                
                 return True
 
             elif mode == 'dynfilefs':
@@ -2089,26 +2070,43 @@ class SessionManager:
                 return True
 
             return False
-        except Exception:
+        except Exception as e:
+            print(f"DEBUG: _copy_session_direct failed: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def _copy_session_with_conversion(self, source_path, target_path,
                                       source_mode, target_mode, size_mb=None):
         """Copy session with mode conversion"""
-        tmpdir = self._make_temp_dir()
         try:
-            # Extract files from source
-            extracted_path = self._extract_session_to_files(source_path, source_mode, tmpdir)
+            # Direct copy using mounts
+            with self._mount_session_read(source_path, source_mode) as source_dir:
+                with self._mount_session_write(target_path, target_mode, size_mb) as target_dir:
+                    # Copy files using rsync
+                    cmd = [
+                        'rsync', '-aH',
+                        '--exclude=workdir',
+                        '--exclude=.wh.*',
+                        '--exclude=.wh..wh.orph',
+                        '--exclude=.wh..wh.plnk',
+                        '--exclude=.wh..wh.aufs',
+                        '--prune-empty-dirs',
+                        source_dir.rstrip('/') + '/',
+                        target_dir.rstrip('/') + '/'
+                    ]
+                    
+                    result = subprocess.run(cmd, capture_output=True)
+                    if result.returncode not in [0, 23, 24]:
+                        raise Exception(f"Rsync failed: {result.stderr.decode()}")
+            
+            return True
 
-            # Build target structure
-            success = self._build_session_structure(extracted_path, target_path,
-                                                    target_mode, size_mb)
-            return success
-
-        except Exception:
+        except Exception as e:
+            print(f"DEBUG: _copy_session_with_conversion failed: {e}")
+            import traceback
+            traceback.print_exc()
             return False
-        finally:
-            shutil.rmtree(tmpdir, ignore_errors=True)
 
     def convert_session(self, session_id, target_mode, size_mb=None,
                        in_place=True):
@@ -2170,24 +2168,25 @@ class SessionManager:
         new_session_path = self._make_temp_dir()
 
         try:
-            # Extract files and build new structure in temp location
-            tmpdir = self._make_temp_dir()
-            try:
-                extracted_path = self._extract_session_to_files(session_path, source_mode, tmpdir)
-
-                # Build new session structure
-                try:
-                    success = self._build_session_structure(extracted_path, new_session_path,
-                                                            target_mode, size_mb)
-
-                    if not success:
-                        return False, _("Failed to convert session structure")
-                except Exception as build_err:
-                    return False, _("Build session error: {}").format(str(build_err))
-
-            finally:
-                # Clean up extraction temp directory
-                shutil.rmtree(tmpdir, ignore_errors=True)
+            # Direct copy using mounts
+            with self._mount_session_read(session_path, source_mode) as source_dir:
+                with self._mount_session_write(new_session_path, target_mode, size_mb) as target_dir:
+                    # Copy files using rsync
+                    cmd = [
+                        'rsync', '-aH',
+                        '--exclude=workdir',
+                        '--exclude=.wh.*',
+                        '--exclude=.wh..wh.orph',
+                        '--exclude=.wh..wh.plnk',
+                        '--exclude=.wh..wh.aufs',
+                        '--prune-empty-dirs',
+                        source_dir.rstrip('/') + '/',
+                        target_dir.rstrip('/') + '/'
+                    ]
+                    
+                    result = subprocess.run(cmd, capture_output=True)
+                    if result.returncode not in [0, 23, 24]:
+                        raise Exception(f"Rsync failed: {result.stderr.decode()}")
 
             # Conversion successful - replace old session with new
             shutil.rmtree(session_path, ignore_errors=True)
@@ -2209,180 +2208,7 @@ class SessionManager:
             shutil.rmtree(new_session_path, ignore_errors=True)
             return False, _("Conversion failed: {}").format(str(e))
 
-        except Exception as e:
-            return False, _("Conversion error: {}").format(str(e))
-        finally:
-            shutil.rmtree(tmpdir, ignore_errors=True)
 
-    def _build_session_structure(self, source_files_path, target_path, target_mode, size_mb=None):
-        """Build session structure in target mode
-
-        Args:
-            source_files_path: Path to extracted session files
-            target_path: Path where to create new session
-            target_mode: Target mode (native/dynfilefs/raw)
-            size_mb: Size for dynfilefs/raw modes
-
-        Returns:
-            True on success, False on failure
-        """
-        try:
-            if target_mode == 'native':
-                # Copy files directly to target
-                for item in os.listdir(source_files_path):
-                    src = os.path.join(source_files_path, item)
-                    dst = os.path.join(target_path, item)
-                    if os.path.isdir(src):
-                        shutil.copytree(src, dst, symlinks=True)
-                    else:
-                        shutil.copy2(src, dst)
-                return True
-
-            elif target_mode == 'dynfilefs':
-                # Create dynfilefs container and copy files
-                if not self._check_dynfilefs_available():
-                    return False
-
-                changes_file = os.path.join(target_path, 'changes.dat')
-                size_mb_value = size_mb if size_mb else 4000
-
-                # Mount dynfilefs (will create if doesn't exist)
-                mount_point = self._make_temp_dir()
-                virtual_mount = None
-                process = None
-                success = False
-                try:
-                    # Mount dynfilefs with size
-                    cmd = ['dynfilefs', '-f', changes_file, '-m', mount_point, '-s', str(size_mb_value)]
-                    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                    time.sleep(3)
-
-                    # Check if mounted
-                    virtual_file = os.path.join(mount_point, 'virtual.dat')
-                    if not os.path.exists(virtual_file):
-                        return False
-
-                    # Format virtual.dat as ext4
-                    result = subprocess.run(
-                        ['mkfs.ext4', '-F', virtual_file],
-                        capture_output=True
-                    )
-                    # Sync to ensure filesystem is written (important for FAT32/NTFS)
-                    subprocess.run(['sync'], capture_output=True)
-                    if result.returncode != 0:
-                        return False
-
-                    # Mount virtual.dat
-                    virtual_mount = self._make_temp_dir()
-                    result = subprocess.run(
-                        ['mount', '-o', 'loop', virtual_file, virtual_mount],
-                        capture_output=True
-                    )
-                    if result.returncode != 0:
-                        return False
-
-                    # Copy files
-                    for item in os.listdir(source_files_path):
-                        src = os.path.join(source_files_path, item)
-                        dst = os.path.join(virtual_mount, item)
-                        # Skip if destination already exists (e.g., lost+found)
-                        if os.path.exists(dst):
-                            continue
-                        if os.path.isdir(src):
-                            shutil.copytree(src, dst, symlinks=True)
-                        else:
-                            shutil.copy2(src, dst)
-
-                    # Success!
-                    success = True
-
-                finally:
-                    # Cleanup mounts
-                    if virtual_mount:
-                        subprocess.run(['umount', virtual_mount], capture_output=True)
-                        try:
-                            os.rmdir(virtual_mount)
-                        except:
-                            pass
-                    if process:
-                        process.terminate()
-                        try:
-                            process.wait(timeout=5)
-                        except:
-                            process.kill()
-                    if mount_point:
-                        # Wait a bit for FUSE to release
-                        time.sleep(1)
-                        try:
-                            os.rmdir(mount_point)
-                        except:
-                            pass
-
-                return success
-
-            elif target_mode == 'raw':
-                # Create raw image and copy files
-                image_file = os.path.join(target_path, 'changes.img')
-                # Ensure size_mb is an integer
-                if size_mb:
-                    size_mb = int(size_mb) if not isinstance(size_mb, int) else size_mb
-                    size_bytes = size_mb * 1024 * 1024
-                else:
-                    size_bytes = 1000 * 1024 * 1024
-
-                # Create image file with fallocate
-                result = subprocess.run(['fallocate', '-l', str(size_bytes), image_file],
-                                      capture_output=True)
-                if result.returncode != 0:
-                    # Fallback to truncate if fallocate not available
-                    with open(image_file, 'wb') as f:
-                        f.truncate(size_bytes)
-
-                # Format as ext4
-                result = subprocess.run(
-                    ['mkfs.ext4', '-F', image_file],
-                    capture_output=True
-                )
-                # Sync to ensure filesystem is written (important for FAT32/NTFS)
-                subprocess.run(['sync'], capture_output=True)
-                if result.returncode != 0:
-                    return False
-
-                # Mount and copy files
-                mount_point = self._make_temp_dir()
-                try:
-                    result = subprocess.run(
-                        ['mount', '-o', 'loop', image_file, mount_point],
-                        capture_output=True
-                    )
-                    if result.returncode != 0:
-                        return False
-
-                    # Copy files
-                    for item in os.listdir(source_files_path):
-                        src = os.path.join(source_files_path, item)
-                        dst = os.path.join(mount_point, item)
-                        # Skip if destination already exists (e.g., lost+found)
-                        if os.path.exists(dst):
-                            continue
-                        if os.path.isdir(src):
-                            shutil.copytree(src, dst, symlinks=True)
-                        else:
-                            shutil.copy2(src, dst)
-
-                    return True
-
-                finally:
-                    subprocess.run(['umount', mount_point], capture_output=True)
-                    try:
-                        os.rmdir(mount_point)
-                    except:
-                        pass
-
-            return False
-
-        except Exception:
-            return False
 
     def get_filesystem_info(self):
         """Get filesystem information and compatibility"""

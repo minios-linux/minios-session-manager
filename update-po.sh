@@ -78,7 +78,7 @@ show_stats() {
         local pofile="po/${lang}.po"
         
         if [ -f "$pofile" ]; then
-            local stats=$(msgfmt --statistics -o /dev/null "$pofile" 2>&1)
+            local stats=$(LC_ALL=C msgfmt --statistics -o /dev/null "$pofile" 2>&1)
             local translated=$(echo "$stats" | grep -o '[0-9]\+ translated' | grep -o '[0-9]\+' || echo "0")
             local fuzzy=$(echo "$stats" | grep -o '[0-9]\+ fuzzy' | grep -o '[0-9]\+' || echo "0")
             local percent=0
