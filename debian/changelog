@@ -1,17 +1,22 @@
 minios-session-manager (1.1.3) unstable; urgency=medium
 
   * Core improvements:
-    - Fix data copying reliability: use rsync to correctly handle special files and permissions
-    - Fix export issues: ensure symbolic links point to correct targets in archives
-    - Fix Native session handling: correct directory structure during import/export
-    - Improve stability: better handling of mount points to prevent "device busy" errors
-    - Improve cleanup: ensure temporary files are removed even if process is interrupted
-  
+    - Fix data copying reliability: use rsync to correctly handle special files
+      and permissions
+    - Fix export issues: ensure symbolic links point to correct targets in
+      archives
+    - Fix Native session handling: correct directory structure during
+      import/export
+    - Improve stability: better handling of mount points to prevent "device
+      busy" errors
+    - Improve cleanup: ensure temporary files are removed even if process is
+      interrupted
+
   * Compatibility and dependencies:
     - Add support for running on tmpfs (RAM-based filesystems)
     - Add dependency on rsync package
     - Remove obsolete code for better maintainability
-  
+
   * Localization:
     - Update translation files
 
