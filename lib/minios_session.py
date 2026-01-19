@@ -7,6 +7,7 @@ This is the CLI-only version that performs actual session operations.
 """
 
 import argparse
+import fcntl
 import json
 import os
 import re
@@ -32,7 +33,7 @@ def _(message):
     """Translation function wrapper"""
     try:
         return gettext.dgettext('minios-session-manager', message)
-    except:
+    except Exception:
         return message
 
 try:
@@ -157,7 +158,7 @@ class SessionManager:
                     for line in f:
                         if line.startswith("VERSION="):
                             return line.split("=", 1)[1].strip().strip('"')
-        except:
+        except Exception:
             pass
         return "unknown"
 
@@ -170,7 +171,7 @@ class SessionManager:
                     for line in f:
                         if line.startswith("EDITION="):
                             return line.split("=", 1)[1].strip().strip('"')
-        except:
+        except Exception:
             pass
         return "unknown"
 
@@ -275,7 +276,7 @@ class SessionManager:
         fs_type = "unknown"
         try:
             result = subprocess.run(['stat', '-f', '-c', '%T', self.sessions_dir], 
-                                  capture_output=True, text=True, check=True)
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, check=True)
             fs_type = result.stdout.strip()
         except (subprocess.CalledProcessError, FileNotFoundError):
             # Fallback method using /proc/mounts
@@ -288,7 +289,7 @@ class SessionManager:
                             if self.sessions_dir.startswith(mount_point):
                                 fs_type = fs_type_mount
                                 break
-            except:
+            except Exception:
                 pass
         
         # Check if directory is writable
@@ -498,13 +499,13 @@ class SessionManager:
     def _check_dynfilefs_available(self):
         """Check if dynfilefs is available on the system"""
         try:
-            result = subprocess.run(['which', 'dynfilefs'], capture_output=True)
+            result = subprocess.run(['which', 'dynfilefs'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if result.returncode == 0:
                 return True
             # Also check for mount.dynfilefs
-            result = subprocess.run(['which', 'mount.dynfilefs'], capture_output=True)
+            result = subprocess.run(['which', 'mount.dynfilefs'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             return result.returncode == 0
-        except:
+        except Exception:
             return False
 
     def _detect_filesystem_type(self):
@@ -515,7 +516,7 @@ class SessionManager:
         try:
             # Get the device where sessions directory is mounted
             # Use df to find the device and mount options
-            df_result = subprocess.run(['df', '-T', self.sessions_dir], capture_output=True, text=True)
+            df_result = subprocess.run(['df', '-T', self.sessions_dir], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
             if df_result.returncode != 0:
                 return None, _("Failed to determine filesystem information")
             
@@ -532,7 +533,7 @@ class SessionManager:
             device = fields[0]
             
             # Get additional mount information
-            mount_result = subprocess.run(['mount'], capture_output=True, text=True)
+            mount_result = subprocess.run(['mount'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
             mount_options = ""
             
             if mount_result.returncode == 0:
@@ -613,6 +614,133 @@ class SessionManager:
             time.sleep(0.1)
         return False
 
+    def _safe_unmount(self, mount_point, max_retries=5, use_lazy=True):
+        """
+        Safely unmount a mount point with retries and optional lazy unmount.
+        
+        Returns True if unmounted successfully, False otherwise.
+        """
+        if not mount_point or not os.path.exists(mount_point):
+            return True
+        
+        # Check if actually mounted
+        try:
+            result = subprocess.run(
+                ['mountpoint', '-q', mount_point],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
+            if result.returncode != 0:
+                return True  # Not mounted
+        except (OSError, IOError):
+            pass
+        
+        # Try normal unmount with retries
+        for i in range(max_retries):
+            subprocess.run(['sync'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            res = subprocess.run(
+                ['umount', mount_point],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
+            if res.returncode == 0:
+                return True
+            time.sleep(0.5 * (i + 1))  # Increasing delay
+        
+        # Try lazy unmount as last resort
+        if use_lazy:
+            res = subprocess.run(
+                ['umount', '-l', mount_point],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
+            if res.returncode == 0:
+                return True
+        
+        return False
+
+    def _safe_fusermount(self, mount_point, max_retries=5):
+        """
+        Safely unmount a FUSE mount point with retries.
+        
+        Returns True if unmounted successfully, False otherwise.
+        """
+        if not mount_point or not os.path.exists(mount_point):
+            return True
+        
+        for i in range(max_retries):
+            subprocess.run(['sync'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            res = subprocess.run(
+                ['fusermount', '-u', mount_point],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
+            if res.returncode == 0:
+                return True
+            time.sleep(0.5 * (i + 1))
+        
+        # Try lazy unmount
+        res = subprocess.run(
+            ['fusermount', '-uz', mount_point],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        return res.returncode == 0
+
+    def _cleanup_process(self, process, timeout=5):
+        """
+        Safely terminate and cleanup a subprocess.
+        
+        Sends SIGTERM, waits, then SIGKILL if needed.
+        """
+        if process is None:
+            return
+        
+        # Check if already terminated
+        if process.poll() is not None:
+            return
+        
+        # Try graceful termination
+        try:
+            process.terminate()
+            process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            # Force kill
+            process.kill()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                pass
+        
+        # Close pipes to prevent resource leaks
+        try:
+            if process.stdout:
+                process.stdout.close()
+            if process.stderr:
+                process.stderr.close()
+        except (OSError, IOError):
+            pass
+
+    def _safe_rmtree(self, path):
+        """
+        Safely remove a directory tree, only if not a mount point.
+        """
+        if not path or not os.path.exists(path):
+            return True
+        
+        # Check if it's a mount point - don't remove if still mounted
+        try:
+            result = subprocess.run(
+                ['mountpoint', '-q', path],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
+            if result.returncode == 0:
+                # Still mounted, don't remove
+                return False
+        except (OSError, IOError):
+            pass
+        
+        try:
+            shutil.rmtree(path, ignore_errors=True)
+            return True
+        except (OSError, IOError):
+            return False
+
     @contextlib.contextmanager
     def _mount_session_read(self, session_path, mode):
         """Context manager to mount a session for reading"""
@@ -674,35 +802,23 @@ class SessionManager:
                 raise Exception(_("Unknown session mode: {}").format(mode))
                 
         finally:
+            # Cleanup virtual mount first (if exists)
             if virtual_mount:
-                subprocess.run(['sync'], capture_output=True)
-                # Try to unmount virtual fs
-                for i in range(3):
-                    res = subprocess.run(['umount', virtual_mount], capture_output=True)
-                    if res.returncode == 0:
-                        break
-                    time.sleep(1)
-                shutil.rmtree(virtual_mount, ignore_errors=True)
+                self._safe_unmount(virtual_mount)
+                self._safe_rmtree(virtual_mount)
             
-            if process: # dynfilefs
-                # Try to unmount fuse
-                for i in range(3):
-                    res = subprocess.run(['fusermount', '-u', mount_point], capture_output=True)
-                    if res.returncode == 0:
-                        break
-                    time.sleep(1)
-                
-                # Give it a chance to exit gracefully
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.terminate()
-                    process.wait()
-            elif mode == 'raw' and mount_point: # raw unmount
-                subprocess.run(['umount', mount_point], capture_output=True)
-                
-            if mount_point and os.path.exists(mount_point):
-                shutil.rmtree(mount_point, ignore_errors=True)
+            # Cleanup dynfilefs process and FUSE mount
+            if process:
+                if mount_point:
+                    self._safe_fusermount(mount_point)
+                self._cleanup_process(process)
+            elif mode == 'raw' and mount_point:
+                # Raw mode unmount
+                self._safe_unmount(mount_point)
+            
+            # Cleanup mount point directory
+            if mount_point:
+                self._safe_rmtree(mount_point)
 
     @contextlib.contextmanager
     def _mount_session_write(self, session_path, mode, size_mb=None):
@@ -741,12 +857,12 @@ class SessionManager:
                 # Let's check if we can mount it first.
                 
                 virtual_mount = tempfile.mkdtemp(prefix="minios_virt_write_")
-                mount_result = subprocess.run(['mount', '-o', 'loop', virtual_file, virtual_mount], capture_output=True)
+                mount_result = subprocess.run(['mount', '-o', 'loop', virtual_file, virtual_mount], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 
                 if mount_result.returncode != 0:
                     # Not formatted, format it
-                    subprocess.run(['mke2fs', '-F', '-t', 'ext4', virtual_file], capture_output=True)
-                    subprocess.run(['sync'], capture_output=True)
+                    subprocess.run(['mke2fs', '-F', '-t', 'ext4', virtual_file], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    subprocess.run(['sync'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     subprocess.run(['mount', '-o', 'loop', virtual_file, virtual_mount], check=True)
                 
                 yield virtual_mount
@@ -757,12 +873,12 @@ class SessionManager:
                 size_bytes = size_mb * 1024 * 1024
                 
                 if not os.path.exists(image_file):
-                    subprocess.run(['fallocate', '-l', str(size_bytes), image_file], capture_output=True)
+                    subprocess.run(['fallocate', '-l', str(size_bytes), image_file], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     if not os.path.exists(image_file) or os.path.getsize(image_file) < size_bytes:
                          with open(image_file, 'wb') as f: f.truncate(size_bytes)
                     # Format new image
-                    subprocess.run(['mke2fs', '-F', '-t', 'ext4', image_file], capture_output=True)
-                    subprocess.run(['sync'], capture_output=True)
+                    subprocess.run(['mke2fs', '-F', '-t', 'ext4', image_file], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    subprocess.run(['sync'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 
                 mount_point = tempfile.mkdtemp(prefix="minios_raw_write_")
                 subprocess.run(['mount', '-o', 'loop', image_file, mount_point], check=True)
@@ -770,35 +886,23 @@ class SessionManager:
                 yield mount_point
                 
         finally:
+            # Cleanup virtual mount first (if exists)
             if virtual_mount:
-                subprocess.run(['sync'], capture_output=True)
-                # Try to unmount virtual fs
-                for i in range(3):
-                    res = subprocess.run(['umount', virtual_mount], capture_output=True)
-                    if res.returncode == 0:
-                        break
-                    time.sleep(1)
-                shutil.rmtree(virtual_mount, ignore_errors=True)
+                self._safe_unmount(virtual_mount)
+                self._safe_rmtree(virtual_mount)
             
-            if process: # dynfilefs
-                # Try to unmount fuse
-                for i in range(3):
-                    res = subprocess.run(['fusermount', '-u', mount_point], capture_output=True)
-                    if res.returncode == 0:
-                        break
-                    time.sleep(1)
-                
-                # Give it a chance to exit gracefully
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.terminate()
-                    process.wait()
-            elif mode == 'raw' and mount_point: # raw unmount
-                subprocess.run(['umount', mount_point], capture_output=True)
-                
-            if mount_point and os.path.exists(mount_point):
-                shutil.rmtree(mount_point, ignore_errors=True)
+            # Cleanup dynfilefs process and FUSE mount
+            if process:
+                if mount_point:
+                    self._safe_fusermount(mount_point)
+                self._cleanup_process(process)
+            elif mode == 'raw' and mount_point:
+                # Raw mode unmount
+                self._safe_unmount(mount_point)
+            
+            # Cleanup mount point directory
+            if mount_point:
+                self._safe_rmtree(mount_point)
 
     def _create_dynfilefs_session(self, session_path, initial_size_mb=1000):
         """Create a dynfilefs session structure"""
@@ -828,12 +932,12 @@ class SessionManager:
                 
                 # Format the virtual file with ext4
                 format_cmd = ['mke2fs', '-F', '-t', 'ext4', virtual_file]
-                format_result = subprocess.run(format_cmd, capture_output=True)
+                format_result = subprocess.run(format_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 # Sync to ensure filesystem is written (important for FAT32/NTFS)
-                subprocess.run(['sync'], capture_output=True)
+                subprocess.run(['sync'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
                 # Unmount dynfilefs
-                subprocess.run(['fusermount', '-u', temp_mount], capture_output=True)
+                subprocess.run(['fusermount', '-u', temp_mount], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 process.terminate()
                 process.wait()
                 
@@ -857,7 +961,7 @@ class SessionManager:
                     file_path = os.path.join(session_path, file)
                     if os.path.isfile(file_path):
                         total_size += os.path.getsize(file_path)
-        except:
+        except Exception:
             pass
         
         return total_size
@@ -1080,21 +1184,36 @@ class SessionManager:
             return False, space_error
 
         try:
-            # Find next available session ID
-            existing_sessions = []
-            for item in os.listdir(self.sessions_dir):
-                path = os.path.join(self.sessions_dir, item)
-                if os.path.isdir(path) and item.isdigit():
-                    existing_sessions.append(int(item))
+            # Use file locking to prevent race condition when creating sessions
+            lock_file_path = os.path.join(self.sessions_dir, '.session_create.lock')
+            lock_fd = None
             
-            if existing_sessions:
-                new_id = str(max(existing_sessions) + 1)
-            else:
-                new_id = "1"
-            
-            # Create session directory
-            session_path = os.path.join(self.sessions_dir, new_id)
-            os.makedirs(session_path, exist_ok=True)
+            try:
+                # Create/open lock file and acquire exclusive lock
+                lock_fd = os.open(lock_file_path, os.O_CREAT | os.O_RDWR, 0o644)
+                fcntl.flock(lock_fd, fcntl.LOCK_EX)
+                
+                # Find next available session ID (inside lock)
+                existing_sessions = []
+                for item in os.listdir(self.sessions_dir):
+                    path = os.path.join(self.sessions_dir, item)
+                    if os.path.isdir(path) and item.isdigit():
+                        existing_sessions.append(int(item))
+                
+                if existing_sessions:
+                    new_id = str(max(existing_sessions) + 1)
+                else:
+                    new_id = "1"
+                
+                # Create session directory (inside lock to guarantee uniqueness)
+                session_path = os.path.join(self.sessions_dir, new_id)
+                os.makedirs(session_path, exist_ok=False)  # Fail if exists (extra safety)
+                
+            finally:
+                # Release lock
+                if lock_fd is not None:
+                    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                    os.close(lock_fd)
             
             # Initialize session based on mode
             if session_mode == "dynfilefs":
@@ -1107,7 +1226,7 @@ class SessionManager:
                     # Clean up on failure
                     try:
                         shutil.rmtree(session_path)
-                    except:
+                    except Exception:
                         pass
                     return False, message
             
@@ -1121,7 +1240,7 @@ class SessionManager:
                     # Create image file with fallocate (works on both sparse and non-sparse filesystems)
                     size_bytes = size_mb * 1024 * 1024
                     result = subprocess.run(['fallocate', '-l', str(size_bytes), image_file],
-                                          capture_output=True)
+                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     if result.returncode != 0:
                         # Fallback to truncate if fallocate not available
                         with open(image_file, 'wb') as f:
@@ -1129,9 +1248,9 @@ class SessionManager:
 
                     # Format with ext4
                     format_cmd = ['mke2fs', '-F', '-t', 'ext4', image_file]
-                    format_result = subprocess.run(format_cmd, capture_output=True)
+                    format_result = subprocess.run(format_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     # Sync to ensure filesystem is written (important for FAT32/NTFS)
-                    subprocess.run(['sync'], capture_output=True)
+                    subprocess.run(['sync'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
                     if format_result.returncode != 0:
                         shutil.rmtree(session_path)
@@ -1158,7 +1277,7 @@ class SessionManager:
                                 version = line.split("=", 1)[1].strip().strip('"')
                             elif line.startswith("EDITION="):
                                 edition = line.split("=", 1)[1].strip().strip('"')
-                except:
+                except Exception:
                     pass
             
             # Update metadata
@@ -1197,7 +1316,7 @@ class SessionManager:
                 # Clean up on metadata failure
                 try:
                     shutil.rmtree(session_path)
-                except:
+                except Exception:
                     pass
                 return False, _("Failed to update session metadata")
                 
@@ -1374,7 +1493,7 @@ class SessionManager:
                 # Now we need to resize the filesystem inside virtual.dat
                 # Resize the filesystem (will perform necessary checks)
                 resize_cmd = ['resize2fs', '-f', virtual_file]
-                resize_result = subprocess.run(resize_cmd, capture_output=True)
+                resize_result = subprocess.run(resize_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 
                 if resize_result.returncode != 0:
                     process.terminate()
@@ -1386,10 +1505,10 @@ class SessionManager:
                 
             finally:
                 # Clean up: ensure unmount and remove temp directory
-                subprocess.run(['fusermount', '-u', temp_mount], capture_output=True)
+                subprocess.run(['fusermount', '-u', temp_mount], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 try:
                     os.rmdir(temp_mount)
-                except:
+                except Exception:
                     pass
             
             # Update our session metadata with new size
@@ -1421,7 +1540,7 @@ class SessionManager:
             
             # Resize the filesystem inside the image (will perform necessary checks)
             resize_cmd = ['resize2fs', '-f', image_file]
-            resize_result = subprocess.run(resize_cmd, capture_output=True)
+            resize_result = subprocess.run(resize_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             
             if resize_result.returncode != 0:
                 return False, _("Failed to resize filesystem: {}").format(resize_result.stderr.decode())
@@ -1514,7 +1633,7 @@ class SessionManager:
                         '-C', source_dir, '.'
                     ]
                     
-                    result = subprocess.run(cmd, capture_output=True)
+                    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     if result.returncode != 0:
                         raise Exception(result.stderr.decode())
 
@@ -1617,7 +1736,7 @@ class SessionManager:
             rsync_cmd.append(extract_path.rstrip('/') + '/')
 
             try:
-                result = subprocess.run(rsync_cmd, capture_output=True, timeout=300, check=False)
+                result = subprocess.run(rsync_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300, check=False)
 
                 # rsync may return 23 (partial transfer) if some special files couldn't be copied
                 # This is acceptable (e.g., char devices, sockets)
@@ -1652,7 +1771,7 @@ class SessionManager:
         try:
             # Test archive integrity
             cmd = ['tar', '-tf', archive_file, '--use-compress-program=zstd -T0']
-            result = subprocess.run(cmd, capture_output=True)
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
             if result.returncode != 0:
                 return False
@@ -1742,7 +1861,7 @@ class SessionManager:
                         '--wildcards', 'data/*'
                     ]
                     
-                    result = subprocess.run(cmd, capture_output=True)
+                    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     if result.returncode != 0:
                         # Try without data/ prefix (legacy archives)
                         cmd = [
@@ -1752,7 +1871,7 @@ class SessionManager:
                             '--exclude=metadata.json',
                             '--exclude=session.info'
                         ]
-                        result_legacy = subprocess.run(cmd, capture_output=True)
+                        result_legacy = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                         if result_legacy.returncode != 0:
                              raise Exception(f"Extraction failed: {result.stderr.decode()} / {result_legacy.stderr.decode()}")
 
@@ -1782,14 +1901,14 @@ class SessionManager:
             cmd = ['tar', '-xO', '-f', archive_path,
                    '--use-compress-program=zstd',
                    'metadata.json']
-            result = subprocess.run(cmd, capture_output=True)
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
             if result.returncode != 0:
                 # Try with data/ prefix (unified format)
                 cmd = ['tar', '-xO', '-f', archive_path,
                        '--use-compress-program=zstd',
                        'data/metadata.json']
-                result = subprocess.run(cmd, capture_output=True)
+                result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 
                 if result.returncode != 0:
                     return None
@@ -1804,7 +1923,7 @@ class SessionManager:
         cmd = ['tar', '-xf', archive_path,
                '--use-compress-program=zstd -T0',
                '-C', extract_path]
-        result = subprocess.run(cmd, capture_output=True)
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if result.returncode != 0:
             raise Exception(result.stderr.decode())
 
@@ -2043,7 +2162,7 @@ class SessionManager:
                     real_target.rstrip('/') + '/'
                 ]
                 
-                result = subprocess.run(cmd, capture_output=True)
+                result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 
                 # rsync may return 23 (partial transfer) if some special files couldn't be copied
                 # This is acceptable (e.g., char devices, sockets)
@@ -2096,7 +2215,7 @@ class SessionManager:
                         target_dir.rstrip('/') + '/'
                     ]
                     
-                    result = subprocess.run(cmd, capture_output=True)
+                    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     if result.returncode not in [0, 23, 24]:
                         raise Exception(f"Rsync failed: {result.stderr.decode()}")
             
@@ -2184,7 +2303,7 @@ class SessionManager:
                         target_dir.rstrip('/') + '/'
                     ]
                     
-                    result = subprocess.run(cmd, capture_output=True)
+                    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     if result.returncode not in [0, 23, 24]:
                         raise Exception(f"Rsync failed: {result.stderr.decode()}")
 

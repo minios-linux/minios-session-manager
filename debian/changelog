@@ -1,3 +1,34 @@
+minios-session-manager (1.1.4) unstable; urgency=medium
+
+  * Security improvements and code quality:
+    - Add safe unmount method with retry logic and lazy unmount fallback
+    - Add safe fusermount wrapper with proper error handling
+    - Add safe process cleanup with timeout and SIGKILL fallback
+    - Add safe directory removal with fallback to rm -rf
+    - Fix context manager cleanup in mount_session_read and mount_session_write
+    - Add file locking (fcntl) to prevent race conditions in session creation
+    - Replace broad exception handlers with specific exception types
+  * Python 3.6 compatibility:
+    - Lower Python requirement from 3.7 to 3.6 for Debian 10 support
+    - Replace datetime.fromisoformat() with datetime.strptime()
+    - Replace capture_output=True with explicit stdout/stderr pipes
+    - Replace text=True with universal_newlines=True in subprocess calls
+    - Update debian/compat from 12 to 11
+  * Ubuntu 18.04 compatibility:
+    - Add util-linux version requirement (>= 2.31)
+  * Testing infrastructure:
+    - Add comprehensive pytest test suite
+    - Add tests for SessionManager class (initialization, formatting, caching)
+    - Add tests for union filesystem detection
+    - Add tests for system version/edition detection
+    - Add tests for disk space checking
+    - Add tests for metadata reading/writing
+    - Add tests for safe cleanup operations
+    - Add pytest.ini configuration file
+    - Add conftest.py with common fixtures
+
+ -- crims0n <crims0n@minios.dev>  Mon, 19 Jan 2026 17:41:12 +0300
+
 minios-session-manager (1.1.3) unstable; urgency=medium
 
   * Core improvements:

@@ -24,7 +24,7 @@ try:
     gettext.bindtextdomain('minios-session-manager', '/usr/share/locale')
     gettext.textdomain('minios-session-manager')
     _ = gettext.gettext
-except:
+except Exception:
     _ = lambda x: x
 
 class SessionManagerGUI:
@@ -82,7 +82,7 @@ class SessionManagerGUI:
         """Run CLI command and return result"""
         try:
             cmd = ['pkexec', self.cli_command] + args
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)  # Increased timeout for pkexec
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, timeout=60)  # Increased timeout for pkexec
             return result.returncode == 0, result.stdout, result.stderr
         except subprocess.TimeoutExpired:
             return False, "", _("Command timed out - authentication may have been cancelled")
@@ -291,14 +291,14 @@ class SessionManagerGUI:
                     try:
                         active_data = json.loads(active_output.strip())
                         active_session_id = active_data.get('id')
-                    except:
+                    except Exception:
                         pass
                 
                 if running_success and running_output.strip():
                     try:
                         running_data = json.loads(running_output.strip())
                         running_session_id = running_data.get('id')
-                    except:
+                    except Exception:
                         pass
                 
                 # Return results to main thread
@@ -357,11 +357,14 @@ class SessionManagerGUI:
                         try:
                             if modified_str != 'unknown':
                                 from datetime import datetime
-                                modified_dt = datetime.fromisoformat(modified_str.replace('Z', '+00:00'))
+                                # Python 3.6 compatible ISO format parsing
+                                # Extract datetime part (first 19 chars: '2023-01-15T12:30:45')
+                                dt_part = modified_str[:19]
+                                modified_dt = datetime.strptime(dt_part, '%Y-%m-%dT%H:%M:%S')
                                 modified = modified_dt.strftime('%Y-%m-%d %H:%M:%S')
                             else:
                                 modified = 'unknown'
-                        except:
+                        except Exception:
                             modified = modified_str
                         
                         # Create session row
