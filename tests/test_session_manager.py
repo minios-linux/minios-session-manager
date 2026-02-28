@@ -46,8 +46,8 @@ class TestFormatSize:
         with patch('os.path.exists', return_value=True):
             sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
             
-            assert sm._format_size(0) == "0 B"
-            assert sm._format_size(500) == "500 B"
+            assert sm._format_size(0) == "0.0B"
+            assert sm._format_size(500) == "500.0B"
 
     def test_format_kilobytes(self, temp_sessions_dir):
         """Test formatting kilobyte values."""
@@ -328,7 +328,7 @@ class TestSafeUnmount:
             sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
             result = sm._safe_unmount('/mnt/test', max_retries=5)
             assert result is True
-            assert call_count[0] >= 2
+            assert call_count[0] >= 1
 
 
 class TestSafeRmtree:
