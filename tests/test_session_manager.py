@@ -7,6 +7,7 @@ Tests for minios_session SessionManager class.
 import sys
 import os
 import json
+import subprocess
 import pytest
 import tempfile
 import shutil
@@ -391,3 +392,40 @@ class TestMakeTempDir:
             result = sm._make_temp_dir()
             assert result.startswith(temp_sessions_dir)
             assert '.tmp_' in result
+
+
+class TestCliHelp:
+    """Tests for help output."""
+
+    def test_main_help_does_not_require_root(self, capsys):
+        """Test that CLI help is available without root privileges."""
+        from minios_session import main
+
+        with patch.object(sys, 'argv', ['minios-session', '--help']), \
+             patch('os.geteuid', return_value=1000), \
+             pytest.raises(SystemExit) as exc:
+            main()
+
+        captured = capsys.readouterr()
+
+        assert exc.value.code == 0
+        assert 'usage:' in captured.out
+        assert 'create [MODE] [SIZE]' in captured.out
+        assert 'requires root privileges' not in captured.err
+
+    def test_gui_launcher_help(self):
+        """Test that GUI launcher prints a usage message."""
+        launcher = os.path.join(os.path.dirname(__file__), '..', 'bin', 'minios-session-manager')
+
+        result = subprocess.run(
+            [launcher, '--help'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode == 0
+        assert 'Usage: minios-session-manager' in result.stdout
+        assert 'minios-session --help' in result.stdout
+        assert result.stderr == ''

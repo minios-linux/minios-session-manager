@@ -6,6 +6,23 @@
 
 set -e
 
+case "${1:-}" in
+    -h|--help)
+        cat <<'EOF'
+Usage: minios-session-manager
+
+Launch the MiniOS Session Manager graphical interface.
+
+This command opens the GTK application for browsing, creating, activating,
+resizing, deleting, exporting, importing, copying, and converting sessions.
+
+For the command-line interface, run: minios-session --help
+For the manual page, run: man minios-session-manager
+EOF
+        exit 0
+        ;;
+esac
+
 # Find the real directory of the script
 SCRIPT_DIR=$(dirname "$(readlink -f -- "$0")")
 

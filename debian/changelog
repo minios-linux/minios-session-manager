@@ -1,3 +1,10 @@
+minios-session-manager (1.1.6) unstable; urgency=medium
+
+  * Add help option to CLI and GUI launcher
+  * Update documentation
+
+ -- crims0n <crims0n@minios.dev>  Thu, 14 May 2026 15:19:10 +0300
+
 minios-session-manager (1.1.5) unstable; urgency=medium
 
   * Sync test expectations with current CLI/session behavior:

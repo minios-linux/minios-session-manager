@@ -2486,11 +2486,12 @@ def main():
     """Main application entry point"""
     import sys
 
-    # Pre-check for --json flag before parsing
+    # Pre-check for flags before parsing
     json_output = '--json' in sys.argv
+    help_requested = any(arg in ('-h', '--help') for arg in sys.argv[1:])
 
     # Check for root privileges
-    if os.geteuid() != 0:
+    if os.geteuid() != 0 and not help_requested:
         error_msg = _("This tool requires root privileges. Please run with sudo or through pkexec.")
         if json_output:
             print(json.dumps({"success": False, "error": error_msg}), file=sys.stderr)
@@ -2511,10 +2512,10 @@ COMMANDS:
   active                    Show currently active session (will boot next)
   running                   Show currently running session (current boot)
   info                      Show filesystem type and compatible session modes
-  activate SESSION_ID       Activate specified session (required: session_id)
-  create [OPTIONS]          Create new session (optional: --mode, --size)
-  delete SESSION_ID         Delete specified session (required: session_id)
-  cleanup [OPTIONS]         Delete old sessions (optional: --days, default: 30)
+  activate SESSION_ID       Activate specified session
+  create [MODE] [SIZE]      Create new session using positional arguments
+  delete SESSION_ID         Delete specified session
+  cleanup [--days N]        Delete old sessions (default: 30 days)
   status                    Check sessions directory status and permissions
   resize SESSION_ID SIZE    Resize session to new size in MB (dynfilefs/raw only)
   export SESSION_ID PATH    Export session to .tar.zst archive
@@ -2528,8 +2529,8 @@ SESSION MODES:
   raw                       Raw disk image (works on any filesystem, custom size required)
 
 COMMAND BEHAVIOR:
-  • create without --mode: Uses native mode (may fail on FAT32/NTFS/exFAT)
-  • create without --size: Uses 1000MB for dynfilefs/raw modes
+  • create without MODE: Uses native mode (may fail on FAT32/NTFS/exFAT)
+  • create without SIZE: Uses 1000MB for dynfilefs/raw modes
   • cleanup without --days: Uses 30-day threshold for deletion
   • cleanup protects both active and running sessions from deletion
 
@@ -2548,10 +2549,11 @@ EXAMPLES:
     minios-session cleanup                        Delete sessions older than 30 days (default)
 
   Creating Sessions:
-    minios-session create --mode native           Create native session (filesystem changes)
-    minios-session create --mode dynfilefs        Create 1000MB dynfilefs session (default)
-    minios-session create --mode dynfilefs --size 8000   Create 8000MB dynfilefs session
-    minios-session create --mode raw --size 2000         Create 2000MB raw disk image
+    minios-session create                         Create native session (filesystem changes)
+    minios-session create native                  Create native session explicitly
+    minios-session create dynfilefs               Create 1000MB dynfilefs session (default size)
+    minios-session create dynfilefs 8000          Create 8000MB dynfilefs session
+    minios-session create raw 2000                Create 2000MB raw disk image
 
   Session Operations:
     minios-session resize 2 4000                  Resize session #2 to 4000MB
@@ -2563,7 +2565,7 @@ EXAMPLES:
 
   Error Handling:
     minios-session create                         May fail on FAT32/NTFS/exFAT: "Use dynfilefs or raw mode"
-    minios-session create --mode raw --size 5000  Will fail on FAT32: file size limit is 4096MB (4GB)
+    minios-session create raw 5000                Will fail on FAT32: file size limit is 4096MB (4GB)
 
   JSON Output (for automation):
     minios-session --json list                    List sessions in JSON format
@@ -2572,7 +2574,7 @@ EXAMPLES:
 
   Custom Session Directory:
     minios-session --sessions-dir /mnt/usb/sessions list
-    minios-session --sessions-dir /tmp/test create --mode native
+    minios-session --sessions-dir /tmp/test create native
 
         """)
     )

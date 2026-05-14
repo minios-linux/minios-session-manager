@@ -3,6 +3,7 @@
 minios-session-manager \- graphical interface for managing MiniOS persistent sessions
 .SH SYNOPSIS
 .B minios-session-manager
+.RI [ --help ]
 .SH DESCRIPTION
 .B minios-session-manager
 provides a graphical user interface for managing MiniOS persistent sessions.
@@ -11,6 +12,10 @@ It offers an intuitive way to browse, create, activate, resize, delete, export, 
 The application internally uses
 .BR minios-session (1)
 to perform actual session operations, providing a user-friendly frontend to the command-line functionality.
+.SH OPTIONS
+.TP
+.B -h, --help
+Show a short usage message and exit.
 .SH SESSION MODES
 The application supports creation of sessions in three different modes:
 .TP
@@ -22,19 +27,10 @@ For non-POSIX filesystems (FAT32, NTFS). Uses expandable container files.
 .TP
 .B Raw Mode
 For any filesystem. Uses fixed-size image files.
-.SH KEYBOARD SHORTCUTS
-.TP
-.B F5
-Refresh session list
-.TP
-.B Delete
-Delete selected session (with confirmation)
-.TP
-.B Ctrl+N
-Create new session
-.TP
-.B Ctrl+Q
-Quit application
+.SH INTERFACE
+The main window shows the available sessions and their status.
+Create, import, and cleanup actions are available from the toolbar.
+Additional actions for the selected session, such as activate, resize, export, copy, convert, open folder, and delete, are available from the context menu.
 .SH EXAMPLES
 .TP
 .B minios-session-manager
