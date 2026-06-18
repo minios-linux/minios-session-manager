@@ -5,10 +5,10 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: minios-session-manager 1.1.0\n"
+"Project-Id-Version: minios-session-manager 1.1.7\n"
 "Report-Msgid-Bugs-To: support@minios.dev\n"
-"POT-Creation-Date: 2025-12-03 20:11+0300\n"
-"PO-Revision-Date: 2025-10-04 02:30+0300\n"
+"POT-Creation-Date: 2026-06-18 13:07+0300\n"
+"PO-Revision-Date: 2026-06-18 10:01+0000\n"
 "Last-Translator: crims0n <crims0n@minios.dev>\n"
 "Language-Team: none\n"
 "Language: es\n"
@@ -17,116 +17,599 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: lib/minios_session.py:205
-msgid "Insufficient disk space: {} MB required, {} MB available"
-msgstr "Espacio en disco insuficiente: {} MB requeridos, {} MB disponibles"
+#: lib/minios_session_manager.py:88
+msgid "Command timed out - authentication may have been cancelled"
+msgstr "Comando agotado - la autenticación pudo haber sido cancelada"
 
-#: lib/minios_session.py:261 lib/minios_session.py:513
-#: lib/minios_session.py:1012 lib/minios_session.py:1037
-#: lib/minios_session.py:1210 lib/minios_session.py:1300
-#: lib/minios_session_manager.py:135
+#: lib/minios_session_manager.py:128
+msgid "Sessions directory is writable"
+msgstr "Directorio de sesiones es escribible"
+
+#: lib/minios_session_manager.py:133
+msgid "Sessions directory is read-only"
+msgstr "Directorio de sesiones es de solo lectura"
+
+#: lib/minios_session_manager.py:135 lib/minios_session.py:262
+#: lib/minios_session.py:514 lib/minios_session.py:1116
+#: lib/minios_session.py:1141 lib/minios_session.py:1329
+#: lib/minios_session.py:1419
 msgid "Sessions directory not found"
 msgstr "Directorio de sesiones no encontrado"
 
-#: lib/minios_session.py:271
+#: lib/minios_session_manager.py:152
+msgid "MiniOS Session Manager"
+msgstr "MiniOS Session Manager"
+
+#: lib/minios_session_manager.py:193 lib/minios_session_manager.py:1201
+msgid "Loading sessions..."
+msgstr "Cargando sesiones..."
+
+#: lib/minios_session_manager.py:225
+msgid "Create"
+msgstr "Crear"
+
+#: lib/minios_session_manager.py:244
+msgid "Import"
+msgstr "Importar"
+
+#: lib/minios_session_manager.py:262
+msgid "Cleanup"
+msgstr "Limpiar"
+
+#: lib/minios_session_manager.py:307
+msgid "Error fetching session data: {}"
+msgstr "Error al obtener datos de la sesión: {}"
+
+#: lib/minios_session_manager.py:327
+msgid "Failed to get session list: {}"
+msgstr "No se pudo obtener la lista de sesiones: {}"
+
+#: lib/minios_session_manager.py:374
+msgid "Failed to parse session list JSON: {}"
+msgstr "No se pudo analizar el JSON de la lista de sesiones: {}"
+
+#: lib/minios_session_manager.py:426 lib/minios_session.py:2350
+msgid "No sessions found"
+msgstr "No se encontraron sesiones"
+
+#: lib/minios_session_manager.py:461 lib/minios_session.py:2365
+msgid "Session"
+msgstr "Sesión"
+
+#: lib/minios_session_manager.py:475 lib/minios_session.py:2366
+msgid "Mode:"
+msgstr "Modo:"
+
+#: lib/minios_session_manager.py:481 lib/minios_session.py:2367
+msgid "Version:"
+msgstr "Versión:"
+
+#: lib/minios_session_manager.py:488 lib/minios_session.py:2368
+msgid "Edition:"
+msgstr "Edición:"
+
+#: lib/minios_session_manager.py:494 lib/minios_session.py:2369
+msgid "Union FS:"
+msgstr "Sistema Unión:"
+
+#: lib/minios_session_manager.py:501 lib/minios_session.py:2370
+msgid "Size:"
+msgstr "Tamaño:"
+
+#: lib/minios_session_manager.py:507
+msgid "Modified:"
+msgstr "Modificado:"
+
+#: lib/minios_session_manager.py:523 lib/minios_session.py:2357
+msgid "ACTIVE"
+msgstr "ACTIVA"
+
+#: lib/minios_session_manager.py:526
+msgid "AVAILABLE"
+msgstr "DISPONIBLE"
+
+#: lib/minios_session_manager.py:536 lib/minios_session.py:2359
+msgid "RUNNING"
+msgstr "EN EJECUCIÓN"
+
+#: lib/minios_session_manager.py:565
+msgid "Activate Session"
+msgstr "Activar sesión"
+
+#: lib/minios_session_manager.py:571
+msgid "Resize Session"
+msgstr "Redimensionar sesión"
+
+#: lib/minios_session_manager.py:581
+msgid "Export Session"
+msgstr "Exportar sesión"
+
+#: lib/minios_session_manager.py:587
+msgid "Copy Session"
+msgstr "Copiar sesión"
+
+#: lib/minios_session_manager.py:593
+msgid "Convert Session"
+msgstr "Convertir sesión"
+
+#: lib/minios_session_manager.py:603
+msgid "Open Folder"
+msgstr "Abrir carpeta"
+
+#: lib/minios_session_manager.py:613
+msgid "Delete Session"
+msgstr "Eliminar sesión"
+
+#: lib/minios_session_manager.py:735
+msgid "Session folder not found"
+msgstr "Carpeta de sesión no encontrada"
+
+#: lib/minios_session_manager.py:737 lib/minios_session_manager.py:1208
+#: lib/minios_session_manager.py:1652
+msgid "Failed to get session information"
+msgstr "No se pudo obtener la información de la sesión"
+
+#: lib/minios_session_manager.py:739
+msgid "Failed to open folder: {}"
+msgstr "No se pudo abrir la carpeta: {}"
+
+#: lib/minios_session_manager.py:746
+msgid "Sessions directory is not writable. Cannot create new sessions."
+msgstr ""
+"El directorio de sesiones no es escribible. No se pueden crear nuevas "
+"sesiones."
+
+#: lib/minios_session_manager.py:774
+msgid "Create New Session"
+msgstr "Crear nueva sesión"
+
+#: lib/minios_session_manager.py:791
+msgid "Detected filesystem:"
+msgstr "Sistema de archivos detectado:"
+
+#: lib/minios_session_manager.py:795
+msgid "Select session mode:"
+msgstr "Seleccionar modo de sesión:"
+
+#: lib/minios_session_manager.py:803
+msgid "Native Mode"
+msgstr "Modo nativo"
+
+#: lib/minios_session_manager.py:804
+msgid "Direct storage on POSIX filesystems"
+msgstr "Almacenamiento directo en sistemas de archivos POSIX"
+
+#: lib/minios_session_manager.py:811
+msgid "Native Mode (not compatible)"
+msgstr "Modo nativo (no compatible)"
+
+#: lib/minios_session_manager.py:812
+msgid "Not available: requires POSIX filesystem"
+msgstr "No disponible: requiere sistema de archivos POSIX"
+
+#: lib/minios_session_manager.py:818
+msgid "DynFileFS Mode"
+msgstr "Modo DynFileFS"
+
+#: lib/minios_session_manager.py:819
+msgid "Dynamic files"
+msgstr "Archivos dinámicos"
+
+#: lib/minios_session_manager.py:827
+msgid "Raw Mode"
+msgstr "Modo Raw"
+
+#: lib/minios_session_manager.py:828
+msgid "Static image files"
+msgstr "Archivos de imagen estáticos"
+
+#: lib/minios_session_manager.py:838 lib/minios_session_manager.py:1574
+#: lib/minios_session_manager.py:1711
+msgid "Size (MB):"
+msgstr "Tamaño (MB):"
+
+#: lib/minios_session_manager.py:847 lib/minios_session_manager.py:873
+msgid "(Only used for DynFileFS and Raw modes)"
+msgstr "(Solo se usa para los modos DynFileFS y Raw)"
+
+#: lib/minios_session_manager.py:869
+msgid "(Maximum {}MB on FAT32)"
+msgstr "(Máximo {}MB en FAT32)"
+
+#: lib/minios_session_manager.py:908
+msgid "Creating new session, please wait..."
+msgstr "Creando nueva sesión, por favor espere..."
+
+#: lib/minios_session_manager.py:933
+msgid "Sessions directory is not writable. Cannot activate sessions."
+msgstr ""
+"El directorio de sesiones no es escribible. No se pueden activar sesiones."
+
+#: lib/minios_session_manager.py:939
+msgid "Activating session, please wait..."
+msgstr "Activando sesión, por favor espere..."
+
+#: lib/minios_session_manager.py:945
+msgid "Session activated successfully"
+msgstr "Sesión activada con éxito"
+
+#: lib/minios_session_manager.py:945 lib/minios_session_manager.py:947
+msgid "Failed to activate session"
+msgstr "No se pudo activar la sesión"
+
+#: lib/minios_session_manager.py:957
+msgid "Sessions directory is not writable. Cannot delete sessions."
+msgstr ""
+"El directorio de sesiones no es escribible. No se pueden eliminar sesiones."
+
+#: lib/minios_session_manager.py:967
+msgid "Delete this session?"
+msgstr "¿Eliminar esta sesión?"
+
+#: lib/minios_session_manager.py:970
+msgid ""
+"You're about to permanently delete session #{}.\n"
+"\n"
+"This action cannot be undone and all data in this session will be lost "
+"forever.\n"
+"\n"
+"Are you absolutely sure you want to proceed?"
+msgstr ""
+"Está a punto de eliminar permanentemente la sesión #{}.\n"
+"\n"
+"Esta acción no se puede deshacer y todos los datos de esta sesión se "
+"perderán para siempre.\n"
+"\n"
+"¿Está absolutamente seguro de que desea continuar?"
+
+#: lib/minios_session_manager.py:977
+msgid "Yes, delete it"
+msgstr "Sí, eliminarla"
+
+#: lib/minios_session_manager.py:978
+msgid "Keep it safe"
+msgstr "Mantenerla a salvo"
+
+#: lib/minios_session_manager.py:987
+msgid "Deleting session, please wait..."
+msgstr "Eliminando sesión, por favor espere..."
+
+#: lib/minios_session_manager.py:993
+msgid "Session deleted successfully"
+msgstr "Sesión eliminada con éxito"
+
+#: lib/minios_session_manager.py:993 lib/minios_session_manager.py:995
+msgid "Failed to delete session"
+msgstr "No se pudo eliminar la sesión"
+
+#: lib/minios_session_manager.py:1005
+msgid "Sessions directory is not writable. Cannot cleanup sessions."
+msgstr ""
+"El directorio de sesiones no es escribible. No se pueden limpiar las "
+"sesiones."
+
+#: lib/minios_session_manager.py:1010
+msgid "Cleanup Old Sessions"
+msgstr "Limpiar sesiones antiguas"
+
+#: lib/minios_session_manager.py:1025
+msgid "Delete sessions older than how many days?"
+msgstr "¿Eliminar sesiones con más de cuántos días de antigüedad?"
+
+#: lib/minios_session_manager.py:1055
+msgid "Confirm Cleanup"
+msgstr "Confirmar limpieza"
+
+#: lib/minios_session_manager.py:1058
+msgid ""
+"This will delete all sessions older than {} days.\n"
+"\n"
+"Continue?"
+msgstr ""
+"Esto eliminará todas las sesiones con más de {} días de antigüedad.\n"
+"\n"
+"¿Continuar?"
+
+#: lib/minios_session_manager.py:1066
+msgid "Cleaning up old sessions, please wait..."
+msgstr "Limpiando sesiones antiguas, por favor espere..."
+
+#: lib/minios_session_manager.py:1072
+msgid "Cleanup completed successfully"
+msgstr "Limpieza completada con éxito"
+
+#: lib/minios_session_manager.py:1072 lib/minios_session_manager.py:1074
+msgid "Cleanup failed"
+msgstr "La limpieza falló"
+
+#: lib/minios_session_manager.py:1089
+msgid "Oops! Something went wrong"
+msgstr "¡Ups! Algo salió mal"
+
+#: lib/minios_session_manager.py:1096
+msgid "Got it"
+msgstr "Entendido"
+
+#: lib/minios_session_manager.py:1108
+msgid "Success"
+msgstr "Éxito"
+
+#: lib/minios_session_manager.py:1115
+msgid "OK"
+msgstr "OK"
+
+#: lib/minios_session_manager.py:1171
+msgid "Failed to create session: {}"
+msgstr "No se pudo crear la sesión: {}"
+
+#: lib/minios_session_manager.py:1220 lib/minios_session_manager.py:1664
+#: lib/minios_session.py:2246
+msgid "Session not found"
+msgstr "Sesión no encontrada"
+
+#: lib/minios_session_manager.py:1225 lib/minios_session.py:1431
+msgid "Resize is only supported for dynfilefs and raw mode sessions"
+msgstr ""
+"El redimensionamiento solo es compatible con sesiones en modo dynfilefs y raw"
+
+#: lib/minios_session_manager.py:1231
+msgid ""
+"Cannot resize session while it is running. Resize operation is not allowed "
+"for the currently active session."
+msgstr ""
+"No se puede redimensionar la sesión mientras está en ejecución. La operación "
+"de redimensionamiento no está permitida para la sesión actualmente activa."
+
+#: lib/minios_session_manager.py:1250 lib/minios_session_manager.py:1670
+msgid "Failed to parse session information"
+msgstr "No se pudo analizar la información de la sesión"
+
+#: lib/minios_session_manager.py:1255
+msgid "Resize Session {}"
+msgstr "Redimensionar sesión {}"
+
+#: lib/minios_session_manager.py:1272
+msgid "Session:"
+msgstr "Sesión:"
+
+#: lib/minios_session_manager.py:1276
+msgid "New size (MB):"
+msgstr "Nuevo tamaño (MB):"
+
+#: lib/minios_session_manager.py:1293
+msgid "Resizing session, please wait..."
+msgstr "Redimensionando sesión, por favor espere..."
+
+#: lib/minios_session_manager.py:1321 lib/minios_session_manager.py:1323
+#: lib/minios_session_manager.py:1325
+msgid "Resize failed"
+msgstr "El redimensionamiento falló"
+
+#: lib/minios_session_manager.py:1332
+msgid "Export Session {}"
+msgstr "Exportar sesión {}"
+
+#: lib/minios_session_manager.py:1346 lib/minios_session_manager.py:1419
+msgid "TAR.ZSTD archives (*.tar.zst)"
+msgstr "Archivos TAR.ZSTD (*.tar.zst)"
+
+#: lib/minios_session_manager.py:1351 lib/minios_session_manager.py:1424
+msgid "All files"
+msgstr "Todos los archivos"
+
+#: lib/minios_session_manager.py:1361
+msgid "Exporting session, please wait..."
+msgstr "Exportando sesión, por favor espere..."
+
+#: lib/minios_session_manager.py:1383
+msgid "Session exported successfully"
+msgstr "Sesión exportada con éxito"
+
+#: lib/minios_session_manager.py:1388 lib/minios_session_manager.py:1390
+#: lib/minios_session_manager.py:1392
+msgid "Export failed"
+msgstr "Exportación fallida"
+
+#: lib/minios_session_manager.py:1399
+msgid "Sessions directory is not writable. Cannot import sessions."
+msgstr ""
+"El directorio de sesiones no es escribible. No se pueden importar sesiones."
+
+#: lib/minios_session_manager.py:1408
+msgid "Import Session"
+msgstr "Importar sesión"
+
+#: lib/minios_session_manager.py:1441
+msgid "Import Options"
+msgstr "Opciones de importación"
+
+#: lib/minios_session_manager.py:1458
+msgid "Archive:"
+msgstr "Archivo:"
+
+#: lib/minios_session_manager.py:1462
+msgid "Auto-convert to compatible mode if needed"
+msgstr "Convertir automáticamente a modo compatible si es necesario"
+
+#: lib/minios_session_manager.py:1468
+msgid "Force import to mode:"
+msgstr "Forzar importación a modo:"
+
+#: lib/minios_session_manager.py:1470
+msgid "Auto (from metadata)"
+msgstr "Automático (desde metadatos)"
+
+#: lib/minios_session_manager.py:1490
+msgid "Importing session, please wait..."
+msgstr "Importando sesión, por favor espere..."
+
+#: lib/minios_session_manager.py:1518
+msgid "Session imported successfully"
+msgstr "Sesión importada con éxito"
+
+#: lib/minios_session_manager.py:1524 lib/minios_session_manager.py:1526
+#: lib/minios_session_manager.py:1528
+msgid "Import failed"
+msgstr "Importación fallida"
+
+#: lib/minios_session_manager.py:1535
+msgid "Copy Session {}"
+msgstr "Copiar sesión {}"
+
+#: lib/minios_session_manager.py:1552
+msgid "Copy session:"
+msgstr "Copiar sesión:"
+
+#: lib/minios_session_manager.py:1556
+msgid "Convert to different mode"
+msgstr "Convertir a modo diferente"
+
+#: lib/minios_session_manager.py:1561 lib/minios_session_manager.py:1699
+msgid "Target mode:"
+msgstr "Modo de destino:"
+
+#: lib/minios_session_manager.py:1606
+msgid "Copying session, please wait..."
+msgstr "Copiando sesión, por favor espere..."
+
+#: lib/minios_session_manager.py:1634
+msgid "Session copied successfully"
+msgstr "Sesión copiada con éxito"
+
+#: lib/minios_session_manager.py:1640 lib/minios_session_manager.py:1642
+#: lib/minios_session_manager.py:1644
+msgid "Copy failed"
+msgstr "Copia fallida"
+
+#: lib/minios_session_manager.py:1675
+msgid "Convert Session {}"
+msgstr "Convertir sesión {}"
+
+#: lib/minios_session_manager.py:1692
+msgid "Convert session:"
+msgstr "Convertir sesión:"
+
+#: lib/minios_session_manager.py:1695
+msgid "Current mode: {}"
+msgstr "Modo actual: {}"
+
+#: lib/minios_session_manager.py:1754
+msgid "Converting session, please wait..."
+msgstr "Convirtiendo sesión, por favor espere..."
+
+#: lib/minios_session_manager.py:1780
+msgid "Session converted successfully"
+msgstr "Sesión convertida con éxito"
+
+#: lib/minios_session_manager.py:1786 lib/minios_session_manager.py:1788
+#: lib/minios_session_manager.py:1790
+msgid "Convert failed"
+msgstr "Conversión fallida"
+
+#: lib/minios_session.py:206
+msgid "Insufficient disk space: {} MB required, {} MB available"
+msgstr "Espacio en disco insuficiente: {} MB requeridos, {} MB disponibles"
+
+#: lib/minios_session.py:272
 msgid "Sessions directory does not exist"
 msgstr "El directorio de sesiones no existe"
 
-#: lib/minios_session.py:302
+#: lib/minios_session.py:303
 msgid "Directory is on a SquashFS filesystem (read-only)"
 msgstr "El directorio está en un sistema de archivos SquashFS (solo lectura)"
 
-#: lib/minios_session.py:312
+#: lib/minios_session.py:313
 msgid "Permission denied: {}"
 msgstr "Permiso denegado: {}"
 
-#: lib/minios_session.py:315
+#: lib/minios_session.py:316
 msgid "Error checking directory: {}"
 msgstr "Error al comprobar el directorio: {}"
 
-#: lib/minios_session.py:520
+#: lib/minios_session.py:521
 msgid "Failed to determine filesystem information"
 msgstr "No se pudo determinar la información del sistema de archivos"
 
-#: lib/minios_session.py:524
+#: lib/minios_session.py:525
 msgid "Invalid df output"
 msgstr "Salida de df inválida"
 
-#: lib/minios_session.py:529
+#: lib/minios_session.py:530
 msgid "Cannot parse filesystem information"
 msgstr "No se puede analizar la información del sistema de archivos"
 
-#: lib/minios_session.py:555
+#: lib/minios_session.py:556
 msgid "Error detecting filesystem: {}"
 msgstr "Error al detectar el sistema de archivos: {}"
 
-#: lib/minios_session.py:635
+#: lib/minios_session.py:763
 msgid "DynFileFS container not found"
 msgstr "Contenedor DynFileFS no encontrado"
 
-#: lib/minios_session.py:646
+#: lib/minios_session.py:774
 msgid "Failed to mount dynfilefs (timeout)"
 msgstr "No se pudo montar dynfilefs (tiempo de espera agotado)"
 
-#: lib/minios_session.py:662
+#: lib/minios_session.py:790
 msgid "Raw image not found"
 msgstr "Imagen raw no encontrada"
 
-#: lib/minios_session.py:674 lib/minios_session.py:1644
+#: lib/minios_session.py:802 lib/minios_session.py:1763
 msgid "Unknown session mode: {}"
 msgstr "Modo de sesión desconocido: {}"
 
-#: lib/minios_session.py:733
+#: lib/minios_session.py:849
 msgid "Failed to create dynfilefs (timeout)"
 msgstr "No se pudo crear dynfilefs (tiempo de espera agotado)"
 
-#: lib/minios_session.py:827
+#: lib/minios_session.py:931
 msgid "Failed to create dynfilefs virtual file (timeout)"
-msgstr "No se pudo crear el archivo virtual dynfilefs (tiempo de espera agotado)"
+msgstr ""
+"No se pudo crear el archivo virtual dynfilefs (tiempo de espera agotado)"
 
-#: lib/minios_session.py:841
+#: lib/minios_session.py:945
 msgid "Failed to format dynfilefs virtual file: {}"
 msgstr "No se pudo formatear el archivo virtual dynfilefs: {}"
 
-#: lib/minios_session.py:843
+#: lib/minios_session.py:947
 msgid "DynFileFS session created successfully"
 msgstr "Sesión DynFileFS creada con éxito"
 
-#: lib/minios_session.py:846
+#: lib/minios_session.py:950
 msgid "Error creating dynfilefs session: {}"
 msgstr "Error al crear la sesión dynfilefs: {}"
 
-#: lib/minios_session.py:1016 lib/minios_session.py:1214
-#: lib/minios_session.py:1304
+#: lib/minios_session.py:1120 lib/minios_session.py:1333
+#: lib/minios_session.py:1423
 msgid "Session {} does not exist"
 msgstr "La sesión {} no existe"
 
-#: lib/minios_session.py:1026
+#: lib/minios_session.py:1130
 msgid "Session {} activated (was session {})"
 msgstr "Sesión {} activada (era sesión {})"
 
-#: lib/minios_session.py:1028
+#: lib/minios_session.py:1132
 msgid "Session {} activated"
 msgstr "Sesión {} activada"
 
-#: lib/minios_session.py:1030 lib/minios_session.py:1202
-#: lib/minios_session.py:1398 lib/minios_session.py:1432
+#: lib/minios_session.py:1134 lib/minios_session.py:1321
+#: lib/minios_session.py:1517 lib/minios_session.py:1551
 msgid "Failed to update session metadata"
 msgstr "No se pudieron actualizar los metadatos de la sesión"
 
-#: lib/minios_session.py:1032
+#: lib/minios_session.py:1136
 msgid "Error activating session: {}"
 msgstr "Error al activar la sesión: {}"
 
-#: lib/minios_session.py:1042
+#: lib/minios_session.py:1146
 msgid "Invalid session mode. Must be one of: {}"
 msgstr "Modo de sesión inválido. Debe ser uno de: {}"
 
-#: lib/minios_session.py:1047
+#: lib/minios_session.py:1151
 msgid "Sessions directory is not writable"
 msgstr "Directorio de sesiones no es escribible"
 
-#: lib/minios_session.py:1059
+#: lib/minios_session.py:1163
 msgid ""
 "Native mode is not compatible with {} filesystem. Use dynfilefs or raw mode "
 "instead."
@@ -135,11 +618,11 @@ msgstr ""
 "dynfilefs o raw en su lugar.El modo nativo no es compatible con el sistema "
 "de archivos {}. Use el modo dynfilefs o raw en su lugar."
 
-#: lib/minios_session.py:1061
+#: lib/minios_session.py:1165
 msgid "Session mode '{}' is not compatible with {} filesystem"
 msgstr "El modo de sesión '{}' no es compatible con el sistema de archivos {}"
 
-#: lib/minios_session.py:1070
+#: lib/minios_session.py:1174
 msgid ""
 "Raw image size {}MB exceeds FAT32 file size limit ({}MB). Use dynfilefs mode "
 "or smaller size."
@@ -147,200 +630,192 @@ msgstr ""
 "El tamaño de la imagen raw de {}MB excede el límite de tamaño de archivo de "
 "FAT32 ({}MB). Use el modo dynfilefs o un tamaño menor."
 
-#: lib/minios_session.py:1074
+#: lib/minios_session.py:1178
 msgid ""
 "DynFileFS is not available on this system. Please install dynfilefs package."
 msgstr ""
 "DynFileFS no está disponible en este sistema. Por favor, instale el paquete "
 "dynfilefs."
 
-#: lib/minios_session.py:1138
+#: lib/minios_session.py:1257
 msgid "Failed to format raw image file: {}"
 msgstr "No se pudo formatear el archivo de imagen raw: {}"
 
-#: lib/minios_session.py:1142
+#: lib/minios_session.py:1261
 msgid "Failed to create raw image file: {}"
 msgstr "No se pudo crear el archivo de imagen raw: {}"
 
-#: lib/minios_session.py:1184 lib/minios_session.py:1186
+#: lib/minios_session.py:1303 lib/minios_session.py:1305
 msgid "Session {} created successfully (mode: {}, size: {}MB)"
 msgstr "Sesión {} creada con éxito (modo: {}, tamaño: {}MB)"
 
-#: lib/minios_session.py:1188
+#: lib/minios_session.py:1307
 msgid "Session {} created successfully (mode: {})"
 msgstr "Sesión {} creada con éxito (modo: {})"
 
-#: lib/minios_session.py:1205
+#: lib/minios_session.py:1324
 msgid "Error creating session: {}"
 msgstr "Error al crear la sesión: {}"
 
-#: lib/minios_session.py:1219
+#: lib/minios_session.py:1338
 msgid "Cannot delete currently active session"
 msgstr "No se puede eliminar la sesión actualmente activa"
 
-#: lib/minios_session.py:1224
+#: lib/minios_session.py:1343
 msgid "Cannot delete currently running session"
 msgstr "No se puede eliminar la sesión actualmente en ejecución"
 
-#: lib/minios_session.py:1235
+#: lib/minios_session.py:1354
 msgid "Session {} deleted successfully"
 msgstr "Sesión {} eliminada con éxito"
 
-#: lib/minios_session.py:1237
+#: lib/minios_session.py:1356
 msgid "Error deleting session: {}"
 msgstr "Error al eliminar la sesión: {}"
 
-#: lib/minios_session.py:1312 lib/minios_session_manager.py:1222
-msgid "Resize is only supported for dynfilefs and raw mode sessions"
-msgstr ""
-"El redimensionamiento solo es compatible con sesiones en modo dynfilefs y raw"
-
-#: lib/minios_session.py:1317
+#: lib/minios_session.py:1436
 msgid "Cannot resize currently running session"
 msgstr "No se puede redimensionar la sesión actualmente en ejecución"
 
-#: lib/minios_session.py:1326
+#: lib/minios_session.py:1445
 msgid "Error resizing session: {}"
 msgstr "Error al redimensionar la sesión: {}"
 
-#: lib/minios_session.py:1332
+#: lib/minios_session.py:1451
 msgid "DynFileFS changes.dat file not found"
 msgstr "No se encontró el archivo changes.dat de DynFileFS"
 
-#: lib/minios_session.py:1346
+#: lib/minios_session.py:1465
 msgid "New size must be larger than current total size ({}MB)"
 msgstr "El nuevo tamaño debe ser mayor que el tamaño total actual ({}MB)"
 
-#: lib/minios_session.py:1349
+#: lib/minios_session.py:1468
 msgid "New size must be larger than used size ({}MB)"
 msgstr "El nuevo tamaño debe ser mayor que el tamaño usado ({}MB)"
 
-#: lib/minios_session.py:1372
+#: lib/minios_session.py:1491
 msgid "Failed to create/resize virtual.dat file (timeout)"
-msgstr "No se pudo crear/redimensionar el archivo virtual.dat (tiempo de espera agotado)"
+msgstr ""
+"No se pudo crear/redimensionar el archivo virtual.dat (tiempo de espera "
+"agotado)"
 
-#: lib/minios_session.py:1381 lib/minios_session.py:1427
+#: lib/minios_session.py:1500 lib/minios_session.py:1546
 msgid "Failed to resize filesystem: {}"
 msgstr "No se pudo redimensionar el sistema de archivos: {}"
 
-#: lib/minios_session.py:1400 lib/minios_session.py:1434
+#: lib/minios_session.py:1519 lib/minios_session.py:1553
 msgid "Session {} resized to {}MB successfully"
 msgstr "Sesión {} redimensionada a {}MB con éxito"
 
-#: lib/minios_session.py:1403
+#: lib/minios_session.py:1522
 msgid "Failed to resize dynfilefs session: {}"
 msgstr "No se pudo redimensionar la sesión dynfilefs: {}"
 
-#: lib/minios_session.py:1409
+#: lib/minios_session.py:1528
 msgid "Raw image file not found"
 msgstr "No se encontró el archivo de imagen raw"
 
-#: lib/minios_session.py:1415
+#: lib/minios_session.py:1534
 msgid "New size must be larger than current size ({}MB)"
 msgstr "El nuevo tamaño debe ser mayor que el tamaño actual ({}MB)"
 
-#: lib/minios_session.py:1437
+#: lib/minios_session.py:1556
 msgid "Failed to resize raw session: {}"
 msgstr "No se pudo redimensionar la sesión raw: {}"
 
-#: lib/minios_session.py:1453
+#: lib/minios_session.py:1572
 msgid "Session #{} not found"
 msgstr "Sesión #{} no encontrada"
 
-#: lib/minios_session.py:1460
+#: lib/minios_session.py:1579
 msgid "Cannot export currently running session"
 msgstr "No se puede exportar la sesión actualmente en ejecución"
 
-#: lib/minios_session.py:1526
+#: lib/minios_session.py:1645
 msgid "Export verification failed"
 msgstr "Falló la verificación de exportación"
 
-#: lib/minios_session.py:1529
+#: lib/minios_session.py:1648
 msgid "Session exported successfully to {} ({})"
 msgstr "Sesión exportada con éxito a {} ({})"
 
-#: lib/minios_session.py:1536
+#: lib/minios_session.py:1655
 msgid "Export failed: {}"
 msgstr "Exportación fallida: {}"
 
-#: lib/minios_session.py:1685
+#: lib/minios_session.py:1804
 msgid "Archive file not found"
 msgstr "Archivo de archivo no encontrado"
 
-#: lib/minios_session.py:1689
+#: lib/minios_session.py:1808
 msgid "Invalid archive format. Only .tar.zst files are supported."
 msgstr "Formato de archivo inválido. Solo se admiten archivos .tar.zst."
 
-#: lib/minios_session.py:1695
+#: lib/minios_session.py:1814
 msgid "Invalid session archive: missing or corrupted metadata"
 msgstr "Archivo de sesión inválido: metadatos faltantes o corruptos"
 
-#: lib/minios_session.py:1702
+#: lib/minios_session.py:1821
 msgid "Incompatible session: {}"
 msgstr "Sesión incompatible: {}"
 
-#: lib/minios_session.py:1762
+#: lib/minios_session.py:1881
 msgid "Failed to import session data: {}"
 msgstr "No se pudieron importar los datos de la sesión: {}"
 
-#: lib/minios_session.py:1771
+#: lib/minios_session.py:1890
 msgid "Imported session failed verification"
 msgstr "La sesión importada no pasó la verificación"
 
-#: lib/minios_session.py:1773
+#: lib/minios_session.py:1892
 msgid "Session imported successfully as #{}"
 msgstr "Sesión importada con éxito como #{}"
 
-#: lib/minios_session.py:1776
+#: lib/minios_session.py:1895
 msgid "Import failed: {}"
 msgstr "Importación fallida: {}"
 
-#: lib/minios_session.py:1828
+#: lib/minios_session.py:1947
 msgid "Version mismatch: {} → {}"
 msgstr "Discrepancia de versión: {} → {}"
 
-#: lib/minios_session.py:1833
+#: lib/minios_session.py:1952
 msgid "Edition mismatch: {} → {}"
 msgstr "Discrepancia de edición: {} → {}"
 
-#: lib/minios_session.py:1838
+#: lib/minios_session.py:1957
 msgid "Union FS mismatch: {} → {}"
 msgstr "Discrepancia de sistema Unión: {} → {}"
 
-#: lib/minios_session.py:1936
+#: lib/minios_session.py:2055
 msgid "Source session not found"
 msgstr "Sesión de origen no encontrada"
 
-#: lib/minios_session.py:1947
+#: lib/minios_session.py:2066
 msgid "Cannot copy currently running session"
 msgstr "No se puede copiar la sesión actualmente en ejecución"
 
-#: lib/minios_session.py:1974
+#: lib/minios_session.py:2093
 msgid "Failed to copy session data"
 msgstr "No se pudieron copiar los datos de la sesión"
 
-#: lib/minios_session.py:1994
+#: lib/minios_session.py:2113
 msgid "Session copied successfully to #{}"
 msgstr "Sesión copiada con éxito a #{}"
 
-#: lib/minios_session.py:1999
+#: lib/minios_session.py:2118
 msgid "Copy failed: {}"
 msgstr "Copia fallida: {}"
 
-#: lib/minios_session.py:2127 lib/minios_session_manager.py:1217
-#: lib/minios_session_manager.py:1661
-msgid "Session not found"
-msgstr "Sesión no encontrada"
-
-#: lib/minios_session.py:2133
+#: lib/minios_session.py:2252
 msgid "Session is already in {} mode"
 msgstr "La sesión ya está en modo {}"
 
-#: lib/minios_session.py:2138
+#: lib/minios_session.py:2257
 msgid "Cannot convert currently running session"
 msgstr "No se puede convertir la sesión actualmente en ejecución"
 
-#: lib/minios_session.py:2143
+#: lib/minios_session.py:2262
 msgid ""
 "Cannot convert currently active session. Please activate another session "
 "first."
@@ -348,78 +823,42 @@ msgstr ""
 "No se puede convertir la sesión actualmente activa. Por favor, active otra "
 "sesión primero."
 
-#: lib/minios_session.py:2151
+#: lib/minios_session.py:2270
 msgid "Target mode '{}' is not compatible with current filesystem"
 msgstr ""
 "El modo de destino '{}' no es compatible con el sistema de archivos actual"
 
-#: lib/minios_session.py:2203
+#: lib/minios_session.py:2322
 msgid "Session converted successfully from {} to {}"
 msgstr "Sesión convertida con éxito de {} a {}"
 
-#: lib/minios_session.py:2209
+#: lib/minios_session.py:2328
 msgid "Conversion failed: {}"
 msgstr "Conversión fallida: {}"
 
-#: lib/minios_session.py:2231 lib/minios_session_manager.py:423
-msgid "No sessions found"
-msgstr "No se encontraron sesiones"
-
-#: lib/minios_session.py:2238 lib/minios_session_manager.py:520
-msgid "ACTIVE"
-msgstr "ACTIVA"
-
-#: lib/minios_session.py:2240 lib/minios_session_manager.py:533
-msgid "RUNNING"
-msgstr "EN EJECUCIÓN"
-
-#: lib/minios_session.py:2246 lib/minios_session_manager.py:458
-msgid "Session"
-msgstr "Sesión"
-
-#: lib/minios_session.py:2247 lib/minios_session_manager.py:472
-msgid "Mode:"
-msgstr "Modo:"
-
-#: lib/minios_session.py:2248 lib/minios_session_manager.py:478
-msgid "Version:"
-msgstr "Versión:"
-
-#: lib/minios_session.py:2249 lib/minios_session_manager.py:485
-msgid "Edition:"
-msgstr "Edición:"
-
-#: lib/minios_session.py:2250 lib/minios_session_manager.py:491
-msgid "Union FS:"
-msgstr "Sistema Unión:"
-
-#: lib/minios_session.py:2251 lib/minios_session_manager.py:498
-msgid "Size:"
-msgstr "Tamaño:"
-
-#: lib/minios_session.py:2265
+#: lib/minios_session.py:2384
 msgid "Total Size:"
 msgstr "Tamaño total:"
 
-#: lib/minios_session.py:2267
+#: lib/minios_session.py:2386
 msgid "Last Modified:"
 msgstr "Última modificación:"
 
-#: lib/minios_session.py:2375
+#: lib/minios_session.py:2495
 msgid ""
 "This tool requires root privileges. Please run with sudo or through pkexec."
 msgstr ""
 "Esta herramienta requiere privilegios de root. Por favor, ejecute con sudo o "
 "a través de pkexec."
 
-#: lib/minios_session.py:2383
+#: lib/minios_session.py:2503
 msgid ""
 "MiniOS Session Manager - Command line tool for managing persistent sessions"
 msgstr ""
 "MiniOS Session Manager - Herramienta de línea de comandos para gestionar "
 "sesiones persistentes"
 
-#: lib/minios_session.py:2385
+#: lib/minios_session.py:2505
 msgid ""
 "\n"
 "GLOBAL OPTIONS:\n"
@@ -435,12 +874,10 @@ msgid ""
 "  running                   Show currently running session (current boot)\n"
 "  info                      Show filesystem type and compatible session "
 "modes\n"
-"  activate SESSION_ID       Activate specified session (required: "
-"session_id)\n"
-"  create [OPTIONS]          Create new session (optional: --mode, --size)\n"
-"  delete SESSION_ID         Delete specified session (required: session_id)\n"
-"  cleanup [OPTIONS]         Delete old sessions (optional: --days, default: "
-"30)\n"
+"  activate SESSION_ID       Activate specified session\n"
+"  create [MODE] [SIZE]      Create new session using positional arguments\n"
+"  delete SESSION_ID         Delete specified session\n"
+"  cleanup [--days N]        Delete old sessions (default: 30 days)\n"
 "  status                    Check sessions directory status and permissions\n"
 "  resize SESSION_ID SIZE    Resize session to new size in MB (dynfilefs/raw "
 "only)\n"
@@ -459,8 +896,8 @@ msgid ""
 "size required)\n"
 "\n"
 "COMMAND BEHAVIOR:\n"
-"  • create without --mode: Uses native mode (may fail on FAT32/NTFS/exFAT)\n"
-"  • create without --size: Uses 1000MB for dynfilefs/raw modes\n"
+"  • create without MODE: Uses native mode (may fail on FAT32/NTFS/exFAT)\n"
+"  • create without SIZE: Uses 1000MB for dynfilefs/raw modes\n"
 "  • cleanup without --days: Uses 30-day threshold for deletion\n"
 "  • cleanup protects both active and running sessions from deletion\n"
 "\n"
@@ -487,14 +924,16 @@ msgid ""
 "30 days (default)\n"
 "\n"
 "  Creating Sessions:\n"
-"    minios-session create --mode native           Create native session "
+"    minios-session create                         Create native session "
 "(filesystem changes)\n"
-"    minios-session create --mode dynfilefs        Create 1000MB dynfilefs "
-"session (default)\n"
-"    minios-session create --mode dynfilefs --size 8000   Create 8000MB "
-"dynfilefs session\n"
-"    minios-session create --mode raw --size 2000         Create 2000MB raw "
-"disk image\n"
+"    minios-session create native                  Create native session "
+"explicitly\n"
+"    minios-session create dynfilefs               Create 1000MB dynfilefs "
+"session (default size)\n"
+"    minios-session create dynfilefs 8000          Create 8000MB dynfilefs "
+"session\n"
+"    minios-session create raw 2000                Create 2000MB raw disk "
+"image\n"
 "\n"
 "  Session Operations:\n"
 "    minios-session resize 2 4000                  Resize session #2 to "
@@ -512,7 +951,7 @@ msgid ""
 "  Error Handling:\n"
 "    minios-session create                         May fail on FAT32/NTFS/"
 "exFAT: \"Use dynfilefs or raw mode\"\n"
-"    minios-session create --mode raw --size 5000  Will fail on FAT32: file "
+"    minios-session create raw 5000                Will fail on FAT32: file "
 "size limit is 4096MB (4GB)\n"
 "\n"
 "  JSON Output (for automation):\n"
@@ -524,7 +963,7 @@ msgid ""
 "\n"
 "  Custom Session Directory:\n"
 "    minios-session --sessions-dir /mnt/usb/sessions list\n"
-"    minios-session --sessions-dir /tmp/test create --mode native\n"
+"    minios-session --sessions-dir /tmp/test create native\n"
 "\n"
 "        "
 msgstr ""
@@ -542,40 +981,38 @@ msgstr ""
 "iniciará en el próximo arranque)\n"
 "  running                   Mostrar la sesión actualmente en ejecución "
 "(arranque actual)\n"
-"  info                      Mostrar el tipo de sistema de archivos e "
-"información de compatibilidad de modos de sesión\n"
-"  activate SESSION_ID       Activar la sesión especificada (obligatorio: "
-"session_id)\n"
-"  create [OPCIONES]         Crear nueva sesión (opcional: --mode, --size)\n"
-"  delete SESSION_ID         Eliminar la sesión especificada (obligatorio: "
-"session_id)\n"
-"  cleanup [OPCIONES]        Eliminar sesiones antiguas (opcional: --days, "
-"predeterminado: 30)\n"
-"  status                    Comprobar el estado del directorio de sesiones y "
-"permisos\n"
-"  resize SESSION_ID SIZE    Redimensionar la sesión al nuevo tamaño en MB "
+"  info                      Mostrar el tipo de sistema de archivos y los "
+"modos de sesión compatibles\n"
+"  activate SESSION_ID       Activar la sesión especificada\n"
+"  create [MODE] [SIZE]      Crear una nueva sesión usando argumentos "
+"posicionales\n"
+"  delete SESSION_ID         Eliminar la sesión especificada\n"
+"  cleanup [--days N]        Eliminar sesiones antiguas (por defecto: 30 "
+"días)\n"
+"  status                    Verificar el estado y permisos del directorio de "
+"sesiones\n"
+"  resize SESSION_ID SIZE    Redimensionar la sesión a un nuevo tamaño en MB "
 "(solo dynfilefs/raw)\n"
-"  export SESSION_ID PATH    Exportar sesión a archivo .tar.zst\n"
-"  import ARCHIVE            Importar sesión desde archivo .tar.zst\n"
-"  copy SESSION_ID           Copiar sesión (opcional: --to-mode, --size)\n"
-"  convert SESSION_ID MODE   Convertir sesión a modo diferente (opcional: --"
-"size)\n"
+"  export SESSION_ID PATH    Exportar la sesión a un archivo .tar.zst\n"
+"  import ARCHIVE            Importar una sesión desde un archivo .tar.zst\n"
+"  copy SESSION_ID           Copiar una sesión (opcional: --to-mode, --size)\n"
+"  convert SESSION_ID MODE   Convertir una sesión a un modo diferente "
+"(opcional: --size)\n"
 "\n"
 "MODOS DE SESIÓN:\n"
 "  native                    Cambios directos en el sistema de archivos "
 "(requiere un sistema de archivos compatible con POSIX)\n"
-"  dynfilefs                 Superposición dinámica del sistema de archivos "
-"(funciona en cualquier sistema de archivos, 1000MB predeterminado)\n"
-"  raw                       Imagen de disco raw (funciona en cualquier "
-"sistema de archivos, tamaño personalizado requerido)\n"
+"  dynfilefs                 Superposición de sistema de archivos dinámico "
+"(funciona en cualquier sistema de archivos, 1000MB por defecto)\n"
+"  raw                       Imagen de disco cruda (funciona en cualquier "
+"sistema de archivos, se requiere tamaño personalizado)\n"
 "\n"
-"COMPORTAMIENTO DEL COMANDO:\n"
-"  • create sin --mode: Usa el modo nativo (puede fallar en FAT32/NTFS/"
-"exFAT)\n"
-"  • create sin --size: Usa 1000MB para los modos dynfilefs/raw\n"
+"COMPORTAMIENTO DE LOS COMANDOS:\n"
+"  • create sin MODE: Usa el modo native (puede fallar en FAT32/NTFS/exFAT)\n"
+"  • create sin SIZE: Usa 1000MB para los modos dynfilefs/raw\n"
 "  • cleanup sin --days: Usa un umbral de 30 días para la eliminación\n"
-"  • cleanup protege tanto las sesiones activas como las en ejecución de la "
-"eliminación\n"
+"  • cleanup protege tanto las sesiones activas como las en ejecución de ser "
+"eliminadas\n"
 "\n"
 "EJEMPLOS:\n"
 "\n"
@@ -592,217 +1029,219 @@ msgstr ""
 "  Gestión de Sesiones:\n"
 "    minios-session activate 2                     Establecer la sesión #2 "
 "como predeterminada para el próximo arranque\n"
-"    minios-session delete 3                       Eliminar la sesión #3 "
-"permanentemente\n"
+"    minios-session delete 3                       Eliminar permanentemente "
+"la sesión #3\n"
 "    minios-session cleanup --days 30              Eliminar sesiones con más "
-"de 30 días de antigüedad\n"
+"de 30 días\n"
 "    minios-session cleanup                        Eliminar sesiones con más "
-"de 30 días de antigüedad (predeterminado)\n"
+"de 30 días (por defecto)\n"
 "\n"
 "  Creación de Sesiones:\n"
-"    minios-session create --mode native           Crear una sesión nativa "
+"    minios-session create                         Crear una sesión native "
 "(cambios en el sistema de archivos)\n"
-"    minios-session create --mode dynfilefs        Crear una sesión dynfilefs "
-"de 1000MB (predeterminado)\n"
-"    minios-session create --mode dynfilefs --size 8000   Crear una sesión "
-"dynfilefs de 8000MB\n"
-"    minios-session create --mode raw --size 2000         Crear una imagen de "
-"disco raw de 2000MB\n"
+"    minios-session create native                  Crear una sesión native "
+"explícitamente\n"
+"    minios-session create dynfilefs               Crear una sesión dynfilefs "
+"de 1000MB (tamaño por defecto)\n"
+"    minios-session create dynfilefs 8000          Crear una sesión dynfilefs "
+"de 8000MB\n"
+"    minios-session create raw 2000                Crear una imagen de disco "
+"cruda de 2000MB\n"
 "\n"
 "  Operaciones de Sesión:\n"
-"    minios-session resize 2 4000                  Redimensionar sesión #2 a "
-"4000MB\n"
-"    minios-session export 3 /tmp/backup.tar.zst   Exportar sesión #3 a "
+"    minios-session resize 2 4000                  Redimensionar la sesión #2 "
+"a 4000MB\n"
+"    minios-session export 3 /tmp/backup.tar.zst   Exportar la sesión #3 a un "
 "archivo\n"
-"    minios-session import /tmp/backup.tar.zst     Importar sesión desde "
-"archivo\n"
-"    minios-session copy 2                         Copiar sesión #2\n"
-"    minios-session copy 2 --to-mode raw --size 3000  Copiar sesión #2 como "
-"raw con 3000MB\n"
-"    minios-session convert 3 dynfilefs --size 2000   Convertir sesión #3 a "
-"dynfilefs con 2000MB\n"
+"    minios-session import /tmp/backup.tar.zst     Importar una sesión desde "
+"un archivo\n"
+"    minios-session copy 2                         Copiar la sesión #2\n"
+"    minios-session copy 2 --to-mode raw --size 3000  Copiar la sesión #2 "
+"como raw con 3000MB\n"
+"    minios-session convert 3 dynfilefs --size 2000   Convertir la sesión #3 "
+"a dynfilefs con 2000MB\n"
 "\n"
 "  Manejo de Errores:\n"
 "    minios-session create                         Puede fallar en FAT32/NTFS/"
-"exFAT: \"Use el modo dynfilefs o raw\"\n"
-"    minios-session create --mode raw --size 5000  Fallará en FAT32: el "
+"exFAT: \"Usar modos dynfilefs o raw\"\n"
+"    minios-session create raw 5000                Fallará en FAT32: el "
 "límite de tamaño de archivo es 4096MB (4GB)\n"
 "\n"
 "  Salida JSON (para automatización):\n"
 "    minios-session --json list                    Listar sesiones en formato "
 "JSON\n"
 "    minios-session active --json                  Obtener información de la "
-"sesión activa como JSON\n"
+"sesión activa en formato JSON\n"
 "    minios-session info --json                    Obtener información del "
-"sistema como JSON\n"
+"sistema en formato JSON\n"
 "\n"
 "  Directorio de Sesiones Personalizado:\n"
 "    minios-session --sessions-dir /mnt/usb/sessions list\n"
-"    minios-session --sessions-dir /tmp/test create --mode native\n"
+"    minios-session --sessions-dir /tmp/test create native\n"
 "\n"
 "        "
 
-#: lib/minios_session.py:2462 lib/minios_session.py:2470
+#: lib/minios_session.py:2583 lib/minios_session.py:2591
 msgid "Output in JSON format"
 msgstr "Mostrar resultados en formato JSON"
 
-#: lib/minios_session.py:2464 lib/minios_session.py:2472
+#: lib/minios_session.py:2585 lib/minios_session.py:2593
 msgid "Custom path to sessions directory"
 msgstr "Ruta personalizada al directorio de sesiones"
 
-#: lib/minios_session.py:2466
+#: lib/minios_session.py:2587
 msgid "Available commands"
 msgstr "Comandos disponibles"
 
-#: lib/minios_session.py:2475
+#: lib/minios_session.py:2596
 msgid "List all sessions"
 msgstr "Listar todas las sesiones"
 
-#: lib/minios_session.py:2478
+#: lib/minios_session.py:2599
 msgid "Show active session"
 msgstr "Mostrar sesión activa"
 
-#: lib/minios_session.py:2481
+#: lib/minios_session.py:2602
 msgid "Show running session"
 msgstr "Mostrar sesión en ejecución"
 
-#: lib/minios_session.py:2484
+#: lib/minios_session.py:2605
 msgid "Show filesystem and compatibility information"
 msgstr "Mostrar información de compatibilidad del sistema de archivos"
 
-#: lib/minios_session.py:2487
+#: lib/minios_session.py:2608
 msgid "Activate a session"
 msgstr "Activar una sesión"
 
-#: lib/minios_session.py:2488
+#: lib/minios_session.py:2609
 msgid "Session ID to activate"
 msgstr "ID de sesión a activar"
 
-#: lib/minios_session.py:2491
+#: lib/minios_session.py:2612
 msgid "Create a new session"
 msgstr "Crear una nueva sesión"
 
-#: lib/minios_session.py:2493
+#: lib/minios_session.py:2614
 msgid "Session mode (default: native)"
 msgstr "Modo de sesión (predeterminado: nativo)"
 
-#: lib/minios_session.py:2495
+#: lib/minios_session.py:2616
 msgid "Size in MB for dynfilefs/raw modes (default: 1000)"
 msgstr "Tamaño en MB para los modos dynfilefs/raw (predeterminado: 1000)"
 
-#: lib/minios_session.py:2498
+#: lib/minios_session.py:2619
 msgid "Delete a session"
 msgstr "Eliminar una sesión"
 
-#: lib/minios_session.py:2499
+#: lib/minios_session.py:2620
 msgid "Session ID to delete"
 msgstr "ID de sesión a eliminar"
 
-#: lib/minios_session.py:2502
+#: lib/minios_session.py:2623
 msgid "Clean up old sessions"
 msgstr "Limpiar sesiones antiguas"
 
-#: lib/minios_session.py:2504
+#: lib/minios_session.py:2625
 msgid "Delete sessions older than N days (default: 30)"
 msgstr "Eliminar sesiones con más de N días de antigüedad (predeterminado: 30)"
 
-#: lib/minios_session.py:2507
+#: lib/minios_session.py:2628
 msgid "Check sessions directory status"
 msgstr "Comprobar el estado del directorio de sesiones"
 
-#: lib/minios_session.py:2510
+#: lib/minios_session.py:2631
 msgid "Resize a session"
 msgstr "Redimensionar una sesión"
 
-#: lib/minios_session.py:2511
+#: lib/minios_session.py:2632
 msgid "Session ID to resize"
 msgstr "ID de sesión a redimensionar"
 
-#: lib/minios_session.py:2512
+#: lib/minios_session.py:2633
 msgid "New size in MB"
 msgstr "Nuevo tamaño en MB"
 
-#: lib/minios_session.py:2515
+#: lib/minios_session.py:2636
 msgid "Export session to archive"
 msgstr "Exportar sesión a archivo"
 
-#: lib/minios_session.py:2516
+#: lib/minios_session.py:2637
 msgid "Session ID to export"
 msgstr "ID de sesión a exportar"
 
-#: lib/minios_session.py:2517
+#: lib/minios_session.py:2638
 msgid "Output file or directory path"
 msgstr "Ruta de archivo o directorio de salida"
 
-#: lib/minios_session.py:2518
+#: lib/minios_session.py:2639
 msgid "Skip archive verification"
 msgstr "Omitir verificación de archivo"
 
-#: lib/minios_session.py:2521
+#: lib/minios_session.py:2642
 msgid "Import session from archive"
 msgstr "Importar sesión desde archivo"
 
-#: lib/minios_session.py:2522
+#: lib/minios_session.py:2643
 msgid "Path to session archive (.tar.zst)"
 msgstr "Ruta al archivo de sesión (.tar.zst)"
 
-#: lib/minios_session.py:2524
+#: lib/minios_session.py:2645
 msgid "Automatically convert to compatible mode"
 msgstr "Convertir automáticamente a modo compatible"
 
-#: lib/minios_session.py:2526
+#: lib/minios_session.py:2647
 msgid "Force specific session mode"
 msgstr "Forzar modo de sesión específico"
 
-#: lib/minios_session.py:2527
+#: lib/minios_session.py:2648
 msgid "Skip integrity verification"
 msgstr "Omitir verificación de integridad"
 
-#: lib/minios_session.py:2529
+#: lib/minios_session.py:2650
 msgid "Skip compatibility checks"
 msgstr "Omitir comprobaciones de compatibilidad"
 
-#: lib/minios_session.py:2532
+#: lib/minios_session.py:2653
 msgid "Copy a session"
 msgstr "Copiar una sesión"
 
-#: lib/minios_session.py:2533
+#: lib/minios_session.py:2654
 msgid "Session ID to copy"
 msgstr "ID de sesión a copiar"
 
-#: lib/minios_session.py:2535
+#: lib/minios_session.py:2656
 msgid "Convert to different mode (optional)"
 msgstr "Convertir a modo diferente (opcional)"
 
-#: lib/minios_session.py:2537
+#: lib/minios_session.py:2658
 msgid "Size for new session (for dynfilefs/raw)"
 msgstr "Tamaño para nueva sesión (para dynfilefs/raw)"
 
-#: lib/minios_session.py:2540
+#: lib/minios_session.py:2661
 msgid "Convert session mode"
 msgstr "Convertir modo de sesión"
 
-#: lib/minios_session.py:2541
+#: lib/minios_session.py:2662
 msgid "Session ID to convert"
 msgstr "ID de sesión a convertir"
 
-#: lib/minios_session.py:2543
+#: lib/minios_session.py:2664
 msgid "Target mode"
 msgstr "Modo de destino"
 
-#: lib/minios_session.py:2545
+#: lib/minios_session.py:2666
 msgid "Size for dynfilefs/raw mode"
 msgstr "Tamaño para modo dynfilefs/raw"
 
-#: lib/minios_session.py:2547
+#: lib/minios_session.py:2668
 msgid "Create new session instead of in-place conversion"
 msgstr "Crear nueva sesión en lugar de conversión in situ"
 
-#: lib/minios_session.py:2585
+#: lib/minios_session.py:2706
 msgid "Could not find sessions directory."
 msgstr "No se pudo encontrar el directorio de sesiones."
 
-#: lib/minios_session.py:2586 lib/minios_session.py:2591
+#: lib/minios_session.py:2707 lib/minios_session.py:2712
 msgid ""
 "This tool must be run from within a MiniOS live system with persistent "
 "sessions enabled."
@@ -810,628 +1249,159 @@ msgstr ""
 "Esta herramienta debe ejecutarse desde un sistema en vivo de MiniOS con "
 "sesiones persistentes habilitadas."
 
-#: lib/minios_session.py:2590
+#: lib/minios_session.py:2711
 msgid "Error: Could not find sessions directory."
 msgstr "Error: No se pudo encontrar el directorio de sesiones."
 
-#: lib/minios_session.py:2608
+#: lib/minios_session.py:2729
 msgid "Active session: #{}"
 msgstr "Sesión activa: #{}"
 
-#: lib/minios_session.py:2609 lib/minios_session.py:2625
+#: lib/minios_session.py:2730 lib/minios_session.py:2746
 msgid "Mode: {}"
 msgstr "Modo: {}"
 
-#: lib/minios_session.py:2610 lib/minios_session.py:2626
+#: lib/minios_session.py:2731 lib/minios_session.py:2747
 msgid "Version: {}"
 msgstr "Versión: {}"
 
-#: lib/minios_session.py:2611 lib/minios_session.py:2627
+#: lib/minios_session.py:2732 lib/minios_session.py:2748
 msgid "Edition: {}"
 msgstr "Edición: {}"
 
-#: lib/minios_session.py:2612 lib/minios_session.py:2628
+#: lib/minios_session.py:2733 lib/minios_session.py:2749
 msgid "Union FS: {}"
 msgstr "Sistema Unión: {}"
 
-#: lib/minios_session.py:2613 lib/minios_session.py:2629
+#: lib/minios_session.py:2734 lib/minios_session.py:2750
 msgid "Size: {}"
 msgstr "Tamaño: {}"
 
-#: lib/minios_session.py:2614 lib/minios_session.py:2631
+#: lib/minios_session.py:2735 lib/minios_session.py:2752
 msgid "Last Modified: {}"
 msgstr "Última modificación: {}"
 
-#: lib/minios_session.py:2616
+#: lib/minios_session.py:2737
 msgid "No active session found"
 msgstr "No se encontró ninguna sesión activa"
 
-#: lib/minios_session.py:2624
+#: lib/minios_session.py:2745
 msgid "Running session: #{}"
 msgstr "Sesión en ejecución: #{}"
 
-#: lib/minios_session.py:2633 lib/minios_session.py:2744
-#: lib/minios_session.py:2753
+#: lib/minios_session.py:2754 lib/minios_session.py:2865
+#: lib/minios_session.py:2874
 msgid "Status: {}"
 msgstr "Estado: {}"
 
-#: lib/minios_session.py:2635
+#: lib/minios_session.py:2756
 msgid "No running session detected"
 msgstr "No se detectó ninguna sesión en ejecución"
 
-#: lib/minios_session.py:2643 lib/minios_session.py:2755
+#: lib/minios_session.py:2764 lib/minios_session.py:2876
 msgid "Error: {}"
 msgstr "Error: {}"
 
-#: lib/minios_session.py:2649
+#: lib/minios_session.py:2770
 msgid "MiniOS Media Information:"
 msgstr "Información del medio MiniOS:"
 
-#: lib/minios_session.py:2652
+#: lib/minios_session.py:2773
 msgid "Filesystem Type: {}"
 msgstr "Tipo de sistema de archivos: {}"
 
-#: lib/minios_session.py:2653
+#: lib/minios_session.py:2774
 msgid "Device: {}"
 msgstr "Dispositivo: {}"
 
-#: lib/minios_session.py:2654
+#: lib/minios_session.py:2775
 msgid "Mount Options: {}"
 msgstr "Opciones de montaje: {}"
 
-#: lib/minios_session.py:2654
+#: lib/minios_session.py:2775
 msgid "none"
 msgstr "ninguno"
 
-#: lib/minios_session.py:2655
+#: lib/minios_session.py:2776
 msgid "Read-only: {}"
 msgstr "Solo lectura: {}"
 
-#: lib/minios_session.py:2655 lib/minios_session.py:2656
+#: lib/minios_session.py:2776 lib/minios_session.py:2777
 msgid "Yes"
 msgstr "Sí"
 
-#: lib/minios_session.py:2655 lib/minios_session.py:2656
+#: lib/minios_session.py:2776 lib/minios_session.py:2777
 msgid "No"
 msgstr "No"
 
-#: lib/minios_session.py:2656
+#: lib/minios_session.py:2777
 msgid "POSIX Compatible: {}"
 msgstr "Compatible con POSIX: {}"
 
-#: lib/minios_session.py:2659
+#: lib/minios_session.py:2780
 msgid "Compatible Session Modes:"
 msgstr "Modos de sesión compatibles:"
 
-#: lib/minios_session.py:2665
+#: lib/minios_session.py:2786
 msgid "  None (read-only media)"
 msgstr "  Ninguno (medios de solo lectura)"
 
-#: lib/minios_session.py:2670
+#: lib/minios_session.py:2791
 msgid "Filesystem Limitations:"
 msgstr "Limitaciones del sistema de archivos:"
 
-#: lib/minios_session.py:2672
+#: lib/minios_session.py:2793
 msgid "  • Maximum file size: {}MB ({:.1f}GB)"
 msgstr "  • Tamaño máximo de archivo: {}MB ({:.1f}GB)"
 
-#: lib/minios_session.py:2675
+#: lib/minios_session.py:2796
 msgid "  • No POSIX features (no native mode support)"
 msgstr "  • Sin características POSIX (sin soporte de modo nativo)"
 
-#: lib/minios_session.py:2677
+#: lib/minios_session.py:2798
 msgid "  • Case-insensitive filenames"
 msgstr "  • Nombres de archivo que no distinguen entre mayúsculas y minúsculas"
 
-#: lib/minios_session.py:2679
+#: lib/minios_session.py:2800
 msgid "No known limitations"
 msgstr "Sin limitaciones conocidas"
 
-#: lib/minios_session.py:2715 lib/minios_session.py:2719
+#: lib/minios_session.py:2836 lib/minios_session.py:2840
 msgid "Cleanup completed: {} sessions deleted"
 msgstr "Limpieza completada: {} sesiones eliminadas"
 
-#: lib/minios_session.py:2721
+#: lib/minios_session.py:2842
 msgid "Errors:"
 msgstr "Errores:"
 
-#: lib/minios_session.py:2742
+#: lib/minios_session.py:2863
 msgid "Sessions directory: {}"
 msgstr "Directorio de sesiones: {}"
 
-#: lib/minios_session.py:2744
+#: lib/minios_session.py:2865
 msgid "Found"
 msgstr "Encontrado"
 
-#: lib/minios_session.py:2746 lib/minios_session.py:2748
+#: lib/minios_session.py:2867 lib/minios_session.py:2869
 msgid "Access: {}"
 msgstr "Acceso: {}"
 
-#: lib/minios_session.py:2746
+#: lib/minios_session.py:2867
 msgid "Writable"
 msgstr "Escribible"
 
-#: lib/minios_session.py:2748
+#: lib/minios_session.py:2869
 msgid "Read-only"
 msgstr "Solo lectura"
 
-#: lib/minios_session.py:2750
+#: lib/minios_session.py:2871
 msgid "Reason: {}"
 msgstr "Razón: {}"
 
-#: lib/minios_session.py:2751
+#: lib/minios_session.py:2872
 msgid "Filesystem type: {}"
 msgstr "Tipo de sistema de archivos: {}"
 
-#: lib/minios_session.py:2753
+#: lib/minios_session.py:2874
 msgid "Not found"
 msgstr "No encontrado"
-
-#: lib/minios_session_manager.py:88
-msgid "Command timed out - authentication may have been cancelled"
-msgstr "Comando agotado - la autenticación pudo haber sido cancelada"
-
-#: lib/minios_session_manager.py:128
-msgid "Sessions directory is writable"
-msgstr "Directorio de sesiones es escribible"
-
-#: lib/minios_session_manager.py:133
-msgid "Sessions directory is read-only"
-msgstr "Directorio de sesiones es de solo lectura"
-
-#: lib/minios_session_manager.py:152
-msgid "MiniOS Session Manager"
-msgstr "MiniOS Session Manager"
-
-#: lib/minios_session_manager.py:193 lib/minios_session_manager.py:1198
-msgid "Loading sessions..."
-msgstr "Cargando sesiones..."
-
-#: lib/minios_session_manager.py:225
-msgid "Create"
-msgstr "Crear"
-
-#: lib/minios_session_manager.py:244
-msgid "Import"
-msgstr "Importar"
-
-#: lib/minios_session_manager.py:262
-msgid "Cleanup"
-msgstr "Limpiar"
-
-#: lib/minios_session_manager.py:307
-msgid "Error fetching session data: {}"
-msgstr "Error al obtener datos de la sesión: {}"
-
-#: lib/minios_session_manager.py:327
-msgid "Failed to get session list: {}"
-msgstr "No se pudo obtener la lista de sesiones: {}"
-
-#: lib/minios_session_manager.py:371
-msgid "Failed to parse session list JSON: {}"
-msgstr "No se pudo analizar el JSON de la lista de sesiones: {}"
-
-#: lib/minios_session_manager.py:504
-msgid "Modified:"
-msgstr "Modificado:"
-
-#: lib/minios_session_manager.py:523
-msgid "AVAILABLE"
-msgstr "DISPONIBLE"
-
-#: lib/minios_session_manager.py:562
-msgid "Activate Session"
-msgstr "Activar sesión"
-
-#: lib/minios_session_manager.py:568
-msgid "Resize Session"
-msgstr "Redimensionar sesión"
-
-#: lib/minios_session_manager.py:578
-msgid "Export Session"
-msgstr "Exportar sesión"
-
-#: lib/minios_session_manager.py:584
-msgid "Copy Session"
-msgstr "Copiar sesión"
-
-#: lib/minios_session_manager.py:590
-msgid "Convert Session"
-msgstr "Convertir sesión"
-
-#: lib/minios_session_manager.py:600
-msgid "Open Folder"
-msgstr "Abrir carpeta"
-
-#: lib/minios_session_manager.py:610
-msgid "Delete Session"
-msgstr "Eliminar sesión"
-
-#: lib/minios_session_manager.py:732
-msgid "Session folder not found"
-msgstr "Carpeta de sesión no encontrada"
-
-#: lib/minios_session_manager.py:734 lib/minios_session_manager.py:1205
-#: lib/minios_session_manager.py:1649
-msgid "Failed to get session information"
-msgstr "No se pudo obtener la información de la sesión"
-
-#: lib/minios_session_manager.py:736
-msgid "Failed to open folder: {}"
-msgstr "No se pudo abrir la carpeta: {}"
-
-#: lib/minios_session_manager.py:743
-msgid "Sessions directory is not writable. Cannot create new sessions."
-msgstr ""
-"El directorio de sesiones no es escribible. No se pueden crear nuevas "
-"sesiones."
-
-#: lib/minios_session_manager.py:771
-msgid "Create New Session"
-msgstr "Crear nueva sesión"
-
-#: lib/minios_session_manager.py:788
-msgid "Detected filesystem:"
-msgstr "Sistema de archivos detectado:"
-
-#: lib/minios_session_manager.py:792
-msgid "Select session mode:"
-msgstr "Seleccionar modo de sesión:"
-
-#: lib/minios_session_manager.py:800
-msgid "Native Mode"
-msgstr "Modo nativo"
-
-#: lib/minios_session_manager.py:801
-msgid "Direct storage on POSIX filesystems"
-msgstr "Almacenamiento directo en sistemas de archivos POSIX"
-
-#: lib/minios_session_manager.py:808
-msgid "Native Mode (not compatible)"
-msgstr "Modo nativo (no compatible)"
-
-#: lib/minios_session_manager.py:809
-msgid "Not available: requires POSIX filesystem"
-msgstr "No disponible: requiere sistema de archivos POSIX"
-
-#: lib/minios_session_manager.py:815
-msgid "DynFileFS Mode"
-msgstr "Modo DynFileFS"
-
-#: lib/minios_session_manager.py:816
-msgid "Dynamic files"
-msgstr "Archivos dinámicos"
-
-#: lib/minios_session_manager.py:824
-msgid "Raw Mode"
-msgstr "Modo Raw"
-
-#: lib/minios_session_manager.py:825
-msgid "Static image files"
-msgstr "Archivos de imagen estáticos"
-
-#: lib/minios_session_manager.py:835 lib/minios_session_manager.py:1571
-#: lib/minios_session_manager.py:1708
-msgid "Size (MB):"
-msgstr "Tamaño (MB):"
-
-#: lib/minios_session_manager.py:844 lib/minios_session_manager.py:870
-msgid "(Only used for DynFileFS and Raw modes)"
-msgstr "(Solo se usa para los modos DynFileFS y Raw)"
-
-#: lib/minios_session_manager.py:866
-msgid "(Maximum {}MB on FAT32)"
-msgstr "(Máximo {}MB en FAT32)"
-
-#: lib/minios_session_manager.py:905
-msgid "Creating new session, please wait..."
-msgstr "Creando nueva sesión, por favor espere..."
-
-#: lib/minios_session_manager.py:930
-msgid "Sessions directory is not writable. Cannot activate sessions."
-msgstr ""
-"El directorio de sesiones no es escribible. No se pueden activar sesiones."
-
-#: lib/minios_session_manager.py:936
-msgid "Activating session, please wait..."
-msgstr "Activando sesión, por favor espere..."
-
-#: lib/minios_session_manager.py:942
-msgid "Session activated successfully"
-msgstr "Sesión activada con éxito"
-
-#: lib/minios_session_manager.py:942 lib/minios_session_manager.py:944
-msgid "Failed to activate session"
-msgstr "No se pudo activar la sesión"
-
-#: lib/minios_session_manager.py:954
-msgid "Sessions directory is not writable. Cannot delete sessions."
-msgstr ""
-"El directorio de sesiones no es escribible. No se pueden eliminar sesiones."
-
-#: lib/minios_session_manager.py:964
-msgid "Delete this session?"
-msgstr "¿Eliminar esta sesión?"
-
-#: lib/minios_session_manager.py:967
-msgid ""
-"You're about to permanently delete session #{}.\n"
-"\n"
-"This action cannot be undone and all data in this session will be lost "
-"forever.\n"
-"\n"
-"Are you absolutely sure you want to proceed?"
-msgstr ""
-"Está a punto de eliminar permanentemente la sesión #{}.\n"
-"\n"
-"Esta acción no se puede deshacer y todos los datos de esta sesión se "
-"perderán para siempre.\n"
-"\n"
-"¿Está absolutamente seguro de que desea continuar?"
-
-#: lib/minios_session_manager.py:974
-msgid "Yes, delete it"
-msgstr "Sí, eliminarla"
-
-#: lib/minios_session_manager.py:975
-msgid "Keep it safe"
-msgstr "Mantenerla a salvo"
-
-#: lib/minios_session_manager.py:984
-msgid "Deleting session, please wait..."
-msgstr "Eliminando sesión, por favor espere..."
-
-#: lib/minios_session_manager.py:990
-msgid "Session deleted successfully"
-msgstr "Sesión eliminada con éxito"
-
-#: lib/minios_session_manager.py:990 lib/minios_session_manager.py:992
-msgid "Failed to delete session"
-msgstr "No se pudo eliminar la sesión"
-
-#: lib/minios_session_manager.py:1002
-msgid "Sessions directory is not writable. Cannot cleanup sessions."
-msgstr ""
-"El directorio de sesiones no es escribible. No se pueden limpiar las "
-"sesiones."
-
-#: lib/minios_session_manager.py:1007
-msgid "Cleanup Old Sessions"
-msgstr "Limpiar sesiones antiguas"
-
-#: lib/minios_session_manager.py:1022
-msgid "Delete sessions older than how many days?"
-msgstr "¿Eliminar sesiones con más de cuántos días de antigüedad?"
-
-#: lib/minios_session_manager.py:1052
-msgid "Confirm Cleanup"
-msgstr "Confirmar limpieza"
-
-#: lib/minios_session_manager.py:1055
-msgid ""
-"This will delete all sessions older than {} days.\n"
-"\n"
-"Continue?"
-msgstr ""
-"Esto eliminará todas las sesiones con más de {} días de antigüedad.\n"
-"\n"
-"¿Continuar?"
-
-#: lib/minios_session_manager.py:1063
-msgid "Cleaning up old sessions, please wait..."
-msgstr "Limpiando sesiones antiguas, por favor espere..."
-
-#: lib/minios_session_manager.py:1069
-msgid "Cleanup completed successfully"
-msgstr "Limpieza completada con éxito"
-
-#: lib/minios_session_manager.py:1069 lib/minios_session_manager.py:1071
-msgid "Cleanup failed"
-msgstr "La limpieza falló"
-
-#: lib/minios_session_manager.py:1086
-msgid "Oops! Something went wrong"
-msgstr "¡Ups! Algo salió mal"
-
-#: lib/minios_session_manager.py:1093
-msgid "Got it"
-msgstr "Entendido"
-
-#: lib/minios_session_manager.py:1105
-msgid "Success"
-msgstr "Éxito"
-
-#: lib/minios_session_manager.py:1112
-msgid "OK"
-msgstr "OK"
-
-#: lib/minios_session_manager.py:1168
-msgid "Failed to create session: {}"
-msgstr "No se pudo crear la sesión: {}"
-
-#: lib/minios_session_manager.py:1228
-msgid ""
-"Cannot resize session while it is running. Resize operation is not allowed "
-"for the currently active session."
-msgstr ""
-"No se puede redimensionar la sesión mientras está en ejecución. La operación "
-"de redimensionamiento no está permitida para la sesión actualmente activa."
-
-#: lib/minios_session_manager.py:1247 lib/minios_session_manager.py:1667
-msgid "Failed to parse session information"
-msgstr "No se pudo analizar la información de la sesión"
-
-#: lib/minios_session_manager.py:1252
-msgid "Resize Session {}"
-msgstr "Redimensionar sesión {}"
-
-#: lib/minios_session_manager.py:1269
-msgid "Session:"
-msgstr "Sesión:"
-
-#: lib/minios_session_manager.py:1273
-msgid "New size (MB):"
-msgstr "Nuevo tamaño (MB):"
-
-#: lib/minios_session_manager.py:1290
-msgid "Resizing session, please wait..."
-msgstr "Redimensionando sesión, por favor espere..."
-
-#: lib/minios_session_manager.py:1318 lib/minios_session_manager.py:1320
-#: lib/minios_session_manager.py:1322
-msgid "Resize failed"
-msgstr "El redimensionamiento falló"
-
-#: lib/minios_session_manager.py:1329
-msgid "Export Session {}"
-msgstr "Exportar sesión {}"
-
-#: lib/minios_session_manager.py:1343 lib/minios_session_manager.py:1416
-msgid "TAR.ZSTD archives (*.tar.zst)"
-msgstr "Archivos TAR.ZSTD (*.tar.zst)"
-
-#: lib/minios_session_manager.py:1348 lib/minios_session_manager.py:1421
-msgid "All files"
-msgstr "Todos los archivos"
-
-#: lib/minios_session_manager.py:1358
-msgid "Exporting session, please wait..."
-msgstr "Exportando sesión, por favor espere..."
-
-#: lib/minios_session_manager.py:1380
-msgid "Session exported successfully"
-msgstr "Sesión exportada con éxito"
-
-#: lib/minios_session_manager.py:1385 lib/minios_session_manager.py:1387
-#: lib/minios_session_manager.py:1389
-msgid "Export failed"
-msgstr "Exportación fallida"
-
-#: lib/minios_session_manager.py:1396
-msgid "Sessions directory is not writable. Cannot import sessions."
-msgstr ""
-"El directorio de sesiones no es escribible. No se pueden importar sesiones."
-
-#: lib/minios_session_manager.py:1405
-msgid "Import Session"
-msgstr "Importar sesión"
-
-#: lib/minios_session_manager.py:1438
-msgid "Import Options"
-msgstr "Opciones de importación"
-
-#: lib/minios_session_manager.py:1455
-msgid "Archive:"
-msgstr "Archivo:"
-
-#: lib/minios_session_manager.py:1459
-msgid "Auto-convert to compatible mode if needed"
-msgstr "Convertir automáticamente a modo compatible si es necesario"
-
-#: lib/minios_session_manager.py:1465
-msgid "Force import to mode:"
-msgstr "Forzar importación a modo:"
-
-#: lib/minios_session_manager.py:1467
-msgid "Auto (from metadata)"
-msgstr "Automático (desde metadatos)"
-
-#: lib/minios_session_manager.py:1487
-msgid "Importing session, please wait..."
-msgstr "Importando sesión, por favor espere..."
-
-#: lib/minios_session_manager.py:1515
-msgid "Session imported successfully"
-msgstr "Sesión importada con éxito"
-
-#: lib/minios_session_manager.py:1521 lib/minios_session_manager.py:1523
-#: lib/minios_session_manager.py:1525
-msgid "Import failed"
-msgstr "Importación fallida"
-
-#: lib/minios_session_manager.py:1532
-msgid "Copy Session {}"
-msgstr "Copiar sesión {}"
-
-#: lib/minios_session_manager.py:1549
-msgid "Copy session:"
-msgstr "Copiar sesión:"
-
-#: lib/minios_session_manager.py:1553
-msgid "Convert to different mode"
-msgstr "Convertir a modo diferente"
-
-#: lib/minios_session_manager.py:1558 lib/minios_session_manager.py:1696
-msgid "Target mode:"
-msgstr "Modo de destino:"
-
-#: lib/minios_session_manager.py:1603
-msgid "Copying session, please wait..."
-msgstr "Copiando sesión, por favor espere..."
-
-#: lib/minios_session_manager.py:1631
-msgid "Session copied successfully"
-msgstr "Sesión copiada con éxito"
-
-#: lib/minios_session_manager.py:1637 lib/minios_session_manager.py:1639
-#: lib/minios_session_manager.py:1641
-msgid "Copy failed"
-msgstr "Copia fallida"
-
-#: lib/minios_session_manager.py:1672
-msgid "Convert Session {}"
-msgstr "Convertir sesión {}"
-
-#: lib/minios_session_manager.py:1689
-msgid "Convert session:"
-msgstr "Convertir sesión:"
-
-#: lib/minios_session_manager.py:1692
-msgid "Current mode: {}"
-msgstr "Modo actual: {}"
-
-#: lib/minios_session_manager.py:1751
-msgid "Converting session, please wait..."
-msgstr "Convirtiendo sesión, por favor espere..."
-
-#: lib/minios_session_manager.py:1777
-msgid "Session converted successfully"
-msgstr "Sesión convertida con éxito"
-
-#: lib/minios_session_manager.py:1783 lib/minios_session_manager.py:1785
-#: lib/minios_session_manager.py:1787
-msgid "Convert failed"
-msgstr "Conversión fallida"
-
-#~ msgid "zstd not found. Please install zstd package."
-#~ msgstr "zstd no encontrado. Por favor, instale el paquete zstd."
-
-#~ msgid "dynfilefs not found. Cannot extract dynfilefs session."
-#~ msgstr "dynfilefs no encontrado. No se puede extraer la sesión dynfilefs."
-
-#~ msgid "Failed to mount virtual file"
-#~ msgstr "No se pudo montar el archivo virtual"
-
-#~ msgid "Failed to mount raw image"
-#~ msgstr "No se pudo montar la imagen raw"
-
-#~ msgid "dynfilefs not found. Cannot create dynfilefs session."
-#~ msgstr "dynfilefs no encontrado. No se puede crear la sesión dynfilefs."
-
-#~ msgid "Failed to format dynfilefs"
-#~ msgstr "No se pudo formatear dynfilefs"
-
-#~ msgid "Failed to create raw image: {}"
-#~ msgstr "No se pudo crear la imagen raw: {}"
-
-#~ msgid "Failed to format raw image"
-#~ msgstr "No se pudo formatear la imagen raw"
-
-#~ msgid "Failed to convert session structure"
-#~ msgstr "No se pudo convertir la estructura de la sesión"
-
-#~ msgid "Build session error: {}"
-#~ msgstr "Error al crear la sesión: {}"
-
-#~ msgid "Conversion error: {}"
-#~ msgstr "Error de conversión: {}"

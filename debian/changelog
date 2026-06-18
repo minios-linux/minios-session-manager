@@ -1,3 +1,9 @@
+minios-session-manager (1.1.7) unstable; urgency=medium
+
+  * Improve translation coverage and update translations for all languages
+
+ -- crims0n <crims0n@minios.dev>  Thu, 18 Jun 2026 13:07:01 +0300
+
 minios-session-manager (1.1.6) unstable; urgency=medium
 
   * Add help option to CLI and GUI launcher
