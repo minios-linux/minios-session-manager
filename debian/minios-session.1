@@ -1,4 +1,4 @@
-.TH MINIOS-SESSION 1 "August 2025" "MiniOS" "User Commands"
+.TH MINIOS-SESSION 1 "July 2026" "MiniOS Session Manager 1.2.0" "User Commands"
 .SH NAME
 minios-session \- command-line interface for managing MiniOS persistent sessions
 .SH SYNOPSIS
@@ -42,10 +42,11 @@ Create a new session with the specified mode and optional size. The new session 
 .RS
 .TP
 \fImode\fR (optional)
-Session mode: native, dynfilefs, or raw (default: native). If the default native mode is not compatible with the current filesystem, the command will fail with an error message suggesting alternative modes.
+Session mode: native, dynfilefs, raw, or luks (default: native). LUKS creates a LUKS2/ext4 changes.luks file and requires initrd support for perchmode=luks.
 .TP
 \fIsize\fR (optional)
-Size in MB for dynfilefs and raw modes (default: 1000).
+Decimal size in MB, GB, or TB for container modes. DynFileFS, raw, and LUKS
+default to 4000MB and are limited to 1TB.
 .RE
 .TP
 .B delete \fIsession_id\fR
@@ -57,18 +58,19 @@ ID of the session to delete
 .RE
 .TP
 .B resize \fIsession_id\fR \fIsize\fR
-Resize the specified session to a new size in MB. Only works for dynfilefs and raw mode sessions that use image files. Cannot resize currently running sessions.
+Resize the specified session to a larger size in MB, GB, or TB. Works for dynfilefs, raw, and LUKS sessions. Cannot resize currently running sessions.
 .RS
 .TP
 \fIsession_id\fR (required)
 ID of the session to resize
 .TP
 \fIsize\fR (required)
-New size in MB. Must be larger than current size.
+New decimal size in MB, GB, or TB. Must be larger than current size.
 .RE
 .TP
 .B export \fIsession_id\fR \fIoutput_path\fR [\-\-no-verify]
-Export a session to a .tar.zst archive file. The archive contains all session data and metadata in a unified format.
+Export a session to a .tar.zst archive. LUKS sessions are decrypted and exported
+as logical files; the encrypted container is not copied into the archive.
 .RS
 .TP
 \fIsession_id\fR (required)
@@ -81,7 +83,7 @@ Path to output file or directory. If directory is provided, filename is auto-gen
 Skip archive verification after creation
 .RE
 .TP
-.B import \fIarchive_path\fR [\-\-auto-convert] [\-\-force-mode \fIMODE\fR] [\-\-no-verify]
+.B import \fIarchive_path\fR [\-\-auto-convert] [\-\-force-mode \fIMODE\fR] [\-\-skip-compatibility-check] [\-\-no-verify]
 Import a session from a .tar.zst archive file. Supports automatic mode conversion.
 .RS
 .TP
@@ -92,10 +94,13 @@ Path to the archive file (.tar.zst)
 Automatically convert to compatible mode for current filesystem
 .TP
 \fB\-\-force-mode\fR \fIMODE\fR (optional)
-Force import as specific mode (native/dynfilefs/raw)
+Force import as specific mode (native/dynfilefs/raw/luks)
 .TP
 \fB\-\-no-verify\fR (optional)
 Skip session integrity verification after import
+.TP
+\fB\-\-skip-compatibility-check\fR (optional)
+Skip source MiniOS version, edition, and union-filesystem compatibility checks.
 .RE
 .TP
 .B copy \fIsession_id\fR [\-\-to-mode \fIMODE\fR] [\-\-size \fISIZE\fR]
@@ -106,13 +111,14 @@ Copy a session, optionally converting to a different mode.
 ID of the session to copy
 .TP
 \fB\-\-to-mode\fR \fIMODE\fR (optional)
-Convert to different mode: native, dynfilefs, or raw
+Convert to different mode: native, dynfilefs, raw, or luks
 .TP
 \fB\-\-size\fR \fISIZE\fR (optional)
-Size in MB for dynfilefs/raw modes (default: 1000)
+Decimal size in MB, GB, or TB for dynfilefs, raw, or LUKS targets. The normal
+container default is 4000MB when no source size is inferred.
 .RE
 .TP
-.B convert \fIsession_id\fR \fItarget_mode\fR [\-\-size \fISIZE\fR]
+.B convert \fIsession_id\fR \fItarget_mode\fR [\-\-size \fISIZE\fR] [\-\-new-session]
 Convert an existing session to a different mode in-place.
 .RS
 .TP
@@ -120,10 +126,14 @@ Convert an existing session to a different mode in-place.
 ID of the session to convert
 .TP
 \fItarget_mode\fR (required)
-Target mode: native, dynfilefs, or raw
+Target mode: native, dynfilefs, raw, or luks
 .TP
 \fB\-\-size\fR \fISIZE\fR (optional)
-Size in MB for dynfilefs/raw modes (default: 1000)
+Decimal size in MB, GB, or TB for dynfilefs, raw, or LUKS targets.
+.TP
+\fB\-\-new-session\fR (optional)
+Create a converted session with a new ID and preserve the source. Without this
+option conversion replaces the source in-place.
 .RE
 .TP
 .B cleanup [\-\-days \fIN\fR]
@@ -144,13 +154,13 @@ The
 command automatically detects the filesystem type and validates mode compatibility. If the requested mode is not supported:
 .RS
 .TP
-- On FAT32/NTFS with native mode: Returns error suggesting dynfilefs or raw mode
+- On FAT32/NTFS/exFAT with native mode: Returns an error suggesting a container mode
 .TP
 - On read-only media: Returns error stating no sessions can be created
 .TP
 - With dynfilefs mode but package not installed: Returns error requesting dynfilefs package installation
 .TP
-- With oversized raw images on FAT32: Returns error with size limit and suggests dynfilefs mode
+- With oversized raw or LUKS images on FAT32: Returns an error with the 4000MB limit
 .RE
 .TP
 .B Default Parameter Behavior
@@ -162,7 +172,7 @@ without mode: Uses native mode, may fail on non-POSIX filesystems
 .TP
 - 
 .B create
-without size: Uses 1000MB for dynfilefs and raw modes
+without size: Uses 4000MB for dynfilefs, raw, and LUKS modes
 .TP
 - 
 .B cleanup
@@ -170,9 +180,10 @@ without days: Uses 30-day threshold for session deletion
 .RE
 .TP
 .B Session Protection
-Active and running sessions are protected from deletion and modification.
+Active sessions are protected from deletion and in-place conversion. Running
+sessions are protected from deletion, export, copy, resize, and conversion.
 .SH SESSION MODES
-MiniOS supports three persistence modes for different storage scenarios:
+MiniOS supports four persistence modes for different storage scenarios:
 .TP
 .B native
 Direct storage on POSIX-compatible filesystems (ext4, btrfs, etc.). This is the default and most efficient mode for compatible filesystems.
@@ -182,14 +193,23 @@ Dynamic file-based storage suitable for non-POSIX filesystems (FAT32, NTFS, exFA
 .TP
 .B raw
 Fixed-size image file storage compatible with any filesystem. Requires pre-allocation of storage space.
+.TP
+.B luks
+LUKS2-encrypted ext4 storage in a per-session changes.luks file. Passphrases are read interactively for creation or from standard input with \fB--password-stdin\fR and are never recorded in metadata.
+.PP
+LUKS choices and --password-stdin are shown only when cryptsetup, losetup, and
+/run/initramfs/etc/minios-initramfs-crypt are available in the running system.
 .SH FILESYSTEM COMPATIBILITY
 The tool automatically detects your media's filesystem type and restricts session creation to compatible modes:
 .TP
 .B POSIX Filesystems (ext2/3/4, btrfs, xfs, f2fs)
-All session modes supported. Native mode recommended for best performance.
+Native mode and available container modes are supported. LUKS additionally
+requires cryptsetup, loop support, and the initrd LUKS capability marker.
 .TP
 .B FAT32, NTFS, and exFAT
-Only DynFileFS and Raw modes supported. Fully compatible with all session operations.
+DynFileFS and Raw are supported on writable media. LUKS is also supported when
+its capability check succeeds; fixed Raw and LUKS files are limited to 4000MB
+on FAT32. Native mode is unsupported.
 .TP
 .B Read-only Media
 No session creation possible. Sessions can only be activated or listed.
@@ -260,7 +280,7 @@ Copy session:
 .PP
 Convert session:
 .RS
-.B minios-session convert 3 dynfilefs --size 1000
+.B minios-session convert 3 dynfilefs --size 4GB
 .RE
 .PP
 JSON output:

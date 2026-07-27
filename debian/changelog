@@ -1,3 +1,22 @@
+minios-session-manager (1.2.0) unstable; urgency=medium
+
+  * Add LUKS2-encrypted ext4 session containers with secure passphrase handling,
+    capability-gated CLI and GUI choices, and support for creation, import,
+    export, copy, conversion, and grow-only resize.
+  * Add cryptsetup as a dependency and accept decimal MB, GB, and TB container
+    sizes up to 1 TB, with FAT32 size limits where applicable.
+  * Improve validation and data safety for session IDs, target filesystems,
+    free-space checks, archive imports, export destinations, and cleanup input.
+  * Preserve overlay whiteouts during session operations and support conversion
+    with --new-session without replacing the source session.
+  * Allow long-running GUI operations to complete without a fixed timeout,
+    preserve export ownership for the invoking user, and refresh the interface
+    with compact centered actions and theme-aware styling.
+  * Update command-line documentation, completion, and translations for LUKS
+    sessions and the new size syntax.
+
+ -- crims0n <crims0n@minios.dev>  Sun, 19 Jul 2026 01:20:44 +0300
+
 minios-session-manager (1.1.7.1) unstable; urgency=medium
 
   * Removed junk from translation files

@@ -1,4 +1,4 @@
-.TH MINIOS-SESSION-MANAGER 1 "August 2025" "MiniOS" "User Commands"
+.TH MINIOS-SESSION-MANAGER 1 "July 2026" "MiniOS Session Manager 1.2.0" "User Commands"
 .SH NAME
 minios-session-manager \- graphical interface for managing MiniOS persistent sessions
 .SH SYNOPSIS
@@ -17,20 +17,31 @@ to perform actual session operations, providing a user-friendly frontend to the 
 .B -h, --help
 Show a short usage message and exit.
 .SH SESSION MODES
-The application supports creation of sessions in three different modes:
+The application supports creation of sessions in four modes:
 .TP
 .B Native Mode
 For POSIX-compatible filesystems (ext4, btrfs, etc.). Most efficient option.
 .TP
 .B DynFileFS Mode
-For non-POSIX filesystems (FAT32, NTFS). Uses expandable container files.
+For non-POSIX filesystems including FAT32, NTFS, and exFAT. Uses expandable
+container files and requires the dynfilefs utility.
 .TP
 .B Raw Mode
-For any filesystem. Uses fixed-size image files.
+For writable filesystems. Uses fixed-size ext4 image files.
+.TP
+.B LUKS Mode
+Uses a LUKS2-encrypted ext4 changes.luks file. It requires cryptsetup, loop
+support, and the MiniOS initrd LUKS hook. The GUI prompts for passphrases and
+does not store them in session metadata. This mode is omitted when the running
+system does not advertise the initrd LUKS capability.
 .SH INTERFACE
 The main window shows the available sessions and their status.
 Create, import, and cleanup actions are available from the toolbar.
 Additional actions for the selected session, such as activate, resize, export, copy, convert, open folder, and delete, are available from the context menu.
+.PP
+LUKS exports contain decrypted logical files rather than the encrypted
+container. Conversion replaces the source unless a new-session operation is
+selected. Container modes default to 4000MB and can only grow.
 .SH EXAMPLES
 .TP
 .B minios-session-manager

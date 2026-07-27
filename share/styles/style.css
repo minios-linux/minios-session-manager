@@ -1,17 +1,46 @@
 /* Session Manager Styles */
 
+.manager-surface { background-color: @theme_bg_color; }
+
+.manager-status-banner {
+    border: 1px solid alpha(@borders, 0.65);
+    border-radius: 5px;
+    padding: 8px 10px;
+}
+
+.manager-status-banner.status-success {
+    background-color: alpha(#73d216, 0.12);
+    border-color: alpha(#4e9a06, 0.45);
+}
+
+.manager-status-banner.status-error {
+    background-color: alpha(#e01b24, 0.12);
+    border-color: alpha(#e01b24, 0.45);
+}
+
+.manager-list-card {
+    border: 1px solid alpha(@borders, 0.65);
+    border-radius: 5px;
+    background-color: transparent;
+    padding: 3px;
+}
+
+.manager-footer {
+    padding-top: 8px;
+}
+
 /* ==================== List Styles ==================== */
 
 /* Simple border for the scrolled window containing the session list */
 scrolledwindow {
-    border: 1px solid #d0d0d0;
-    border-radius: 4px;
+    border: 1px solid alpha(@borders, 0.65);
+    border-radius: 5px;
 }
 
 listbox {
-    background-color: #fafafa;
+    background-color: alpha(@theme_base_color, 0.35);
     border: none;
-    border-radius: 3px;
+    border-radius: 2px;
 }
 
 listbox row {
@@ -20,7 +49,7 @@ listbox row {
     padding: 0;
     transition: all 0.15s ease-out;
     min-height: 80px;
-    border-bottom: 1px solid #e8e8e8;
+    border-bottom: 1px solid alpha(@borders, 0.45);
 }
 
 listbox row:last-child {
@@ -28,7 +57,7 @@ listbox row:last-child {
 }
 
 listbox row:hover {
-    background-color: #f5f5f5;
+    background-color: alpha(@theme_fg_color, 0.06);
 }
 
 row:selected {
@@ -99,9 +128,11 @@ button.create-button {
     color: white;
     border: 1px solid #3875c4;
     text-shadow: 0 1px rgba(0, 0, 0, 0.2);
-    padding: 6px 12px;
+    padding: 0 12px;
     font-size: 13px;
     min-width: 120px;
+    min-height: 32px;
+    border-radius: 4px;
 }
 
 button.create-button:hover {
@@ -116,9 +147,11 @@ button.cleanup-button {
     color: white;
     border: 1px solid #a10705;
     text-shadow: 0 1px rgba(0, 0, 0, 0.2);
-    padding: 6px 12px;
+    padding: 0 12px;
     font-size: 13px;
     min-width: 120px;
+    min-height: 32px;
+    border-radius: 4px;
 }
 
 button.cleanup-button:hover {
@@ -129,9 +162,17 @@ button.cleanup-button:hover {
 }
 
 button.refresh-button {
-    padding: 6px 12px;
+    padding: 0 12px;
     font-size: 13px;
     min-width: 120px;
+    min-height: 32px;
+}
+
+button.import-button {
+    min-height: 32px;
+    min-width: 120px;
+    padding: 0 12px;
+    border-radius: 4px;
 }
 
 /* ==================== Loading Overlay Styles ==================== */
@@ -147,7 +188,7 @@ button.refresh-button {
 /* ==================== Context Menu Styles ==================== */
 menu,
 .context-menu {
-    border: 1px solid #a6a6a6;
+    border: 1px solid alpha(@borders, 0.8);
     border-radius: 3px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     padding: 2px;
@@ -177,7 +218,7 @@ menuitem:hover {
 
 /* ==================== Frame and ScrolledWindow Styles ==================== */
 frame {
-    border: 1px solid;
+    border: 1px solid alpha(@borders, 0.65);
     border-radius: 3px;
 }
 
@@ -194,4 +235,17 @@ scrolledwindow {
 scrolledwindow > viewport {
     border: none;
     background-color: transparent;
+}
+headerbar,
+.titlebar {
+    min-height: 32px;
+}
+
+headerbar.minios-headerbar { padding-top: 0; padding-bottom: 0; }
+
+headerbar button.titlebutton,
+.titlebar button.titlebutton {
+    min-width: 30px;
+    min-height: 28px;
+    padding: 0;
 }

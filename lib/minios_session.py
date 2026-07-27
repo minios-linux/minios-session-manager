@@ -18,9 +18,11 @@ import tempfile
 import time
 import contextlib
 import signal
+import stat
 from datetime import datetime
 from pathlib import Path
 import gettext
+import getpass
 
 # Handle SIGTERM to ensure finally blocks run (cleanup)
 def _handle_sigterm(signum, frame):
@@ -42,8 +44,19 @@ try:
 except Exception:
     pass
 
+INITRD_CRYPTO_MARKER = '/run/initramfs/etc/minios-initramfs-crypt'
+
+
+def luks_runtime_available():
+    return bool(shutil.which('cryptsetup') and shutil.which('losetup') and
+                os.path.isfile(INITRD_CRYPTO_MARKER))
+
 class SessionManager:
     """Main class for managing MiniOS sessions"""
+
+    MAX_ARCHIVE_EXTRACTED_BYTES = 8 * 1024 * 1024 * 1024
+    DEFAULT_CONTAINER_SIZE_MB = 4000
+    MAX_CONTAINER_SIZE_MB = 1000000
 
     def __init__(self, custom_sessions_dir=None):
         self.sessions_file = None
@@ -51,6 +64,8 @@ class SessionManager:
         self.current_session = None
         self.session_format = None  # 'json' or 'conf'
         self.custom_sessions_dir = custom_sessions_dir
+        self._lock_fd = None
+        self._lock_depth = 0
         
         # Setup cache directory and file in /tmp (clears on reboot)
         self.cache_dir = f"/tmp/minios-session-manager-{os.getuid()}"
@@ -63,12 +78,15 @@ class SessionManager:
     def _ensure_cache_dir(self):
         """Ensure cache directory exists"""
         try:
-            os.makedirs(self.cache_dir, mode=0o755, exist_ok=True)
+            os.makedirs(self.cache_dir, mode=0o700, exist_ok=True)
+            cache_stat = os.stat(self.cache_dir)
+            if cache_stat.st_uid != os.getuid() or not stat.S_ISDIR(cache_stat.st_mode):
+                raise OSError("unsafe cache directory")
+            os.chmod(self.cache_dir, 0o700)
         except OSError:
-            # Fallback to system temp directory if creation fails
-            import tempfile
-            self.cache_dir = tempfile.gettempdir()
-            self.cache_file = os.path.join(self.cache_dir, f"minios-session-cache-{os.getuid()}.json")
+            # Never place a predictable cache file directly in shared /tmp.
+            self.cache_dir = tempfile.mkdtemp(prefix="minios-session-manager-", dir=tempfile.gettempdir())
+            self.cache_file = os.path.join(self.cache_dir, "session_sizes.json")
 
     def _load_size_cache(self):
         """Load size cache from /tmp"""
@@ -96,6 +114,7 @@ class SessionManager:
             }
             
             with open(self.cache_file, 'w') as f:
+                os.chmod(self.cache_file, 0o600)
                 json.dump(cache_content, f, indent=2)
         except OSError:
             pass  # Ignore cache write failures
@@ -105,15 +124,63 @@ class SessionManager:
 
         Returns path to temporary directory that should be cleaned up after use
         """
-        import random
-        import string
+        if not self.sessions_dir:
+            raise OSError("sessions directory not found")
+        return tempfile.mkdtemp(prefix=".tmp_", dir=self.sessions_dir)
 
-        # Generate random name
-        rand_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
-        temp_name = f".tmp_{rand_suffix}"
-        temp_path = os.path.join(self.sessions_dir, temp_name)
-        os.makedirs(temp_path, exist_ok=True)
-        return temp_path
+    def _validate_session_id(self, session_id):
+        """Return a canonical numeric ID or reject paths and metadata keys."""
+        if not isinstance(session_id, str) or not re.fullmatch(r"[0-9]+", session_id):
+            raise ValueError(_("Invalid session ID"))
+        return session_id
+
+    def _session_path(self, session_id, require_exists=False):
+        """Resolve a session path while keeping it inside the configured root."""
+        session_id = self._validate_session_id(session_id)
+        if not self.sessions_dir:
+            raise ValueError(_("Sessions directory not found"))
+        root = os.path.realpath(self.sessions_dir)
+        candidate = os.path.join(root, session_id)
+        if os.path.commonpath([root, os.path.realpath(candidate)]) != root:
+            raise ValueError(_("Invalid session path"))
+        if require_exists and (not os.path.isdir(candidate) or os.path.islink(candidate)):
+            raise ValueError(_("Session {} does not exist").format(session_id))
+        return candidate
+
+    @contextlib.contextmanager
+    def _mutation_lock(self):
+        """Serialize metadata and session-tree mutations across CLI processes."""
+        if not self.sessions_dir:
+            raise OSError("sessions directory not found")
+        if self._lock_depth == 0:
+            lock_path = os.path.join(self.sessions_dir, '.session.lock')
+            flags = os.O_CREAT | os.O_RDWR | getattr(os, 'O_NOFOLLOW', 0)
+            self._lock_fd = os.open(lock_path, flags, 0o600)
+            lock_stat = os.fstat(self._lock_fd)
+            if (not stat.S_ISREG(lock_stat.st_mode) or lock_stat.st_uid != os.geteuid()
+                    or lock_stat.st_nlink != 1):
+                os.close(self._lock_fd)
+                self._lock_fd = None
+                raise OSError("unsafe session lock file")
+            os.fchmod(self._lock_fd, 0o600)
+            fcntl.flock(self._lock_fd, fcntl.LOCK_EX)
+        self._lock_depth += 1
+        try:
+            yield
+        finally:
+            self._lock_depth -= 1
+            if self._lock_depth == 0 and self._lock_fd is not None:
+                fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
+                os.close(self._lock_fd)
+                self._lock_fd = None
+
+    def _reserve_session(self):
+        """Reserve a unique ID by creating its directory while holding the lock."""
+        with self._mutation_lock():
+            new_id = str(self._get_next_session_id())
+            path = self._session_path(new_id)
+            os.mkdir(path, 0o700)
+            return new_id, path
 
     def _update_size_cache(self, session_id, size, mtime):
         """Update size cache for specific session"""
@@ -209,15 +276,14 @@ class SessionManager:
             return True, None
 
         except Exception as e:
-            # If we can't check, proceed anyway but log the issue
-            return True, None
+            return False, _("Unable to check free disk space: {}").format(str(e))
 
     def _detect_session_storage(self):
         """Detect where sessions are stored and in what format"""
         # If custom directory is specified, use it
         if self.custom_sessions_dir:
-            if os.path.exists(self.custom_sessions_dir):
-                self.sessions_dir = self.custom_sessions_dir
+            if os.path.isdir(self.custom_sessions_dir):
+                self.sessions_dir = os.path.realpath(self.custom_sessions_dir)
             else:
                 return False
         else:
@@ -272,25 +338,8 @@ class SessionManager:
                 'error': _('Sessions directory does not exist')
             }
         
-        # Get filesystem type
-        fs_type = "unknown"
-        try:
-            result = subprocess.run(['stat', '-f', '-c', '%T', self.sessions_dir], 
-                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, check=True)
-            fs_type = result.stdout.strip()
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            # Fallback method using /proc/mounts
-            try:
-                with open('/proc/mounts', 'r') as f:
-                    for line in f:
-                        parts = line.split()
-                        if len(parts) >= 3:
-                            mount_point, fs_type_mount = parts[1], parts[2]
-                            if self.sessions_dir.startswith(mount_point):
-                                fs_type = fs_type_mount
-                                break
-            except Exception:
-                pass
+        fs_info, fs_error = self._detect_filesystem_type()
+        fs_type = fs_info['type'] if fs_info else "unknown"
         
         # Check if directory is writable
         writable = False
@@ -298,9 +347,12 @@ class SessionManager:
         
         try:
             # SquashFS is always read-only
-            if fs_type == 'squashfs':
+            if fs_error:
                 writable = False
-                error_msg = _("Directory is on a SquashFS filesystem (read-only)")
+                error_msg = fs_error
+            elif fs_info.get('is_readonly') or fs_type == 'squashfs':
+                writable = False
+                error_msg = _("Sessions directory is on a read-only filesystem")
             else:
                 # Try to create a temporary file to test write access
                 try:
@@ -363,7 +415,7 @@ class SessionManager:
             return {"default": None, "sessions": {}}
 
     def _write_sessions_metadata(self, metadata):
-        """Write session metadata to file"""
+        """Atomically write session metadata, preserving the previous file on failure."""
         if not self.sessions_file:
             # Try to create sessions file if it doesn't exist
             if self.sessions_dir:
@@ -376,22 +428,37 @@ class SessionManager:
             else:
                 return False
             
+        temp_name = None
         try:
-            if self.session_format == "json":
-                with open(self.sessions_file, 'w', encoding='utf-8') as f:
-                    json.dump(metadata, f, indent=2)
-            else:  # conf format
-                with open(self.sessions_file, 'w', encoding='utf-8') as f:
-                    f.write(f"default={metadata.get('default', '')}\n")
-                    if 'running' in metadata:
-                        f.write(f"running={metadata['running']}\n")
-                    for session_id, session_data in metadata.get("sessions", {}).items():
-                        for field, value in session_data.items():
-                            f.write(f"session_{field}[{session_id}]={value}\n")
-            return True
+            with self._mutation_lock():
+                fd, temp_name = tempfile.mkstemp(prefix='.session-metadata-', dir=self.sessions_dir)
+                with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                    if self.session_format == "json":
+                        json.dump(metadata, f, indent=2)
+                        f.write('\n')
+                    else:  # conf format
+                        f.write(f"default={metadata.get('default', '')}\n")
+                        if 'running' in metadata:
+                            f.write(f"running={metadata['running']}\n")
+                        for session_id, session_data in metadata.get("sessions", {}).items():
+                            for field, value in session_data.items():
+                                f.write(f"session_{field}[{session_id}]={value}\n")
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.chmod(temp_name, 0o600)
+                os.replace(temp_name, self.sessions_file)
+                directory_fd = os.open(self.sessions_dir, os.O_DIRECTORY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+                return True
         except Exception as e:
             print(f"Error writing sessions metadata: {e}", file=sys.stderr)
             return False
+        finally:
+            if temp_name and os.path.exists(temp_name):
+                os.unlink(temp_name)
 
     def list_sessions(self, include_running_check=True):
         """List all available sessions"""
@@ -400,6 +467,7 @@ class SessionManager:
             
         sessions = []
         metadata = self._read_sessions_metadata()
+        metadata.setdefault('sessions', {})
         
         # Get running session info for comparison (avoid recursion)
         running_id = None
@@ -411,7 +479,7 @@ class SessionManager:
         # Find session directories (numeric names)
         for item in os.listdir(self.sessions_dir):
             path = os.path.join(self.sessions_dir, item)
-            if os.path.isdir(path) and item.isdigit():
+            if os.path.isdir(path) and not os.path.islink(path) and item.isdigit():
                 session_id = item
                 session_data = metadata.get("sessions", {}).get(session_id, {})
                 
@@ -508,47 +576,42 @@ class SessionManager:
         except Exception:
             return False
 
+    def _check_luks_available(self):
+        """Check both the userspace tools and the initrd LUKS persistence hook."""
+        if not shutil.which('cryptsetup') or not shutil.which('losetup'):
+            return False, _("LUKS mode requires cryptsetup and util-linux.")
+        if luks_runtime_available():
+            return True, None
+        return False, _("This MiniOS initrd does not support perchmode=luks. Boot an image with the LUKS persistence hook before creating or activating LUKS sessions.")
+
     def _detect_filesystem_type(self):
         """Detect the filesystem type of the MiniOS media"""
         if not self.sessions_dir:
             return None, _("Sessions directory not found")
         
         try:
-            # Get the device where sessions directory is mounted
-            # Use df to find the device and mount options
-            df_result = subprocess.run(['df', '-T', self.sessions_dir], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-            if df_result.returncode != 0:
+            target = os.path.realpath(self.sessions_dir)
+            best_mount = None
+            with open('/proc/self/mountinfo', encoding='utf-8') as mounts:
+                for line in mounts:
+                    fields = line.rstrip('\n').split(' ')
+                    separator = fields.index('-')
+                    mount_point = fields[4].replace('\\040', ' ')
+                    if target == mount_point or target.startswith(mount_point.rstrip('/') + '/'):
+                        if best_mount is None or len(mount_point) > len(best_mount[0]):
+                            best_mount = (mount_point, fields, separator)
+            if best_mount is None:
                 return None, _("Failed to determine filesystem information")
-            
-            lines = df_result.stdout.strip().split('\n')
-            if len(lines) < 2:
-                return None, _("Invalid df output")
-            
-            # Parse df output: Filesystem Type 1K-blocks Used Available Use% Mounted
-            fields = lines[1].split()
-            if len(fields) < 2:
-                return None, _("Cannot parse filesystem information")
-            
-            filesystem_type = fields[1].lower()
-            device = fields[0]
-            
-            # Get additional mount information
-            mount_result = subprocess.run(['mount'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-            mount_options = ""
-            
-            if mount_result.returncode == 0:
-                for line in mount_result.stdout.split('\n'):
-                    if device in line and self.sessions_dir in line:
-                        # Extract mount options
-                        if '(' in line and ')' in line:
-                            mount_options = line.split('(')[1].split(')')[0]
-                        break
-            
+            _mount_point, fields, separator = best_mount
+            filesystem_type = fields[separator + 1].lower()
+            device = fields[separator + 2]
+            mount_options = fields[5]
+            super_options = fields[separator + 3] if len(fields) > separator + 3 else ''
             return {
                 'type': filesystem_type,
                 'device': device,
                 'mount_options': mount_options,
-                'is_readonly': 'ro' in mount_options,
+                'is_readonly': 'ro' in mount_options.split(',') or 'ro' in super_options.split(','),
                 'is_posix_compatible': filesystem_type in ['ext2', 'ext3', 'ext4', 'btrfs', 'xfs', 'f2fs', 'reiserfs', 'tmpfs']
             }, None
             
@@ -557,8 +620,8 @@ class SessionManager:
 
     def _get_compatible_session_modes(self, filesystem_info):
         """Get list of compatible session modes for the filesystem"""
-        if not filesystem_info:
-            return ['native', 'dynfilefs', 'raw']  # Default to all if unknown
+        if not filesystem_info or filesystem_info.get('is_readonly'):
+            return []
         
         fs_type = filesystem_info['type']
         is_readonly = filesystem_info['is_readonly']
@@ -570,11 +633,14 @@ class SessionManager:
         if is_posix:
             compatible_modes.append('native')
         
-        # DynFileFS mode: works on ALL writable filesystems (including FAT32, NTFS, ext4, etc.)
+        # DynFileFS mode: works on all writable filesystems.
         compatible_modes.append('dynfilefs')
         
         # Raw mode: works on ALL writable filesystems (static images)
         compatible_modes.append('raw')
+        luks_available, _luks_error = self._check_luks_available()
+        if luks_available:
+            compatible_modes.append('luks')
         
         return compatible_modes
 
@@ -589,7 +655,8 @@ class SessionManager:
         
         # FAT32 limitations
         if fs_type in ['vfat', 'fat32', 'msdos']:
-            limitations['max_file_size'] = 4 * 1024  # 4GB in MB
+            # Match perchsize's supported FAT32 policy exactly.
+            limitations['max_file_size'] = 4000
             limitations['no_posix'] = True
             limitations['case_insensitive'] = True
         
@@ -604,6 +671,100 @@ class SessionManager:
             limitations['case_insensitive'] = True
         
         return limitations
+
+    def _validate_target_mode(self, mode, size_mb=None):
+        """Validate a requested storage mode against the actual target filesystem."""
+        if mode not in ('native', 'dynfilefs', 'raw', 'luks'):
+            return False, _("Invalid session mode")
+        fs_info, error = self._detect_filesystem_type()
+        if error or not fs_info:
+            return False, error or _("Failed to determine filesystem information")
+        if fs_info.get('is_readonly'):
+            return False, _("Sessions directory is read-only")
+        if mode not in self._get_compatible_session_modes(fs_info):
+            return False, _("Session mode '{}' is not compatible with {} filesystem").format(mode, fs_info['type'])
+        if size_mb is not None and size_mb <= 0:
+            return False, _("Session size must be greater than zero")
+        if mode == 'dynfilefs' and not self._check_dynfilefs_available():
+            return False, _("DynFileFS is not available on this system. Please install dynfilefs package.")
+        max_size = self._get_filesystem_limitations(fs_info).get('max_file_size')
+        if mode == 'luks':
+            luks_available, luks_error = self._check_luks_available()
+            if not luks_available:
+                return False, luks_error
+        if mode in ('raw', 'luks') and max_size and size_mb and size_mb > max_size:
+            return False, _("Container size {}MB exceeds FAT32 file size limit ({}MB).").format(size_mb, max_size)
+        if mode in ('raw', 'luks') and size_mb and size_mb > self.MAX_CONTAINER_SIZE_MB:
+            return False, _("Container size exceeds the 1TB limit.")
+        return True, None
+
+    def _luks_mapper_name(self):
+        return 'minios-session-{}-{}'.format(os.getpid(), next(tempfile._get_candidate_names()))
+
+    def _cryptsetup(self, command, password):
+        """Run cryptsetup with the passphrase exclusively on its stdin."""
+        result = subprocess.run(command, input=password + b'\n', stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE)
+        if result.returncode:
+            raise OSError(result.stderr.decode(errors='replace').strip() or 'cryptsetup failed')
+
+    @contextlib.contextmanager
+    def _mount_luks(self, image_file, password, writable):
+        """Expose one LUKS file through an owned loop and mapper, then clean both."""
+        if not password:
+            raise ValueError(_("A LUKS passphrase is required."))
+        loop_device = mapper_name = mount_point = None
+        try:
+            loop_result = subprocess.run(['losetup', '--find', '--show', '--', image_file],
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if loop_result.returncode:
+                raise OSError(loop_result.stderr.decode(errors='replace').strip() or 'failed to attach loop device')
+            loop_device = loop_result.stdout.decode().strip()
+            mapper_name = self._luks_mapper_name()
+            self._cryptsetup(['cryptsetup', 'open', '--type', 'luks', '--key-file', '-',
+                              loop_device, mapper_name], password)
+            mount_point = tempfile.mkdtemp(prefix='minios_luks_')
+            options = [] if writable else ['-o', 'ro']
+            subprocess.run(['mount'] + options + ['/dev/mapper/' + mapper_name, mount_point], check=True)
+            yield mount_point
+        finally:
+            if mount_point:
+                self._safe_unmount(mount_point)
+                self._safe_rmtree(mount_point)
+            if mapper_name:
+                subprocess.run(['cryptsetup', 'close', mapper_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if loop_device:
+                subprocess.run(['losetup', '--detach', loop_device], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    def _create_luks_container(self, session_path, size_mb, password):
+        """Create exactly one LUKS2/ext4 file, without a partition table or nesting."""
+        image_file = os.path.join(session_path, 'changes.luks')
+        size_bytes = size_mb * 1024 * 1024
+        result = subprocess.run(['fallocate', '-l', str(size_bytes), image_file],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode:
+            with open(image_file, 'wb') as image:
+                image.truncate(size_bytes)
+        loop_device = mapper_name = None
+        try:
+            loop_result = subprocess.run(['losetup', '--find', '--show', '--', image_file],
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if loop_result.returncode:
+                raise OSError(loop_result.stderr.decode(errors='replace').strip() or 'failed to attach loop device')
+            loop_device = loop_result.stdout.decode().strip()
+            self._cryptsetup(['cryptsetup', 'luksFormat', '--type', 'luks2', '--batch-mode',
+                              '--key-file', '-', loop_device], password)
+            mapper_name = self._luks_mapper_name()
+            self._cryptsetup(['cryptsetup', 'open', '--type', 'luks', '--key-file', '-',
+                              loop_device, mapper_name], password)
+            subprocess.run(['mke2fs', '-F', '-t', 'ext4', '/dev/mapper/' + mapper_name], check=True,
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(['sync'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        finally:
+            if mapper_name:
+                subprocess.run(['cryptsetup', 'close', mapper_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if loop_device:
+                subprocess.run(['losetup', '--detach', loop_device], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     def _wait_for_mount(self, path, timeout=10):
         """Wait for a file or directory to appear (polling)"""
@@ -742,7 +903,7 @@ class SessionManager:
             return False
 
     @contextlib.contextmanager
-    def _mount_session_read(self, session_path, mode):
+    def _mount_session_read(self, session_path, mode, password=None):
         """Context manager to mount a session for reading"""
         mount_point = None
         virtual_mount = None
@@ -797,6 +958,14 @@ class SessionManager:
                     yield changes_dir
                 else:
                     yield mount_point
+
+            elif mode == 'luks':
+                image_file = os.path.join(session_path, 'changes.luks')
+                if not os.path.exists(image_file):
+                    raise Exception(_("LUKS container not found"))
+                with self._mount_luks(image_file, password, writable=False) as luks_mount:
+                    changes_dir = os.path.join(luks_mount, 'changes')
+                    yield changes_dir if os.path.isdir(changes_dir) else luks_mount
             
             else:
                 raise Exception(_("Unknown session mode: {}").format(mode))
@@ -821,7 +990,7 @@ class SessionManager:
                 self._safe_rmtree(mount_point)
 
     @contextlib.contextmanager
-    def _mount_session_write(self, session_path, mode, size_mb=None):
+    def _mount_session_write(self, session_path, mode, size_mb=None, password=None):
         """Context manager to mount a session for writing"""
         mount_point = None
         virtual_mount = None
@@ -884,6 +1053,13 @@ class SessionManager:
                 subprocess.run(['mount', '-o', 'loop', image_file, mount_point], check=True)
                 
                 yield mount_point
+
+            elif mode == 'luks':
+                image_file = os.path.join(session_path, 'changes.luks')
+                if not os.path.exists(image_file):
+                    self._create_luks_container(session_path, size_mb or self.DEFAULT_CONTAINER_SIZE_MB, password)
+                with self._mount_luks(image_file, password, writable=True) as luks_mount:
+                    yield luks_mount
                 
         finally:
             # Cleanup virtual mount first (if exists)
@@ -906,48 +1082,33 @@ class SessionManager:
 
     def _create_dynfilefs_session(self, session_path, initial_size_mb=1000):
         """Create a dynfilefs session structure"""
+        temp_mount = None
+        process = None
         try:
-            # Create changes.dat file path
             changes_file = os.path.join(session_path, "changes.dat")
-            
-            # Create a temporary mount point
-            with tempfile.TemporaryDirectory() as temp_mount:
-                # Mount dynfilefs
-                cmd = [
-                    'dynfilefs',
-                    '-f', changes_file,
-                    '-m', temp_mount,
-                    '-s', str(initial_size_mb),
-                    '-p', '4000'  # 4GB split size
-                ]
-                
-                # Run dynfilefs
-                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                
-                # Check if mount was successful
-                virtual_file = os.path.join(temp_mount, "virtual.dat")
-                if not self._wait_for_mount(virtual_file):
-                    process.terminate()
-                    return False, _("Failed to create dynfilefs virtual file (timeout)")
-                
-                # Format the virtual file with ext4
-                format_cmd = ['mke2fs', '-F', '-t', 'ext4', virtual_file]
-                format_result = subprocess.run(format_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                # Sync to ensure filesystem is written (important for FAT32/NTFS)
-                subprocess.run(['sync'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-                # Unmount dynfilefs
-                subprocess.run(['fusermount', '-u', temp_mount], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                process.terminate()
-                process.wait()
-                
-                if format_result.returncode != 0:
-                    return False, _("Failed to format dynfilefs virtual file: {}").format(format_result.stderr.decode())
-                
-                return True, _("DynFileFS session created successfully")
-                
+            temp_mount = tempfile.mkdtemp(prefix="minios_dyn_create_")
+            process = subprocess.Popen([
+                'dynfilefs', '-f', changes_file, '-m', temp_mount,
+                '-s', str(initial_size_mb), '-p', '4000'
+            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            virtual_file = os.path.join(temp_mount, "virtual.dat")
+            if not self._wait_for_mount(virtual_file):
+                return False, _("Failed to create dynfilefs virtual file (timeout)")
+            format_result = subprocess.run(
+                ['mke2fs', '-F', '-t', 'ext4', virtual_file],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if format_result.returncode != 0:
+                return False, _("Failed to format dynfilefs virtual file: {}").format(format_result.stderr.decode())
+            subprocess.run(['sync'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            return True, _("DynFileFS session created successfully")
         except Exception as e:
             return False, _("Error creating dynfilefs session: {}").format(str(e))
+        finally:
+            if temp_mount:
+                self._safe_fusermount(temp_mount)
+            self._cleanup_process(process)
+            if temp_mount:
+                self._safe_rmtree(temp_mount)
 
     def _get_dynfilefs_size(self, session_path):
         """Get the actual size of a dynfilefs session"""
@@ -1011,6 +1172,15 @@ class SessionManager:
                     'used_size': size,
                     'display': display
                 }
+
+        elif session_mode == 'luks':
+            image_file = os.path.join(session_path, 'changes.luks')
+            if os.path.exists(image_file):
+                size = os.path.getsize(image_file)
+                return {'used_size': size, 'display': self._format_size(size), 'total_size': size}
+            if stored_size:
+                size = stored_size * 1024 * 1024
+                return {'used_size': size, 'display': self._format_size(size), 'total_size': size}
             elif stored_size:
                 # Fallback to stored size if image not found
                 size_bytes = stored_size * 1024 * 1024
@@ -1057,9 +1227,11 @@ class SessionManager:
     def set_running_session(self, session_id):
         """Set currently running session in metadata"""
         try:
-            metadata = self._read_sessions_metadata()
-            metadata['running'] = session_id
-            return self._write_sessions_metadata(metadata)
+            self._validate_session_id(session_id)
+            with self._mutation_lock():
+                metadata = self._read_sessions_metadata()
+                metadata['running'] = session_id
+                return self._write_sessions_metadata(metadata)
         except Exception as e:
             print(f"Error setting running session: {e}", file=sys.stderr)
             return False
@@ -1067,19 +1239,24 @@ class SessionManager:
     def clear_running_session(self):
         """Clear running session from metadata"""
         try:
-            metadata = self._read_sessions_metadata()
-            if 'running' in metadata:
-                del metadata['running']
-            return self._write_sessions_metadata(metadata)
+            with self._mutation_lock():
+                metadata = self._read_sessions_metadata()
+                if 'running' in metadata:
+                    del metadata['running']
+                return self._write_sessions_metadata(metadata)
         except Exception as e:
             print(f"Error clearing running session: {e}", file=sys.stderr)
             return False
 
     def _get_session_info(self, session_id, avoid_recursion=False):
         """Helper to get session info by ID"""
+        try:
+            session_id = self._validate_session_id(session_id)
+        except ValueError:
+            return None
         if avoid_recursion:
             # Simple session info without full list
-            session_path = os.path.join(self.sessions_dir, session_id) if self.sessions_dir else None
+            session_path = self._session_path(session_id) if self.sessions_dir else None
             return {
                 'id': session_id,
                 'path': session_path,
@@ -1099,7 +1276,7 @@ class SessionManager:
             # Session exists in cmdline but not in filesystem
             return {
                 'id': session_id,
-                'path': os.path.join(self.sessions_dir, session_id) if self.sessions_dir else None,
+                'path': self._session_path(session_id) if self.sessions_dir else None,
                 'mode': 'unknown',
                 'version': 'unknown',
                 'edition': 'unknown',
@@ -1115,17 +1292,19 @@ class SessionManager:
         if not self.sessions_dir:
             return False, _("Sessions directory not found")
             
-        session_path = os.path.join(self.sessions_dir, session_id)
-        if not os.path.exists(session_path):
-            return False, _("Session {} does not exist").format(session_id)
+        try:
+            self._session_path(session_id, require_exists=True)
+        except ValueError as e:
+            return False, str(e)
         
         try:
             # Update metadata to set new default
-            metadata = self._read_sessions_metadata()
-            old_default = metadata.get("default")
-            metadata["default"] = session_id
-            
-            if self._write_sessions_metadata(metadata):
+            with self._mutation_lock():
+                metadata = self._read_sessions_metadata()
+                old_default = metadata.get("default")
+                metadata["default"] = session_id
+                updated = self._write_sessions_metadata(metadata)
+            if updated:
                 if old_default:
                     return True, _("Session {} activated (was session {})").format(session_id, old_default)
                 else:
@@ -1135,13 +1314,13 @@ class SessionManager:
         except Exception as e:
             return False, _("Error activating session: {}").format(str(e))
 
-    def create_session(self, session_mode="native", size_mb=None):
+    def create_session(self, session_mode="native", size_mb=None, password=None):
         """Create a new session"""
         if not self.sessions_dir:
             return False, _("Sessions directory not found")
         
         # Validate session mode
-        valid_modes = ["native", "dynfilefs", "raw"]
+        valid_modes = ["native", "dynfilefs", "raw", "luks"]
         if session_mode not in valid_modes:
             return False, _("Invalid session mode. Must be one of: {}").format(", ".join(valid_modes))
         
@@ -1151,75 +1330,28 @@ class SessionManager:
             error_msg = dir_status.get('error', _("Sessions directory is not writable"))
             return False, error_msg
         
-        # Detect filesystem type and check compatibility
-        filesystem_info, fs_error = self._detect_filesystem_type()
-        if fs_error:
-            return False, fs_error
-        
-        compatible_modes = self._get_compatible_session_modes(filesystem_info)
-        if session_mode not in compatible_modes:
-            fs_type = filesystem_info['type'] if filesystem_info else "unknown"
-            if session_mode == "native" and not filesystem_info['is_posix_compatible']:
-                return False, _("Native mode is not compatible with {} filesystem. Use dynfilefs or raw mode instead.").format(fs_type)
-            else:
-                return False, _("Session mode '{}' is not compatible with {} filesystem").format(session_mode, fs_type)
-        
-        # Get filesystem limitations
-        limitations = self._get_filesystem_limitations(filesystem_info)
-        
-        # Check size limitations for FAT32
-        if size_mb and 'max_file_size' in limitations:
-            max_size = limitations['max_file_size']
-            if session_mode == "raw" and size_mb > max_size:
-                return False, _("Raw image size {}MB exceeds FAT32 file size limit ({}MB). Use dynfilefs mode or smaller size.").format(size_mb, max_size)
+        valid_target, target_error = self._validate_target_mode(session_mode, size_mb)
+        if not valid_target:
+            return False, target_error
         
         # Check dynfilefs availability for dynfilefs mode
         if session_mode == "dynfilefs" and not self._check_dynfilefs_available():
             return False, _("DynFileFS is not available on this system. Please install dynfilefs package.")
 
         # Check free disk space
-        required_mb = size_mb if size_mb else 1000
+        required_mb = size_mb if size_mb else self.DEFAULT_CONTAINER_SIZE_MB
         has_space, space_error = self._check_free_space(self.sessions_dir, required_mb)
         if not has_space:
             return False, space_error
 
         try:
-            # Use file locking to prevent race condition when creating sessions
-            lock_file_path = os.path.join(self.sessions_dir, '.session_create.lock')
-            lock_fd = None
-            
-            try:
-                # Create/open lock file and acquire exclusive lock
-                lock_fd = os.open(lock_file_path, os.O_CREAT | os.O_RDWR, 0o644)
-                fcntl.flock(lock_fd, fcntl.LOCK_EX)
-                
-                # Find next available session ID (inside lock)
-                existing_sessions = []
-                for item in os.listdir(self.sessions_dir):
-                    path = os.path.join(self.sessions_dir, item)
-                    if os.path.isdir(path) and item.isdigit():
-                        existing_sessions.append(int(item))
-                
-                if existing_sessions:
-                    new_id = str(max(existing_sessions) + 1)
-                else:
-                    new_id = "1"
-                
-                # Create session directory (inside lock to guarantee uniqueness)
-                session_path = os.path.join(self.sessions_dir, new_id)
-                os.makedirs(session_path, exist_ok=False)  # Fail if exists (extra safety)
-                
-            finally:
-                # Release lock
-                if lock_fd is not None:
-                    fcntl.flock(lock_fd, fcntl.LOCK_UN)
-                    os.close(lock_fd)
+            new_id, session_path = self._reserve_session()
             
             # Initialize session based on mode
             if session_mode == "dynfilefs":
                 # Set default size if not specified
                 if size_mb is None:
-                    size_mb = 1000  # 1GB default
+                    size_mb = self.DEFAULT_CONTAINER_SIZE_MB
 
                 success, message = self._create_dynfilefs_session(session_path, size_mb)
                 if not success:
@@ -1233,7 +1365,7 @@ class SessionManager:
             elif session_mode == "raw":
                 # Create raw image file
                 if size_mb is None:
-                    size_mb = 1000  # 1GB default
+                    size_mb = self.DEFAULT_CONTAINER_SIZE_MB
                 
                 image_file = os.path.join(session_path, "changes.img")
                 try:
@@ -1259,6 +1391,19 @@ class SessionManager:
                 except Exception as e:
                     shutil.rmtree(session_path)
                     return False, _("Failed to create raw image file: {}").format(str(e))
+
+            elif session_mode == 'luks':
+                size_mb = size_mb or self.DEFAULT_CONTAINER_SIZE_MB
+                # Build outside the reserved directory, then atomically publish it.
+                staging_path = self._make_temp_dir()
+                try:
+                    self._create_luks_container(staging_path, size_mb, password)
+                    os.rmdir(session_path)
+                    os.rename(staging_path, session_path)
+                except Exception:
+                    shutil.rmtree(staging_path, ignore_errors=True)
+                    shutil.rmtree(session_path, ignore_errors=True)
+                    raise
             
             # For native mode, just create empty directory (no special initialization needed)
             
@@ -1280,35 +1425,30 @@ class SessionManager:
                 except Exception:
                     pass
             
-            # Update metadata
-            metadata = self._read_sessions_metadata()
-            if "sessions" not in metadata:
-                metadata["sessions"] = {}
-            
-            metadata["sessions"][new_id] = {
-                "mode": session_mode,
-                "version": version,
-                "edition": edition,
-                "union": union
-            }
-            
-            # Add size information for dynfilefs and raw modes
-            if session_mode in ["dynfilefs", "raw"] and size_mb:
-                metadata["sessions"][new_id]["size"] = size_mb
-            
-            if self._write_sessions_metadata(metadata):
+            # Keep the metadata read-modify-write transaction under one lock.
+            with self._mutation_lock():
+                metadata = self._read_sessions_metadata()
+                metadata.setdefault("sessions", {})
+                metadata["sessions"][new_id] = {
+                    "mode": session_mode, "version": version, "edition": edition,
+                    "union": union
+                }
+                if session_mode in ["dynfilefs", "raw", "luks"] and size_mb:
+                    metadata["sessions"][new_id]["size"] = size_mb
+                metadata_updated = self._write_sessions_metadata(metadata)
+            if metadata_updated:
                 # Use safer string formatting to avoid potential translation issues
                 try:
                     if session_mode == "dynfilefs":
                         message = _("Session {} created successfully (mode: {}, size: {}MB)").format(new_id, session_mode, size_mb)
-                    elif session_mode == "raw":
+                    elif session_mode in ("raw", "luks"):
                         message = _("Session {} created successfully (mode: {}, size: {}MB)").format(new_id, session_mode, size_mb)
                     else:
                         message = _("Session {} created successfully (mode: {})").format(new_id, session_mode)
                     return True, message
                 except Exception:
                     # Fallback to simple English message if translation fails
-                    if session_mode in ["dynfilefs", "raw"] and size_mb is not None:
+                    if session_mode in ["dynfilefs", "raw", "luks"] and size_mb is not None:
                         return True, f"Session {new_id} created successfully (mode: {session_mode}, size: {size_mb}MB)"
                     else:
                         return True, f"Session {new_id} created successfully (mode: {session_mode})"
@@ -1328,9 +1468,10 @@ class SessionManager:
         if not self.sessions_dir:
             return False, _("Sessions directory not found")
             
-        session_path = os.path.join(self.sessions_dir, session_id)
-        if not os.path.exists(session_path):
-            return False, _("Session {} does not exist").format(session_id)
+        try:
+            session_path = self._session_path(session_id, require_exists=True)
+        except ValueError as e:
+            return False, str(e)
         
         # Check if it's the current session
         current = self.get_current_session()
@@ -1343,13 +1484,13 @@ class SessionManager:
             return False, _("Cannot delete currently running session")
         
         try:
-            shutil.rmtree(session_path)
-            
-            # Update metadata
-            metadata = self._read_sessions_metadata()
-            if session_id in metadata.get("sessions", {}):
-                del metadata["sessions"][session_id]
-                self._write_sessions_metadata(metadata)
+            with self._mutation_lock():
+                shutil.rmtree(session_path)
+                metadata = self._read_sessions_metadata()
+                if session_id in metadata.get("sessions", {}):
+                    del metadata["sessions"][session_id]
+                    if not self._write_sessions_metadata(metadata):
+                        return False, _("Session deleted but failed to update session metadata")
             
             return True, _("Session {} deleted successfully").format(session_id)
         except Exception as e:
@@ -1382,6 +1523,8 @@ class SessionManager:
 
     def cleanup_old_sessions(self, days_threshold=30):
         """Clean up sessions older than specified days"""
+        if days_threshold <= 0:
+            return 0, [_('Days threshold must be greater than zero')]
         sessions = self.list_sessions()
         current = self.get_current_session()
         current_id = current['id'] if current else None
@@ -1413,36 +1556,40 @@ class SessionManager:
         
         return deleted_count, errors
 
-    def resize_session(self, session_id, new_size_mb):
+    def resize_session(self, session_id, new_size_mb, password=None):
         """Resize a session to new size"""
         if not self.sessions_dir:
             return False, _("Sessions directory not found")
             
-        session_path = os.path.join(self.sessions_dir, session_id)
-        if not os.path.exists(session_path):
-            return False, _("Session {} does not exist").format(session_id)
-        
-        # Get session metadata to determine mode
-        metadata = self._read_sessions_metadata()
-        session_data = metadata.get("sessions", {}).get(session_id, {})
-        session_mode = session_data.get("mode", "unknown")
-        
-        if session_mode not in ["dynfilefs", "raw"]:
-            return False, _("Resize is only supported for dynfilefs and raw mode sessions")
-        
-        # Check if it's the running session
-        running = self.get_running_session()
-        if running and running['id'] == session_id:
-            return False, _("Cannot resize currently running session")
-        
         try:
-            if session_mode == "dynfilefs":
-                return self._resize_dynfilefs_session(session_path, new_size_mb, session_id, metadata)
-            elif session_mode == "raw":
+            session_path = self._session_path(session_id, require_exists=True)
+        except ValueError as e:
+            return False, str(e)
+        if new_size_mb <= 0:
+            return False, _("Session size must be greater than zero")
+        with self._mutation_lock():
+            # Hold the lock across the data change and metadata commit.  A
+            # resize cannot be atomic at the filesystem level, so callers
+            # never see a completed data resize with stale metadata.
+            metadata = self._read_sessions_metadata()
+            session_data = metadata.get("sessions", {}).get(session_id, {})
+            session_mode = session_data.get("mode", "unknown")
+            if session_mode not in ["dynfilefs", "raw", "luks"]:
+                return False, _("Resize is only supported for dynfilefs, raw, and LUKS mode sessions")
+            valid_target, target_error = self._validate_target_mode(session_mode, new_size_mb)
+            if not valid_target:
+                return False, target_error
+            running = self.get_running_session()
+            if running and running['id'] == session_id:
+                return False, _("Cannot resize currently running session")
+            try:
+                if session_mode == "dynfilefs":
+                    return self._resize_dynfilefs_session(session_path, new_size_mb, session_id, metadata)
+                if session_mode == 'luks':
+                    return self._resize_luks_session(session_path, new_size_mb, session_id, metadata, password)
                 return self._resize_raw_session(session_path, new_size_mb, session_id, metadata)
-                
-        except Exception as e:
-            return False, _("Error resizing session: {}").format(str(e))
+            except Exception as e:
+                return False, _("Error resizing session: {}").format(str(e))
 
     def _resize_dynfilefs_session(self, session_path, new_size_mb, session_id, metadata):
         """Resize a dynfilefs session"""
@@ -1529,7 +1676,18 @@ class SessionManager:
         
         try:
             # Get current size
-            current_size = os.path.getsize(image_file) // (1024 * 1024)
+            original_size_bytes = os.path.getsize(image_file)
+            current_size = original_size_bytes // (1024 * 1024)
+            recorded_size = metadata.get("sessions", {}).get(session_id, {}).get("size")
+            if isinstance(recorded_size, str):
+                recorded_size = int(recorded_size)
+            if current_size == new_size_mb and recorded_size != new_size_mb:
+                # Recover an interrupted post-resize metadata commit without
+                # touching an already-grown filesystem again.
+                metadata["sessions"][session_id]["size"] = new_size_mb
+                if self._write_sessions_metadata(metadata):
+                    return True, _("Session {} resize metadata recovered").format(session_id)
+                return False, _("Failed to recover resize metadata")
             if new_size_mb <= current_size:
                 return False, _("New size must be larger than current size ({}MB)").format(current_size)
             
@@ -1537,12 +1695,20 @@ class SessionManager:
             new_size_bytes = new_size_mb * 1024 * 1024
             with open(image_file, 'r+b') as f:
                 f.truncate(new_size_bytes)
+                f.flush()
+                os.fsync(f.fileno())
             
             # Resize the filesystem inside the image (will perform necessary checks)
             resize_cmd = ['resize2fs', '-f', image_file]
             resize_result = subprocess.run(resize_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             
             if resize_result.returncode != 0:
+                # resize2fs failed before commit: restore the exact container
+                # length so this operation is safely retryable.
+                with open(image_file, 'r+b') as f:
+                    f.truncate(original_size_bytes)
+                    f.flush()
+                    os.fsync(f.fileno())
                 return False, _("Failed to resize filesystem: {}").format(resize_result.stderr.decode())
             
             # Update metadata with new size
@@ -1555,7 +1721,81 @@ class SessionManager:
         except Exception as e:
             return False, _("Failed to resize raw session: {}").format(str(e))
 
-    def export_session(self, session_id, output_path, verify=True):
+    def _resize_luks_session(self, session_path, new_size_mb, session_id, metadata, password):
+        """Grow a LUKS file and its ext4 filesystem; shrinking is deliberately unsupported."""
+        image_file = os.path.join(session_path, 'changes.luks')
+        journal_path = os.path.join(session_path, '.luks-resize.json')
+        if not os.path.exists(image_file):
+            return False, _("LUKS container not found")
+        original_size = os.path.getsize(image_file)
+        current_size = original_size // (1024 * 1024)
+        recorded_size = metadata.get('sessions', {}).get(session_id, {}).get('size')
+        try:
+            with open(journal_path, encoding='utf-8') as journal_file:
+                pending_size = int(json.load(journal_file)['size'])
+        except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+            pending_size = None
+        if pending_size and current_size >= pending_size and recorded_size != pending_size:
+            # A previous filesystem grow completed but its metadata commit did
+            # not.  The journal makes that committed data state recoverable.
+            metadata['sessions'][session_id]['size'] = pending_size
+            if self._write_sessions_metadata(metadata):
+                try:
+                    os.unlink(journal_path)
+                except OSError:
+                    pass
+                return True, _("Session {} resize metadata recovered").format(session_id)
+            return False, _("Failed to recover resize metadata")
+        if current_size == new_size_mb and recorded_size != new_size_mb:
+            metadata['sessions'][session_id]['size'] = new_size_mb
+            if self._write_sessions_metadata(metadata):
+                return True, _("Session {} resize metadata recovered").format(session_id)
+            return False, _("Failed to recover resize metadata")
+        if new_size_mb <= current_size:
+            return False, _("New size must be larger than current size ({}MB)").format(current_size)
+        filesystem_grown = False
+        temporary_journal = None
+        try:
+            fd, temporary_journal = tempfile.mkstemp(prefix='.luks-resize-', dir=session_path)
+            with os.fdopen(fd, 'w') as journal_file:
+                json.dump({'size': new_size_mb}, journal_file)
+                journal_file.flush()
+                os.fsync(journal_file.fileno())
+            os.replace(temporary_journal, journal_path)
+            with open(image_file, 'r+b') as image:
+                image.truncate(new_size_mb * 1024 * 1024)
+                image.flush()
+                os.fsync(image.fileno())
+            with self._mount_luks(image_file, password, writable=True) as mount_point:
+                # The mapper is mounted, so resize its filesystem device directly.
+                device = subprocess.run(['findmnt', '-no', 'SOURCE', '--target', mount_point],
+                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True).stdout.decode().strip()
+                result = subprocess.run(['resize2fs', '-f', device], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if result.returncode:
+                    raise OSError(result.stderr.decode(errors='replace'))
+                filesystem_grown = True
+            metadata['sessions'][session_id]['size'] = new_size_mb
+            if not self._write_sessions_metadata(metadata):
+                return False, _("Failed to update session metadata")
+            try:
+                os.unlink(journal_path)
+            except OSError:
+                pass
+            return True, _("Session {} resized to {}MB successfully").format(session_id, new_size_mb)
+        except Exception as error:
+            # Never shrink a filesystem that may already have grown.
+            if not filesystem_grown:
+                with open(image_file, 'r+b') as image:
+                    image.truncate(original_size)
+                try:
+                    os.unlink(journal_path)
+                except OSError:
+                    pass
+            if temporary_journal and os.path.exists(temporary_journal):
+                os.unlink(temporary_journal)
+            return False, _("Failed to resize LUKS session: {}").format(str(error))
+
+    def export_session(self, session_id, output_path, verify=True, password=None):
         """Export session to TAR.ZSTD archive (streaming)
 
         Args:
@@ -1567,11 +1807,18 @@ class SessionManager:
             (success, message) tuple
         """
         # Get session info
+        try:
+            session_id = self._validate_session_id(session_id)
+        except ValueError as e:
+            return False, str(e)
         session_info = self._get_session_info(session_id)
         if not session_info:
             return False, _("Session #{} not found").format(session_id)
 
-        session_path = os.path.join(self.sessions_dir, session_id)
+        try:
+            session_path = self._session_path(session_id, require_exists=True)
+        except ValueError as e:
+            return False, str(e)
 
         # Check if session is running
         running = self.get_running_session()
@@ -1589,15 +1836,25 @@ class SessionManager:
             if not output_file.endswith('.tar.zst'):
                 output_file += '.tar.zst'
 
+        output_dir = os.path.dirname(output_file) or '.'
+        try:
+            output_stat = os.lstat(output_file)
+            if not stat.S_ISREG(output_stat.st_mode):
+                return False, _("Export output must be a regular file")
+        except FileNotFoundError:
+            pass
+
         # Check free disk space (estimate: session size + 50% for compression overhead)
         session_size_mb = session_info.get('size', 0) / (1024 * 1024)
         estimated_archive_mb = session_size_mb * 1.5
-        output_dir = os.path.dirname(output_file) if not os.path.isdir(output_path) else output_path
         has_space, space_error = self._check_free_space(output_dir, estimated_archive_mb)
         if not has_space:
             return False, space_error
 
+        temp_output = None
         try:
+            output_fd, temp_output = tempfile.mkstemp(prefix='.session-export-', suffix='.tar.zst', dir=output_dir)
+            os.close(output_fd)
             # Use temp directory in RAM (default temp) for metadata
             with tempfile.TemporaryDirectory() as meta_dir:
                 # Prepare metadata
@@ -1611,11 +1868,10 @@ class SessionManager:
                 self._create_session_info_file(session_info, info_file)
 
                 # Mount session and stream to archive
-                with self._mount_session_read(session_path, session_info['mode']) as source_dir:
+                with self._mount_session_read(session_path, session_info['mode'], password=password) as source_dir:
                     # Exclude list
                     excludes = [
                         '--exclude=workdir',
-                        '--exclude=.wh.*',
                         '--exclude=.wh..wh.orph',
                         '--exclude=.wh..wh.plnk',
                         '--exclude=.wh..wh.aufs'
@@ -1625,7 +1881,7 @@ class SessionManager:
                     # We use transform to put metadata at root and files in data/
                     # Use 'S' flag to prevent transforming symlink targets
                     cmd = [
-                        'tar', '-cf', output_file,
+                        'tar', '-cf', temp_output,
                         '--use-compress-program=zstd -3 -T0',
                         '-C', meta_dir, 'metadata.json', 'session.info',
                         '--transform', 's,^,data/,S',
@@ -1639,20 +1895,26 @@ class SessionManager:
 
             # Verify if requested
             if verify:
-                if not self._verify_export(output_file):
-                    if os.path.exists(output_file):
-                        os.remove(output_file)
+                if not self._verify_export(temp_output):
                     return False, _("Export verification failed")
 
-            file_size = os.path.getsize(output_file)
+            file_size = os.path.getsize(temp_output)
+            pkexec_uid = os.environ.get('PKEXEC_UID')
+            if pkexec_uid is not None:
+                os.chown(temp_output, int(pkexec_uid), -1)
+            # os.replace is atomic and never follows an existing destination
+            # symlink; the archive becomes visible only after verification.
+            os.replace(temp_output, output_file)
+            temp_output = None
             return True, _("Session exported successfully to {} ({})").format(
                 output_file, self._format_size(file_size))
 
         except Exception as e:
             # Clean up on error
-            if os.path.exists(output_file):
-                os.remove(output_file)
             return False, _("Export failed: {}").format(str(e))
+        finally:
+            if temp_output and os.path.exists(temp_output):
+                os.unlink(temp_output)
 
     def _prepare_export_metadata(self, session_info):
         """Prepare minimal export metadata
@@ -1736,7 +1998,7 @@ class SessionManager:
             rsync_cmd.append(extract_path.rstrip('/') + '/')
 
             try:
-                result = subprocess.run(rsync_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300, check=False)
+                result = subprocess.run(rsync_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
 
                 # rsync may return 23 (partial transfer) if some special files couldn't be copied
                 # This is acceptable (e.g., char devices, sockets)
@@ -1744,8 +2006,6 @@ class SessionManager:
                     stderr_text = result.stderr.decode() if result.stderr else ""
                     raise Exception(f"rsync failed with code {result.returncode}: {stderr_text}")
 
-            except subprocess.TimeoutExpired:
-                raise Exception("Copy operation timed out")
             except Exception as e:
                 raise Exception(f"Failed to copy session files: {e}")
 
@@ -1785,8 +2045,55 @@ class SessionManager:
         except Exception:
             return False
 
+    def _validate_archive(self, archive_path):
+        """Reject unsafe members and cap extraction before writing any data."""
+        try:
+            result = subprocess.run(
+                ['tar', '-tvf', archive_path, '--use-compress-program=zstd -T0', '--numeric-owner'],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+            if result.returncode != 0:
+                return False, _("Invalid or unreadable archive")
+            total_size = 0
+            for line in result.stdout.decode('utf-8', 'strict').splitlines():
+                # GNU tar verbose listings start with the member type; the
+                # size is the third field when --numeric-owner is specified.
+                fields = line.split(maxsplit=5)
+                if len(fields) < 6 or fields[0][0] not in '-dlh':
+                    return False, _("Archive contains an unsupported member type")
+                try:
+                    member_size = int(fields[2])
+                except ValueError:
+                    return False, _("Archive contains invalid member metadata")
+                total_size += member_size
+                if total_size > self.MAX_ARCHIVE_EXTRACTED_BYTES:
+                    return False, _("Archive expands beyond the allowed size")
+                name = fields[5].split(' -> ', 1)[0].split(' link to ', 1)[0]
+                normalized = os.path.normpath(name)
+                if (name.startswith('/') or '..' in Path(name).parts
+                        or normalized in ('.', '..') or normalized.startswith('../')):
+                    return False, _("Archive contains an unsafe member path")
+                if normalized not in ('metadata.json', 'session.info', 'data') and not normalized.startswith('data/'):
+                    return False, _("Archive contains files outside its data directory")
+                if fields[0][0] in 'lh' and (' -> ' in fields[5] or ' link to ' in fields[5]):
+                    target = fields[5].split(' -> ', 1)[-1].split(' link to ', 1)[-1]
+                    target_path = os.path.normpath(target)
+                    if (target.startswith('/') or '..' in Path(target).parts
+                            or target_path == '..' or target_path.startswith('../')):
+                        return False, _("Archive contains an unsafe link target")
+            return True, None
+        except (OSError, UnicodeDecodeError):
+            return False, _("Invalid or unreadable archive")
+
+    def _validate_import_metadata(self, metadata):
+        """Validate the small, untrusted metadata document before using it."""
+        if not isinstance(metadata, dict) or not isinstance(metadata.get('session'), dict):
+            return False
+        session = metadata['session']
+        return (session.get('mode') in ('native', 'dynfilefs', 'raw', 'luks')
+                and all(isinstance(session.get(key), str) for key in ('version', 'edition', 'union')))
+
     def import_session(self, archive_path, auto_convert=False, force_mode=None,
-                       verify=True, skip_compatibility_check=False):
+                       verify=True, skip_compatibility_check=False, password=None):
         """Import session from TAR.ZSTD archive (streaming)
 
         Args:
@@ -1808,9 +2115,12 @@ class SessionManager:
             return False, _("Invalid archive format. Only .tar.zst files are supported.")
 
         try:
+            valid_archive, archive_error = self._validate_archive(archive_path)
+            if not valid_archive:
+                return False, archive_error
             # Extract metadata directly from archive
             metadata = self._extract_metadata(archive_path)
-            if not metadata:
+            if not self._validate_import_metadata(metadata):
                 return False, _("Invalid session archive: missing or corrupted metadata")
 
             # Compatibility checks
@@ -1828,6 +2138,10 @@ class SessionManager:
             elif auto_convert:
                 import_mode = self._select_compatible_mode(metadata)
 
+            valid_target, target_error = self._validate_target_mode(import_mode)
+            if not valid_target:
+                return False, target_error
+
             # Check free disk space
             session_size_bytes = metadata['session'].get('size', 4000 * 1024 * 1024)
             if isinstance(session_size_bytes, int) and session_size_bytes > 100000:
@@ -1838,56 +2152,47 @@ class SessionManager:
             if not has_space:
                 return False, space_error
 
-            # Find next available session ID
-            new_id = self._get_next_session_id()
-            session_path = os.path.join(self.sessions_dir, str(new_id))
+            # Reserve the destination before doing long-running extraction.
+            new_id, session_path = self._reserve_session()
             
             # Determine size for container modes
             size_mb = None
-            if import_mode in ['dynfilefs', 'raw']:
+            if import_mode in ['dynfilefs', 'raw', 'luks']:
                 size_mb = max(100, int(required_mb))
 
             # Import directly using streaming
             try:
-                with self._mount_session_write(session_path, import_mode, size_mb) as target_dir:
-                    # Extract data/ content directly to target_dir
-                    # We use --strip-components=1 to remove 'data/' prefix
-                    # and --wildcards to only extract 'data/*'
+                with self._mount_session_write(session_path, import_mode, size_mb, password=password) as target_dir:
+                    # The validated archive may only write data/ members.
                     cmd = [
                         'tar', '-xf', archive_path,
                         '--use-compress-program=zstd -T0',
                         '-C', target_dir,
+                        '--no-same-owner', '--no-same-permissions',
+                        '--delay-directory-restore',
                         '--strip-components=1',
                         '--wildcards', 'data/*'
                     ]
                     
                     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     if result.returncode != 0:
-                        # Try without data/ prefix (legacy archives)
-                        cmd = [
-                            'tar', '-xf', archive_path,
-                            '--use-compress-program=zstd -T0',
-                            '-C', target_dir,
-                            '--exclude=metadata.json',
-                            '--exclude=session.info'
-                        ]
-                        result_legacy = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                        if result_legacy.returncode != 0:
-                             raise Exception(f"Extraction failed: {result.stderr.decode()} / {result_legacy.stderr.decode()}")
+                        raise Exception(f"Extraction failed: {result.stderr.decode()}")
 
             except Exception as e:
                 if os.path.exists(session_path):
                     shutil.rmtree(session_path)
                 return False, _("Failed to import session data: {}").format(str(e))
 
-            # Create metadata entry
-            self._create_session_metadata(new_id, import_mode, metadata)
-
-            # Verify if requested
+            # Verify before committing metadata so failures never leave a
+            # metadata entry pointing at a removed session directory.
             if verify:
                 if not self._verify_session_integrity(new_id):
                     shutil.rmtree(session_path)
                     return False, _("Imported session failed verification")
+
+            if not self._create_session_metadata(new_id, import_mode, metadata):
+                shutil.rmtree(session_path, ignore_errors=True)
+                return False, _("Failed to update session metadata")
 
             return True, _("Session imported successfully as #{}").format(new_id)
 
@@ -1997,7 +2302,8 @@ class SessionManager:
         """Get next available session ID"""
         existing_ids = []
         for item in os.listdir(self.sessions_dir):
-            if item.isdigit():
+            path = os.path.join(self.sessions_dir, item)
+            if item.isdigit() and os.path.isdir(path) and not os.path.islink(path):
                 existing_ids.append(int(item))
 
         if not existing_ids:
@@ -2007,38 +2313,27 @@ class SessionManager:
 
     def _create_session_metadata(self, session_id, mode, import_metadata):
         """Create metadata entry for imported session"""
-        metadata = self._read_sessions_metadata()
-
-        session_data = {
-            'mode': mode,
-            'version': import_metadata['session']['version'],
-            'edition': import_metadata['session']['edition'],
-            'union': import_metadata['session']['union']
-        }
-
-        if mode in ['dynfilefs', 'raw']:
-            size = import_metadata['session'].get('size', 4000)
-            if isinstance(size, int):
-                # Size in metadata is in bytes, convert to MB for storage
-                if size > 100000:  # If > 100KB, assume it's in bytes
-                    size_mb = max(100, int(size / (1024 * 1024)))
-                    session_data['size'] = size_mb
-                elif size > 0:
-                    # Already in MB
-                    session_data['size'] = size
-                else:
-                    # Zero or invalid, use default
-                    session_data['size'] = 4000
-
-        metadata['sessions'][str(session_id)] = session_data
-        self._write_sessions_metadata(metadata)
+        with self._mutation_lock():
+            metadata = self._read_sessions_metadata()
+            metadata.setdefault('sessions', {})
+            session_data = {
+                'mode': mode, 'version': import_metadata['session']['version'],
+                'edition': import_metadata['session']['edition'],
+                'union': import_metadata['session']['union']
+            }
+            if mode in ['dynfilefs', 'raw', 'luks']:
+                size = import_metadata['session'].get('size', 4000)
+                if isinstance(size, int):
+                    session_data['size'] = max(100, int(size / (1024 * 1024))) if size > 100000 else max(100, size)
+            metadata['sessions'][str(session_id)] = session_data
+            return self._write_sessions_metadata(metadata)
 
     def _verify_session_integrity(self, session_id):
         """Verify session integrity"""
         session_path = os.path.join(self.sessions_dir, str(session_id))
         return os.path.exists(session_path) and os.path.isdir(session_path)
 
-    def copy_session(self, session_id, to_mode=None, size_mb=None):
+    def copy_session(self, session_id, to_mode=None, size_mb=None, password=None):
         """Copy session, optionally converting mode
 
         Args:
@@ -2050,15 +2345,27 @@ class SessionManager:
             (success, message) tuple
         """
         # Get source session
+        try:
+            session_id = self._validate_session_id(session_id)
+        except ValueError as e:
+            return False, str(e)
         source_session = self._get_session_info(session_id)
         if not source_session:
             return False, _("Source session not found")
 
-        source_path = os.path.join(self.sessions_dir, session_id)
+        try:
+            source_path = self._session_path(session_id, require_exists=True)
+        except ValueError as e:
+            return False, str(e)
         source_mode = source_session['mode']
 
         # Determine target mode
         target_mode = to_mode if to_mode else source_mode
+        valid_target, target_error = self._validate_target_mode(target_mode, size_mb)
+        if not valid_target:
+            return False, target_error
+        if target_mode == 'luks' and size_mb is None and source_mode != 'luks':
+            size_mb = self.DEFAULT_CONTAINER_SIZE_MB
 
         # Check if running
         running = self.get_running_session()
@@ -2072,43 +2379,36 @@ class SessionManager:
         if not has_space:
             return False, space_error
 
-        # Get next session ID
-        new_id = self._get_next_session_id()
-        target_path = os.path.join(self.sessions_dir, str(new_id))
+        new_id, target_path = self._reserve_session()
 
         try:
-            os.makedirs(target_path, exist_ok=True)
-
             if source_mode == target_mode:
                 # Direct copy
                 success = self._copy_session_direct(source_path, target_path, source_mode)
             else:
                 # Copy with conversion
                 success = self._copy_session_with_conversion(
-                    source_path, target_path, source_mode, target_mode, size_mb)
+                    source_path, target_path, source_mode, target_mode, size_mb, password)
 
             if not success:
                 if os.path.exists(target_path):
                     shutil.rmtree(target_path)
                 return False, _("Failed to copy session data")
 
-            # Create metadata for new session
-            metadata = self._read_sessions_metadata()
-            metadata['sessions'][str(new_id)] = {
-                'mode': target_mode,
-                'version': source_session['version'],
-                'edition': source_session['edition'],
-                'union': source_session['union']
-            }
-
-            if target_mode in ['dynfilefs', 'raw']:
-                if size_mb:
-                    metadata['sessions'][str(new_id)]['size'] = size_mb
-                elif source_mode == target_mode and source_session.get('total_size_mb'):
-                    # Copy size from source session when doing direct copy
-                    metadata['sessions'][str(new_id)]['size'] = source_session['total_size_mb']
-
-            self._write_sessions_metadata(metadata)
+            with self._mutation_lock():
+                metadata = self._read_sessions_metadata()
+                metadata.setdefault('sessions', {})
+                metadata['sessions'][str(new_id)] = {
+                    'mode': target_mode, 'version': source_session['version'],
+                    'edition': source_session['edition'], 'union': source_session['union']
+                }
+                if target_mode in ['dynfilefs', 'raw', 'luks']:
+                    if size_mb:
+                        metadata['sessions'][str(new_id)]['size'] = size_mb
+                    elif source_mode == target_mode and source_session.get('total_size_mb'):
+                        metadata['sessions'][str(new_id)]['size'] = source_session['total_size_mb']
+                if not self._write_sessions_metadata(metadata):
+                    raise OSError(_("Failed to update session metadata"))
 
             return True, _("Session copied successfully to #{}").format(new_id)
 
@@ -2154,7 +2454,6 @@ class SessionManager:
                 cmd = [
                     'rsync', '-aH',
                     '--exclude=workdir',
-                    '--exclude=.wh.*',
                     '--exclude=.wh..wh.orph',
                     '--exclude=.wh..wh.plnk',
                     '--exclude=.wh..wh.aufs',
@@ -2188,6 +2487,11 @@ class SessionManager:
                     os.path.join(target_path, 'changes.img'))
                 return True
 
+            elif mode == 'luks':
+                shutil.copy2(os.path.join(source_path, 'changes.luks'),
+                             os.path.join(target_path, 'changes.luks'))
+                return True
+
             return False
         except Exception as e:
             print(f"DEBUG: _copy_session_direct failed: {e}")
@@ -2196,17 +2500,16 @@ class SessionManager:
             return False
 
     def _copy_session_with_conversion(self, source_path, target_path,
-                                      source_mode, target_mode, size_mb=None):
+                                      source_mode, target_mode, size_mb=None, password=None):
         """Copy session with mode conversion"""
         try:
             # Direct copy using mounts
-            with self._mount_session_read(source_path, source_mode) as source_dir:
-                with self._mount_session_write(target_path, target_mode, size_mb) as target_dir:
+            with self._mount_session_read(source_path, source_mode, password=password) as source_dir:
+                with self._mount_session_write(target_path, target_mode, size_mb, password=password) as target_dir:
                     # Copy files using rsync
                     cmd = [
                         'rsync', '-aH',
                         '--exclude=workdir',
-                        '--exclude=.wh.*',
                         '--exclude=.wh..wh.orph',
                         '--exclude=.wh..wh.plnk',
                         '--exclude=.wh..wh.aufs',
@@ -2228,7 +2531,7 @@ class SessionManager:
             return False
 
     def convert_session(self, session_id, target_mode, size_mb=None,
-                       in_place=True):
+                       in_place=True, password=None):
         """Convert session storage mode
 
         Args:
@@ -2240,6 +2543,16 @@ class SessionManager:
         Returns:
             (success, message) tuple
         """
+        try:
+            session_id = self._validate_session_id(session_id)
+        except ValueError as e:
+            return False, str(e)
+        # --new-session must leave the original untouched and create a new ID.
+        if not in_place:
+            if password is None:
+                return self.copy_session(session_id, to_mode=target_mode, size_mb=size_mb)
+            return self.copy_session(session_id, to_mode=target_mode, size_mb=size_mb, password=password)
+
         # Get session
         session_info = self._get_session_info(session_id)
         if not session_info:
@@ -2262,16 +2575,12 @@ class SessionManager:
             return False, _("Cannot convert currently active session. "
                            "Please activate another session first.")
 
-        # Check target mode compatibility
-        fs_info, _err = self._detect_filesystem_type()
-        if fs_info:
-            compatible_modes = self._get_compatible_session_modes(fs_info)
-            if target_mode not in compatible_modes:
-                return False, _("Target mode '{}' is not compatible with "
-                               "current filesystem").format(target_mode)
+        valid_target, target_error = self._validate_target_mode(target_mode, size_mb)
+        if not valid_target:
+            return False, target_error
 
         # Set default size for dynfilefs/raw if not specified
-        if target_mode in ['dynfilefs', 'raw'] and not size_mb:
+        if target_mode in ['dynfilefs', 'raw', 'luks'] and not size_mb:
             # Try to use size from source session if available
             if session_info.get('total_size_mb'):
                 size_mb = session_info['total_size_mb']
@@ -2279,45 +2588,39 @@ class SessionManager:
                 # For native sessions, use actual size + 100 MB
                 size_mb = int(session_info['size'] / (1024 * 1024)) + 100
             else:
-                size_mb = 1000
+                size_mb = self.DEFAULT_CONTAINER_SIZE_MB
 
-        session_path = os.path.join(self.sessions_dir, session_id)
+        session_path = self._session_path(session_id, require_exists=True)
 
         # Create new session with temporary name
         new_session_path = self._make_temp_dir()
 
         try:
-            # Direct copy using mounts
-            with self._mount_session_read(session_path, source_mode) as source_dir:
-                with self._mount_session_write(new_session_path, target_mode, size_mb) as target_dir:
-                    # Copy files using rsync
-                    cmd = [
-                        'rsync', '-aH',
-                        '--exclude=workdir',
-                        '--exclude=.wh.*',
-                        '--exclude=.wh..wh.orph',
-                        '--exclude=.wh..wh.plnk',
-                        '--exclude=.wh..wh.aufs',
-                        '--prune-empty-dirs',
-                        source_dir.rstrip('/') + '/',
-                        target_dir.rstrip('/') + '/'
-                    ]
-                    
-                    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                    if result.returncode not in [0, 23, 24]:
-                        raise Exception(f"Rsync failed: {result.stderr.decode()}")
+            if not self._copy_session_with_conversion(session_path, new_session_path,
+                                                       source_mode, target_mode, size_mb, password):
+                raise OSError(_("Failed to copy session data"))
 
-            # Conversion successful - replace old session with new
-            shutil.rmtree(session_path, ignore_errors=True)
-            shutil.move(new_session_path, session_path)
-
-            # Update metadata
-            metadata = self._read_sessions_metadata()
-            if session_id in metadata.get('sessions', {}):
+            # Keep a rollback copy until the durable metadata update succeeds.
+            backup_path = self._make_temp_dir()
+            os.rmdir(backup_path)
+            with self._mutation_lock():
+                os.rename(session_path, backup_path)
+                os.rename(new_session_path, session_path)
+                metadata = self._read_sessions_metadata()
+                if session_id not in metadata.get('sessions', {}):
+                    os.rename(session_path, new_session_path)
+                    os.rename(backup_path, session_path)
+                    raise OSError(_("Session metadata is missing"))
                 metadata['sessions'][session_id]['mode'] = target_mode
-                if target_mode in ['dynfilefs', 'raw'] and size_mb:
+                if target_mode in ['dynfilefs', 'raw', 'luks']:
                     metadata['sessions'][session_id]['size'] = size_mb
-                self._write_sessions_metadata(metadata)
+                else:
+                    metadata['sessions'][session_id].pop('size', None)
+                if not self._write_sessions_metadata(metadata):
+                    os.rename(session_path, new_session_path)
+                    os.rename(backup_path, session_path)
+                    raise OSError(_("Failed to update session metadata"))
+            shutil.rmtree(backup_path)
 
             return True, _("Session converted successfully from {} to {}").format(
                 source_mode, target_mode)
@@ -2480,6 +2783,37 @@ def format_filesystem_info_json(fs_info):
 
     return json.dumps(fs_info, indent=2, ensure_ascii=False)
 
+def parse_perch_size(value):
+    """Parse perchsize-compatible decimal units into MB."""
+    match = re.fullmatch(r'([0-9]+)\s*([mMgGtT]?[bB]?)?', value)
+    if not match:
+        raise argparse.ArgumentTypeError('size must be a positive MB, GB, or TB value')
+    number, unit = int(match.group(1)), match.group(2).lower()
+    multiplier = 1000000 if unit.startswith('t') else 1000 if unit.startswith('g') else 1
+    size_mb = number * multiplier
+    if not size_mb or size_mb > SessionManager.MAX_CONTAINER_SIZE_MB:
+        raise argparse.ArgumentTypeError('size must be between 1MB and 1TB')
+    return size_mb
+
+def luks_password_from_args(args, confirm=False):
+    """Read an optional passphrase without ever putting it in argv or metadata."""
+    if getattr(args, 'password_stdin', False):
+        password = sys.stdin.buffer.readline().rstrip(b'\r\n')
+        if confirm:
+            confirmation = sys.stdin.buffer.readline().rstrip(b'\r\n')
+            if password != confirmation:
+                raise ValueError(_('LUKS passphrases do not match.'))
+    elif confirm:
+        password = getpass.getpass(_('LUKS passphrase: ')).encode()
+        confirmation = getpass.getpass(_('Confirm LUKS passphrase: ')).encode()
+        if password != confirmation:
+            raise ValueError(_('LUKS passphrases do not match.'))
+    else:
+        return None
+    if not password:
+        raise ValueError(_('LUKS passphrase must not be empty.'))
+    return password
+
 
 
 def main():
@@ -2499,6 +2833,11 @@ def main():
             print(error_msg, file=sys.stderr)
         sys.exit(1)
 
+    luks_available = luks_runtime_available()
+    session_modes = ['native', 'dynfilefs', 'raw']
+    if luks_available:
+        session_modes.append('luks')
+
     parser = argparse.ArgumentParser(
         description=_('MiniOS Session Manager - Command line tool for managing persistent sessions'),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -2517,7 +2856,7 @@ COMMANDS:
   delete SESSION_ID         Delete specified session
   cleanup [--days N]        Delete old sessions (default: 30 days)
   status                    Check sessions directory status and permissions
-  resize SESSION_ID SIZE    Resize session to new size in MB (dynfilefs/raw only)
+  resize SESSION_ID SIZE    Grow a container session
   export SESSION_ID PATH    Export session to .tar.zst archive
   import ARCHIVE            Import session from .tar.zst archive
   copy SESSION_ID           Copy session (optional: --to-mode, --size)
@@ -2525,12 +2864,13 @@ COMMANDS:
 
 SESSION MODES:
   native                    Direct filesystem changes (requires POSIX-compatible filesystem)
-  dynfilefs                 Dynamic file system overlay (works on any filesystem, 1000MB default)
-  raw                       Raw disk image (works on any filesystem, custom size required)
+  dynfilefs                 Dynamic file system overlay (works on any filesystem)
+  raw                       Raw disk image (works on any filesystem, 4000MB default)
 
 COMMAND BEHAVIOR:
   • create without MODE: Uses native mode (may fail on FAT32/NTFS/exFAT)
-  • create without SIZE: Uses 1000MB for dynfilefs/raw modes
+  • create without SIZE: Uses 4000MB for container modes
+  • convert replaces the source by default; --new-session preserves it
   • cleanup without --days: Uses 30-day threshold for deletion
   • cleanup protects both active and running sessions from deletion
 
@@ -2551,7 +2891,7 @@ EXAMPLES:
   Creating Sessions:
     minios-session create                         Create native session (filesystem changes)
     minios-session create native                  Create native session explicitly
-    minios-session create dynfilefs               Create 1000MB dynfilefs session (default size)
+    minios-session create dynfilefs               Create 4000MB dynfilefs session (default size)
     minios-session create dynfilefs 8000          Create 8000MB dynfilefs session
     minios-session create raw 2000                Create 2000MB raw disk image
 
@@ -2565,7 +2905,7 @@ EXAMPLES:
 
   Error Handling:
     minios-session create                         May fail on FAT32/NTFS/exFAT: "Use dynfilefs or raw mode"
-    minios-session create raw 5000                Will fail on FAT32: file size limit is 4096MB (4GB)
+    minios-session create raw 5000                Will fail on FAT32: MiniOS limits fixed containers to 4000MB
 
   JSON Output (for automation):
     minios-session --json list                    List sessions in JSON format
@@ -2591,6 +2931,9 @@ EXAMPLES:
     parent_parser.add_argument('--json', action='store_true', help=_('Output in JSON format'))
     parent_parser.add_argument('--sessions-dir', type=str, metavar='PATH', 
                               help=_('Custom path to sessions directory'))
+    if luks_available:
+        parent_parser.add_argument('--password-stdin', action='store_true',
+                                  help=_('Read a LUKS passphrase from standard input'))
 
     # List command
     list_parser = subparsers.add_parser('list', help=_('List all sessions'), parents=[parent_parser])
@@ -2610,10 +2953,10 @@ EXAMPLES:
 
     # Create command
     create_parser = subparsers.add_parser('create', help=_('Create a new session'), parents=[parent_parser])
-    create_parser.add_argument('mode', nargs='?', choices=['native', 'dynfilefs', 'raw'], 
+    create_parser.add_argument('mode', nargs='?', choices=session_modes,
                               default='native', help=_('Session mode (default: native)'))
-    create_parser.add_argument('size', nargs='?', type=int, metavar='MB',
-                              help=_('Size in MB for dynfilefs/raw modes (default: 1000)'))
+    create_parser.add_argument('size', nargs='?', type=parse_perch_size, metavar='SIZE',
+                              help=_('Size in MB, GB, or TB for container modes (default: 4000MB)'))
 
     # Delete command
     delete_parser = subparsers.add_parser('delete', help=_('Delete a session'), parents=[parent_parser])
@@ -2630,7 +2973,7 @@ EXAMPLES:
     # Resize command
     resize_parser = subparsers.add_parser('resize', help=_('Resize a session'), parents=[parent_parser])
     resize_parser.add_argument('session_id', help=_('Session ID to resize'))
-    resize_parser.add_argument('size', type=int, metavar='MB', help=_('New size in MB'))
+    resize_parser.add_argument('size', type=parse_perch_size, metavar='SIZE', help=_('New size in MB, GB, or TB'))
 
     # Export command
     export_parser = subparsers.add_parser('export', help=_('Export session to archive'), parents=[parent_parser])
@@ -2643,7 +2986,7 @@ EXAMPLES:
     import_parser.add_argument('archive_path', help=_('Path to session archive (.tar.zst)'))
     import_parser.add_argument('--auto-convert', action='store_true',
                                help=_('Automatically convert to compatible mode'))
-    import_parser.add_argument('--force-mode', choices=['native', 'dynfilefs', 'raw'],
+    import_parser.add_argument('--force-mode', choices=session_modes,
                                help=_('Force specific session mode'))
     import_parser.add_argument('--no-verify', action='store_true', help=_('Skip integrity verification'))
     import_parser.add_argument('--skip-compatibility-check', action='store_true',
@@ -2652,18 +2995,18 @@ EXAMPLES:
     # Copy command
     copy_parser = subparsers.add_parser('copy', help=_('Copy a session'), parents=[parent_parser])
     copy_parser.add_argument('session_id', help=_('Session ID to copy'))
-    copy_parser.add_argument('--to-mode', choices=['native', 'dynfilefs', 'raw'],
+    copy_parser.add_argument('--to-mode', choices=session_modes,
                             help=_('Convert to different mode (optional)'))
-    copy_parser.add_argument('--size', type=int, metavar='MB',
-                            help=_('Size for new session (for dynfilefs/raw)'))
+    copy_parser.add_argument('--size', type=parse_perch_size, metavar='SIZE',
+                            help=_('Size for a container target, in MB, GB, or TB'))
 
     # Convert command
     convert_parser = subparsers.add_parser('convert', help=_('Convert session mode'), parents=[parent_parser])
     convert_parser.add_argument('session_id', help=_('Session ID to convert'))
-    convert_parser.add_argument('target_mode', choices=['native', 'dynfilefs', 'raw'],
+    convert_parser.add_argument('target_mode', choices=session_modes,
                                help=_('Target mode'))
-    convert_parser.add_argument('--size', type=int, metavar='MB',
-                               help=_('Size for dynfilefs/raw mode'))
+    convert_parser.add_argument('--size', type=parse_perch_size, metavar='SIZE',
+                               help=_('Size for a container target, in MB, GB, or TB'))
     convert_parser.add_argument('--new-session', action='store_true',
                                help=_('Create new session instead of in-place conversion'))
 
@@ -2809,7 +3152,12 @@ EXAMPLES:
         sys.exit(0 if success else 1)
 
     elif args.command == 'create':
-        success, message = manager.create_session(args.mode, args.size)
+        try:
+            password = luks_password_from_args(args, confirm=args.mode == 'luks')
+        except ValueError as error:
+            success, message = False, str(error)
+        else:
+            success, message = manager.create_session(args.mode, args.size, password=password)
         if args.json:
             result = {"success": success, "message": message}
             print(json.dumps(result))
@@ -2827,6 +3175,13 @@ EXAMPLES:
         sys.exit(0 if success else 1)
 
     elif args.command == 'cleanup':
+        if args.days <= 0:
+            message = _("Days threshold must be greater than zero")
+            if args.json:
+                print(json.dumps({"success": False, "message": message}))
+            else:
+                print(message, file=sys.stderr)
+            sys.exit(1)
         deleted_count, errors = manager.cleanup_old_sessions(args.days)
         if args.json:
             result = {
@@ -2844,7 +3199,8 @@ EXAMPLES:
                     print(f"  {error}")
 
     elif args.command == 'resize':
-        success, message = manager.resize_session(args.session_id, args.size)
+        success, message = manager.resize_session(args.session_id, args.size,
+                                                  password=luks_password_from_args(args))
         if args.json:
             result = {
                 "success": success,
@@ -2877,7 +3233,8 @@ EXAMPLES:
 
     elif args.command == 'export':
         verify = not args.no_verify
-        success, message = manager.export_session(args.session_id, args.output_path, verify=verify)
+        success, message = manager.export_session(args.session_id, args.output_path, verify=verify,
+                                                  password=luks_password_from_args(args))
         if args.json:
             result = {"success": success, "message": message}
             print(json.dumps(result))
@@ -2892,7 +3249,8 @@ EXAMPLES:
             auto_convert=args.auto_convert,
             force_mode=args.force_mode,
             verify=verify,
-            skip_compatibility_check=args.skip_compatibility_check
+            skip_compatibility_check=args.skip_compatibility_check,
+            password=luks_password_from_args(args)
         )
         if args.json:
             result = {"success": success, "message": message}
@@ -2905,7 +3263,8 @@ EXAMPLES:
         success, message = manager.copy_session(
             args.session_id,
             to_mode=args.to_mode,
-            size_mb=args.size
+            size_mb=args.size,
+            password=luks_password_from_args(args)
         )
         if args.json:
             result = {"success": success, "message": message}
@@ -2920,7 +3279,8 @@ EXAMPLES:
             args.session_id,
             args.target_mode,
             size_mb=args.size,
-            in_place=in_place
+            in_place=in_place,
+            password=luks_password_from_args(args)
         )
         if args.json:
             result = {"success": success, "message": message}

@@ -10,6 +10,7 @@ import gi
 import os
 import sys
 import json
+import shutil
 import subprocess
 import threading
 import gettext
@@ -32,6 +33,14 @@ class SessionManagerGUI:
 
     def __init__(self):
         self.cli_command = self._get_minios_session_cli_path()
+        self._cli_lock = threading.Lock()
+        self._cli_process = None
+        self._closing = False
+        self._refresh_generation = 0
+        self.luks_available = bool(
+            shutil.which('cryptsetup') and shutil.which('losetup') and
+            os.path.isfile('/run/initramfs/etc/minios-initramfs-crypt')
+        )
         
         # Check sessions directory status
         self.sessions_status = self._check_sessions_directory_status()
@@ -78,16 +87,80 @@ class SessionManagerGUI:
             cli_path = 'minios-session'
         return cli_path
 
-    def _run_cli_command(self, args):
+    def _run_cli_command(self, args, input_data=None):
         """Run CLI command and return result"""
         try:
             cmd = ['pkexec', self.cli_command] + args
-            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, timeout=60)  # Increased timeout for pkexec
-            return result.returncode == 0, result.stdout, result.stderr
-        except subprocess.TimeoutExpired:
-            return False, "", _("Command timed out - authentication may have been cancelled")
+            # Long exports, conversions, and imports are not bounded by an arbitrary UI timeout.
+            # The lock prevents overlapping privileged operations from racing each other.
+            with self._cli_lock:
+                if self._closing:
+                    return False, "", _("Operation cancelled")
+                self._cli_process = subprocess.Popen(
+                    cmd, stdin=subprocess.PIPE if input_data is not None else None,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                try:
+                    output, error = self._cli_process.communicate(input=input_data)
+                    return self._cli_process.returncode == 0, output, error
+                finally:
+                    self._cli_process = None
         except Exception as e:
             return False, "", str(e)
+
+    def _prompt_luks_passphrase(self, confirm=False):
+        """Return a passphrase pipe payload without placing it in arguments."""
+        dialog = Gtk.Dialog(title=_("LUKS Passphrase"), parent=self.window)
+        dialog.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+                           Gtk.STOCK_OK, Gtk.ResponseType.OK)
+        content = dialog.get_content_area()
+        first = Gtk.Entry()
+        first.set_visibility(False)
+        content.pack_start(Gtk.Label(label=_("Passphrase:")), False, False, 6)
+        content.pack_start(first, False, False, 6)
+        second = None
+        if confirm:
+            second = Gtk.Entry()
+            second.set_visibility(False)
+            content.pack_start(Gtk.Label(label=_("Confirm passphrase:")), False, False, 6)
+            content.pack_start(second, False, False, 6)
+        dialog.show_all()
+        accepted = dialog.run() == Gtk.ResponseType.OK
+        password = first.get_text()
+        confirmation = second.get_text() if second else password
+        dialog.destroy()
+        if not accepted:
+            return None
+        if not password or password != confirmation:
+            self._show_error(_("LUKS passphrases do not match or are empty."))
+            return None
+        payload = password + '\n'
+        return payload + password + '\n' if confirm else payload
+
+    def _get_session_mode(self, session_id):
+        success, output, _error = self._run_cli_command(['list', '--json'])
+        if success:
+            try:
+                return next((session.get('mode') for session in json.loads(output)
+                             if session.get('id') == session_id), None)
+            except (ValueError, TypeError):
+                pass
+        return None
+
+    def _fat_size_limit(self):
+        success, output, _error = self._run_cli_command(['info', '--json'])
+        if success:
+            try:
+                return json.loads(output).get('limitations', {}).get('max_file_size')
+            except (ValueError, TypeError):
+                pass
+        return None
+
+    def _on_window_destroy(self, _window):
+        """Terminate the active privileged child before the GUI exits."""
+        self._closing = True
+        if self._cli_process and self._cli_process.poll() is None:
+            self._cli_process.terminate()
+        Gtk.main_quit()
 
     def _check_sessions_directory_status(self):
         """Check sessions directory status using CLI"""
@@ -120,15 +193,15 @@ class SessionManagerGUI:
     def _build_sessions_status_info(self, main_box):
         """Build sessions directory status information panel"""
         sessions_hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        sessions_hbox.set_margin_bottom(12)
+        sessions_hbox.get_style_context().add_class("manager-status-banner")
         
         if self.sessions_status.get('found', False) and self.sessions_writable:
             status_icon_name = "emblem-default"  # Green checkmark
-            status_color = "#2E7D32"  # Green
+            sessions_hbox.get_style_context().add_class("status-success")
             status_text = _("Sessions directory is writable")
         else:
             status_icon_name = "dialog-error"  # Error icon
-            status_color = "#D32F2F"  # Red
+            sessions_hbox.get_style_context().add_class("status-error")
             if self.sessions_status.get('found', False):
                 status_text = _("Sessions directory is read-only")
             else:
@@ -140,7 +213,7 @@ class SessionManagerGUI:
         
         # Status text
         sessions_status_label = Gtk.Label()
-        sessions_status_label.set_markup(f'<span color="{status_color}"><b>{status_text}</b></span>')
+        sessions_status_label.set_markup(f'<b>{GLib.markup_escape_text(status_text)}</b>')
         sessions_status_label.set_halign(Gtk.Align.START)
         sessions_hbox.pack_start(sessions_status_label, False, False, 0)
         
@@ -149,6 +222,8 @@ class SessionManagerGUI:
     def _build_header_bar(self):
         """Build the header bar"""
         header = Gtk.HeaderBar(show_close_button=True)
+        header.set_has_subtitle(False)
+        header.get_style_context().add_class("minios-headerbar")
         header.props.title = _("MiniOS Session Manager")
         self.window.set_titlebar(header)
 
@@ -159,13 +234,14 @@ class SessionManagerGUI:
         self.window.set_icon_name("preferences-desktop-personal")  # Personal desktop preferences icon
         self.window.set_default_size(600, 500)
         self.window.set_position(Gtk.WindowPosition.CENTER)
-        self.window.connect("destroy", Gtk.main_quit)
+        self.window.connect("destroy", self._on_window_destroy)
         
         # Build header bar
         self._build_header_bar()
         
         
         main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        main_box.get_style_context().add_class("manager-surface")
         main_box.set_margin_start(10)
         main_box.set_margin_end(10)
         main_box.set_margin_top(10)
@@ -183,6 +259,7 @@ class SessionManagerGUI:
 
         # ScrolledWindow setup
         scrolled = Gtk.ScrolledWindow()
+        scrolled.get_style_context().add_class("manager-list-card")
         scrolled.set_min_content_width(400)
         scrolled.set_min_content_height(200)
         scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
@@ -213,68 +290,69 @@ class SessionManagerGUI:
         self.selected_session_id = None
         
         # Toolbar buttons
-        toolbar_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=15)
-        toolbar_box.set_halign(Gtk.Align.CENTER)
+        toolbar_box = Gtk.Grid(column_spacing=15)
+        toolbar_box.set_column_homogeneous(True)
+        toolbar_box.get_style_context().add_class("manager-footer")
+        toolbar_box.set_hexpand(True)
         toolbar_box.set_margin_top(15)
         main_box.pack_start(toolbar_box, False, False, 0)
         
         # Create button
         create_btn = Gtk.Button()
         create_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        create_icon = Gtk.Image.new_from_icon_name("document-new", Gtk.IconSize.DND)
+        create_icon = Gtk.Image.new_from_icon_name("document-new", Gtk.IconSize.BUTTON)
         create_label = Gtk.Label(label=_("Create"))
         create_box.pack_start(create_icon, False, False, 0)
         create_box.pack_start(create_label, False, False, 0)
         create_btn.add(create_box)
         create_btn.connect("clicked", self.on_create_clicked)
         create_btn.get_style_context().add_class('suggested-action')
-        create_btn.get_style_context().add_class('large-button')
         create_btn.get_style_context().add_class('create-button')
-        create_btn.set_size_request(140, -1)
+        create_btn.set_hexpand(True)
         # Disable create button if sessions directory is not writable
         create_btn.set_sensitive(self.sessions_writable)
-        toolbar_box.pack_start(create_btn, False, False, 0)
+        toolbar_box.attach(create_btn, 0, 0, 1, 1)
 
         self.create_btn = create_btn  # Store reference for later use
 
         # Import button
         import_btn = Gtk.Button()
         import_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        import_icon = Gtk.Image.new_from_icon_name("document-open", Gtk.IconSize.DND)
+        import_icon = Gtk.Image.new_from_icon_name("document-open", Gtk.IconSize.BUTTON)
         import_label = Gtk.Label(label=_("Import"))
         import_box.pack_start(import_icon, False, False, 0)
         import_box.pack_start(import_label, False, False, 0)
         import_btn.add(import_box)
         import_btn.connect("clicked", self.on_import_clicked)
-        import_btn.get_style_context().add_class('large-button')
         import_btn.get_style_context().add_class('import-button')
-        import_btn.set_size_request(140, -1)
+        import_btn.set_hexpand(True)
         # Disable import button if sessions directory is not writable
         import_btn.set_sensitive(self.sessions_writable)
-        toolbar_box.pack_start(import_btn, False, False, 0)
+        toolbar_box.attach(import_btn, 1, 0, 1, 1)
 
         self.import_btn = import_btn  # Store reference for later use
 
         # Cleanup button
         cleanup_btn = Gtk.Button()
         cleanup_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        cleanup_icon = Gtk.Image.new_from_icon_name("user-trash", Gtk.IconSize.DND)
+        cleanup_icon = Gtk.Image.new_from_icon_name("user-trash", Gtk.IconSize.BUTTON)
         cleanup_label = Gtk.Label(label=_("Cleanup"))
         cleanup_box.pack_start(cleanup_icon, False, False, 0)
         cleanup_box.pack_start(cleanup_label, False, False, 0)
         cleanup_btn.add(cleanup_box)
         cleanup_btn.connect("clicked", self.on_cleanup_clicked)
-        cleanup_btn.get_style_context().add_class('large-button')
         cleanup_btn.get_style_context().add_class('cleanup-button')
-        cleanup_btn.set_size_request(140, -1)
+        cleanup_btn.set_hexpand(True)
         # Disable cleanup button if sessions directory is not writable
         cleanup_btn.set_sensitive(self.sessions_writable)
-        toolbar_box.pack_start(cleanup_btn, False, False, 0)
+        toolbar_box.attach(cleanup_btn, 2, 0, 1, 1)
         
         self.cleanup_btn = cleanup_btn  # Store reference for later use
 
     def refresh_session_list(self):
         """Refresh the session list from CLI"""
+        self._refresh_generation += 1
+        generation = self._refresh_generation
         def fetch_data():
             """Fetch data in background thread"""
             try:
@@ -302,7 +380,7 @@ class SessionManagerGUI:
                         pass
                 
                 # Return results to main thread
-                GLib.idle_add(self._process_session_data, list_success, list_output, list_error, active_session_id, running_session_id)
+                GLib.idle_add(self._process_session_data, generation, list_success, list_output, list_error, active_session_id, running_session_id)
             except Exception as e:
                 GLib.idle_add(self._show_error, _("Error fetching session data: {}").format(str(e)))
                 GLib.idle_add(self._show_loading, False)
@@ -315,8 +393,10 @@ class SessionManagerGUI:
         thread.daemon = True
         thread.start()
 
-    def _process_session_data(self, list_success, list_output, list_error, active_session_id, running_session_id):
+    def _process_session_data(self, generation, list_success, list_output, list_error, active_session_id, running_session_id):
         """Process session data in main thread"""
+        if generation != self._refresh_generation:
+            return
         try:
             # Clear existing session rows
             for row in self.sessions_list.get_children():
@@ -638,7 +718,7 @@ class SessionManagerGUI:
 
                 # Check session mode for resize/convert availability
                 session_mode = getattr(row, 'mode', 'unknown')
-                resize_available = session_mode in ['dynfilefs', 'raw']
+                resize_available = session_mode in ['dynfilefs', 'raw', 'luks']
 
                 # Check if sessions directory is writable for create/delete operations
                 if not self.sessions_writable:
@@ -830,21 +910,30 @@ class SessionManagerGUI:
             radio_buttons['raw'] = raw_radio
             if first_radio is None:
                 first_radio = raw_radio
+
+        if 'luks' in compatible_modes:
+            base_radio = first_radio if first_radio else None
+            luks_radio = Gtk.RadioButton.new_with_label_from_widget(base_radio, _("LUKS Mode"))
+            luks_radio.set_tooltip_text(_("Encrypted LUKS2/ext4 container"))
+            content_area.pack_start(luks_radio, False, False, 0)
+            radio_buttons['luks'] = luks_radio
+            if first_radio is None:
+                first_radio = luks_radio
         
-        # Size selection for dynfilefs and raw modes
+        # Size selection for container modes.
         size_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         content_area.pack_start(size_box, False, False, 0)
         
         size_label = Gtk.Label(label=_("Size (MB):"))
         size_box.pack_start(size_label, False, False, 0)
         
-        adjustment = Gtk.Adjustment(value=4000, lower=100, upper=50000, step_increment=100)
+        adjustment = Gtk.Adjustment(value=4000, lower=100, upper=1000000, step_increment=100)
         size_spinbutton = Gtk.SpinButton()
         size_spinbutton.set_adjustment(adjustment)
-        size_spinbutton.set_value(1000)
+        size_spinbutton.set_value(4000)
         size_box.pack_start(size_spinbutton, False, False, 0)
         
-        size_info_label = Gtk.Label(label=_("(Only used for DynFileFS and Raw modes)"))
+        size_info_label = Gtk.Label(label=_("(Only used for container modes)"))
         size_info_label.set_sensitive(False)
         size_box.pack_start(size_info_label, False, False, 0)
         
@@ -853,24 +942,25 @@ class SessionManagerGUI:
             # Check which radio buttons exist and are active
             is_dynfilefs_active = 'dynfilefs' in radio_buttons and radio_buttons['dynfilefs'].get_active()
             is_raw_active = 'raw' in radio_buttons and radio_buttons['raw'].get_active()
-            is_sized_mode = is_dynfilefs_active or is_raw_active
+            is_luks_active = 'luks' in radio_buttons and radio_buttons['luks'].get_active()
+            is_sized_mode = is_dynfilefs_active or is_raw_active or is_luks_active
             
             size_label.set_sensitive(is_sized_mode)
             size_spinbutton.set_sensitive(is_sized_mode)
             size_info_label.set_sensitive(not is_sized_mode)
             
-            # Check for size limitations on FAT32 for raw images
-            if is_raw_active and 'max_file_size' in limitations:
+            # Raw and LUKS are single files and therefore share FAT32's cap.
+            if (is_raw_active or is_luks_active) and 'max_file_size' in limitations:
                 max_size = limitations['max_file_size']
                 current_size = int(size_spinbutton.get_value())
                 if current_size > max_size:
                     size_spinbutton.set_value(max_size)
-                adjustment.set_upper(max_size)
+                adjustment.set_upper(4000)
                 size_info_label.set_text(_("(Maximum {}MB on FAT32)").format(max_size))
                 size_info_label.set_sensitive(True)
             else:
-                adjustment.set_upper(50000)
-                size_info_label.set_text(_("(Only used for DynFileFS and Raw modes)"))
+                adjustment.set_upper(1000000)
+                size_info_label.set_text(_("(Only used for container modes)"))
         
         # Connect signals only for existing radio buttons
         for mode, radio in radio_buttons.items():
@@ -904,14 +994,14 @@ class SessionManagerGUI:
             
             dialog.destroy()
             
-            # Show loading overlay
-            self._show_loading(True, _("Creating new session, please wait..."))
-            
             # Create session in background thread
             def create_session_bg():
                 try:
-                    if mode in ["dynfilefs", "raw"]:
-                        success, output, error = self._run_cli_command(['create', mode, str(size_mb), '--json'])
+                    if mode in ["dynfilefs", "raw", "luks"]:
+                        command = ['create', mode, str(size_mb), '--json']
+                        if mode == 'luks':
+                            command.append('--password-stdin')
+                        success, output, error = self._run_cli_command(command, password_input)
                     else:
                         success, output, error = self._run_cli_command(['create', mode, '--json'])
                     
@@ -920,6 +1010,10 @@ class SessionManagerGUI:
                 except Exception as e:
                     GLib.idle_add(self._on_session_creation_complete, False, "", str(e), None)
             
+            password_input = self._prompt_luks_passphrase(confirm=True) if mode == 'luks' else None
+            if mode == 'luks' and password_input is None:
+                return
+            self._show_loading(True, _("Creating new session, please wait..."))
             thread = threading.Thread(target=create_session_bg)
             thread.daemon = True
             thread.start()
@@ -1221,8 +1315,8 @@ class SessionManagerGUI:
                 return
             
             session_mode = session_info.get('mode', 'unknown')
-            if session_mode not in ['dynfilefs', 'raw']:
-                self._show_error(_("Resize is only supported for dynfilefs and raw mode sessions"))
+            if session_mode not in ['dynfilefs', 'raw', 'luks']:
+                self._show_error(_("Resize is only supported for dynfilefs, raw, and LUKS mode sessions"))
                 return
             
             # Check if session is running
@@ -1238,7 +1332,7 @@ class SessionManagerGUI:
                 # For dynfilefs, use total_size (allocated size in bytes)
                 if 'total_size' in session_info:
                     current_size_mb = session_info['total_size'] // (1024 * 1024)
-            elif session_mode == 'raw':
+            elif session_mode in ('raw', 'luks'):
                 # For raw sessions, the 'size' field is the total allocated size in bytes
                 if 'size' in session_info:
                     current_size_mb = session_info['size'] // (1024 * 1024)
@@ -1277,7 +1371,7 @@ class SessionManagerGUI:
         content_area.pack_start(size_label, False, False, 0)
         
         size_spin = Gtk.SpinButton()
-        size_spin.set_range(current_size_mb, 100000)  # Current size to 100GB
+        size_spin.set_range(current_size_mb, self._fat_size_limit() or 1000000)
         size_spin.set_increments(100, 1000)
         size_spin.set_value(current_size_mb)  # Set to current size
         content_area.pack_start(size_spin, False, False, 0)
@@ -1288,6 +1382,9 @@ class SessionManagerGUI:
         if response == Gtk.ResponseType.OK:
             new_size = int(size_spin.get_value())
             dialog.destroy()
+            password_input = self._prompt_luks_passphrase() if session_mode == 'luks' else None
+            if session_mode == 'luks' and password_input is None:
+                return
             
             # Show loading overlay
             self._show_loading(True, _("Resizing session, please wait..."))
@@ -1295,7 +1392,10 @@ class SessionManagerGUI:
             # Perform resize in background
             def resize_session_bg():
                 try:
-                    success, output, error = self._run_cli_command(['resize', session_id, str(new_size), '--json'])
+                    args = ['resize', session_id, str(new_size), '--json']
+                    if password_input is not None:
+                        args.append('--password-stdin')
+                    success, output, error = self._run_cli_command(args, password_input)
                     GLib.idle_add(self._on_resize_complete, success, output, error)
                 except Exception as e:
                     GLib.idle_add(self._on_resize_complete, False, "", str(e))
@@ -1356,6 +1456,10 @@ class SessionManagerGUI:
         if response == Gtk.ResponseType.OK:
             output_path = dialog.get_filename()
             dialog.destroy()
+            session_mode = self._get_session_mode(session_id)
+            password_input = self._prompt_luks_passphrase() if session_mode == 'luks' else None
+            if session_mode == 'luks' and password_input is None:
+                return
 
             # Show loading overlay
             self._show_loading(True, _("Exporting session, please wait..."))
@@ -1363,7 +1467,10 @@ class SessionManagerGUI:
             # Perform export in background
             def export_session_bg():
                 try:
-                    success, output, error = self._run_cli_command(['export', session_id, output_path, '--json'])
+                    args = ['export', session_id, output_path, '--json']
+                    if password_input is not None:
+                        args.append('--password-stdin')
+                    success, output, error = self._run_cli_command(args, password_input)
                     GLib.idle_add(self._on_export_complete, success, output, error)
                 except Exception as e:
                     GLib.idle_add(self._on_export_complete, False, "", str(e))
@@ -1471,6 +1578,8 @@ class SessionManagerGUI:
         mode_combo.append("native", "Native")
         mode_combo.append("dynfilefs", "DynFileFS")
         mode_combo.append("raw", "Raw")
+        if self.luks_available:
+            mode_combo.append("luks", "LUKS")
         mode_combo.set_active_id("auto")
         mode_box.pack_start(mode_label, False, False, 0)
         mode_box.pack_start(mode_combo, True, True, 0)
@@ -1485,6 +1594,9 @@ class SessionManagerGUI:
             if force_mode == "auto":
                 force_mode = None
             dialog.destroy()
+            password_input = self._prompt_luks_passphrase(confirm=True) if force_mode == 'luks' else None
+            if force_mode == 'luks' and password_input is None:
+                return
 
             # Show loading overlay
             self._show_loading(True, _("Importing session, please wait..."))
@@ -1497,8 +1609,10 @@ class SessionManagerGUI:
                         args.append('--auto-convert')
                     if force_mode:
                         args.extend(['--force-mode', force_mode])
+                    if password_input is not None:
+                        args.append('--password-stdin')
 
-                    success, output, error = self._run_cli_command(args)
+                    success, output, error = self._run_cli_command(args, password_input)
                     GLib.idle_add(self._on_import_complete, success, output, error)
                 except Exception as e:
                     GLib.idle_add(self._on_import_complete, False, "", str(e))
@@ -1563,19 +1677,21 @@ class SessionManagerGUI:
         mode_combo.append("native", "Native")
         mode_combo.append("dynfilefs", "DynFileFS")
         mode_combo.append("raw", "Raw")
+        if self.luks_available:
+            mode_combo.append("luks", "LUKS")
         mode_combo.set_active_id("native")
         mode_combo.set_sensitive(False)
         mode_box.pack_start(mode_label, False, False, 0)
         mode_box.pack_start(mode_combo, True, True, 0)
         content_area.pack_start(mode_box, False, False, 0)
 
-        # Size input (for dynfilefs/raw)
+        # Size input (for container targets)
         size_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         size_label = Gtk.Label(label=_("Size (MB):"))
         size_spin = Gtk.SpinButton()
-        size_spin.set_range(100, 100000)
+        size_spin.set_range(100, self._fat_size_limit() or 1000000)
         size_spin.set_increments(100, 1000)
-        size_spin.set_value(1000)
+        size_spin.set_value(4000)
         size_spin.set_sensitive(False)
         size_box.pack_start(size_label, False, False, 0)
         size_box.pack_start(size_spin, True, True, 0)
@@ -1584,11 +1700,11 @@ class SessionManagerGUI:
         def on_convert_toggled(widget):
             mode_combo.set_sensitive(widget.get_active())
             mode = mode_combo.get_active_id()
-            size_spin.set_sensitive(widget.get_active() and mode in ['dynfilefs', 'raw'])
+            size_spin.set_sensitive(widget.get_active() and mode in ['dynfilefs', 'raw', 'luks'])
 
         def on_mode_changed(widget):
             mode = widget.get_active_id()
-            size_spin.set_sensitive(convert_check.get_active() and mode in ['dynfilefs', 'raw'])
+            size_spin.set_sensitive(convert_check.get_active() and mode in ['dynfilefs', 'raw', 'luks'])
 
         convert_check.connect("toggled", on_convert_toggled)
         mode_combo.connect("changed", on_mode_changed)
@@ -1599,8 +1715,13 @@ class SessionManagerGUI:
         if response == Gtk.ResponseType.OK:
             convert = convert_check.get_active()
             target_mode = mode_combo.get_active_id() if convert else None
-            size_mb = int(size_spin.get_value()) if convert and target_mode in ['dynfilefs', 'raw'] else None
+            size_mb = int(size_spin.get_value()) if convert and target_mode in ['dynfilefs', 'raw', 'luks'] else None
             dialog.destroy()
+            source_mode = self._get_session_mode(session_id)
+            needs_password = source_mode == 'luks' or target_mode == 'luks'
+            password_input = self._prompt_luks_passphrase(confirm=target_mode == 'luks') if needs_password else None
+            if needs_password and password_input is None:
+                return
 
             # Show loading overlay
             self._show_loading(True, _("Copying session, please wait..."))
@@ -1613,8 +1734,10 @@ class SessionManagerGUI:
                         args.extend(['--to-mode', target_mode])
                     if size_mb:
                         args.extend(['--size', str(size_mb)])
+                    if password_input is not None:
+                        args.append('--password-stdin')
 
-                    success, output, error = self._run_cli_command(args)
+                    success, output, error = self._run_cli_command(args, password_input)
                     GLib.idle_add(self._on_copy_complete, success, output, error)
                 except Exception as e:
                     GLib.idle_add(self._on_copy_complete, False, "", str(e))
@@ -1700,20 +1823,23 @@ class SessionManagerGUI:
         content_area.pack_start(mode_label, False, False, 0)
 
         mode_combo = Gtk.ComboBoxText()
-        for mode in ['native', 'dynfilefs', 'raw']:
+        modes = ['native', 'dynfilefs', 'raw']
+        if self.luks_available:
+            modes.append('luks')
+        for mode in modes:
             if mode != current_mode:
                 mode_combo.append(mode, mode.capitalize())
         mode_combo.set_active(0)
         content_area.pack_start(mode_combo, False, False, 0)
 
-        # Size input (for dynfilefs/raw)
+        # Size input (for container modes)
         size_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         size_label = Gtk.Label(label=_("Size (MB):"))
         size_spin = Gtk.SpinButton()
-        size_spin.set_range(100, 100000)
+        size_spin.set_range(100, self._fat_size_limit() or 1000000)
         size_spin.set_increments(100, 1000)
         # Use current session size as default if available
-        default_size = 1000
+        default_size = 4000
         if session_info.get('total_size'):
             # dynfilefs: total_size is in bytes, convert to MB
             default_size = int(session_info['total_size'] / (1024 * 1024))
@@ -1729,7 +1855,7 @@ class SessionManagerGUI:
                 try:
                     default_size = int(default_size)
                 except ValueError:
-                    default_size = 1000
+                    default_size = 4000
         size_spin.set_value(default_size)
         size_box.pack_start(size_label, False, False, 0)
         size_box.pack_start(size_spin, True, True, 0)
@@ -1737,7 +1863,7 @@ class SessionManagerGUI:
 
         def on_mode_changed(widget):
             mode = widget.get_active_id()
-            size_spin.set_sensitive(mode in ['dynfilefs', 'raw'])
+            size_spin.set_sensitive(mode in ['dynfilefs', 'raw', 'luks'])
 
         mode_combo.connect("changed", on_mode_changed)
         on_mode_changed(mode_combo)  # Initialize
@@ -1747,8 +1873,12 @@ class SessionManagerGUI:
         response = dialog.run()
         if response == Gtk.ResponseType.OK:
             target_mode = mode_combo.get_active_id()
-            size_mb = int(size_spin.get_value()) if target_mode in ['dynfilefs', 'raw'] else None
+            size_mb = int(size_spin.get_value()) if target_mode in ['dynfilefs', 'raw', 'luks'] else None
             dialog.destroy()
+            needs_password = current_mode == 'luks' or target_mode == 'luks'
+            password_input = self._prompt_luks_passphrase(confirm=target_mode == 'luks') if needs_password else None
+            if needs_password and password_input is None:
+                return
 
             # Show loading overlay
             self._show_loading(True, _("Converting session, please wait..."))
@@ -1759,8 +1889,10 @@ class SessionManagerGUI:
                     args = ['convert', session_id, target_mode, '--json']
                     if size_mb:
                         args.extend(['--size', str(size_mb)])
+                    if password_input is not None:
+                        args.append('--password-stdin')
 
-                    success, output, error = self._run_cli_command(args)
+                    success, output, error = self._run_cli_command(args, password_input)
                     GLib.idle_add(self._on_convert_complete, success, output, error)
                 except Exception as e:
                     GLib.idle_add(self._on_convert_complete, False, "", str(e))

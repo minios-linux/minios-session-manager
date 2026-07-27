@@ -6,15 +6,32 @@ Tests for minios_session SessionManager class.
 
 import sys
 import os
+import io
 import json
 import subprocess
 import pytest
 import tempfile
 import shutil
+from types import SimpleNamespace
 from unittest.mock import patch, MagicMock, mock_open
 
 # Add lib directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+
+
+def test_luks_password_stdin_confirmation(monkeypatch):
+    from minios_session import luks_password_from_args
+
+    monkeypatch.setattr(sys, 'stdin', SimpleNamespace(buffer=io.BytesIO(b'secret\nsecret\n')))
+    assert luks_password_from_args(SimpleNamespace(password_stdin=True), confirm=True) == b'secret'
+
+
+def test_luks_password_stdin_confirmation_rejects_mismatch(monkeypatch):
+    from minios_session import luks_password_from_args
+
+    monkeypatch.setattr(sys, 'stdin', SimpleNamespace(buffer=io.BytesIO(b'secret\nother\n')))
+    with pytest.raises(ValueError, match='do not match'):
+        luks_password_from_args(SimpleNamespace(password_stdin=True), confirm=True)
 
 
 class TestSessionManagerInit:
@@ -429,3 +446,211 @@ class TestCliHelp:
         assert 'Usage: minios-session-manager' in result.stdout
         assert 'minios-session --help' in result.stdout
         assert result.stderr == ''
+
+
+class TestAuditRegressions:
+    """Security and data-integrity regressions from the session storage audit."""
+
+    def test_session_id_cannot_escape_custom_sessions_dir(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        for session_id in ('../outside', '/tmp/outside', '1/../2', ''):
+            with pytest.raises(ValueError):
+                sm._session_path(session_id)
+
+    def test_reservation_creates_distinct_session_directories(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        first_id, first_path = sm._reserve_session()
+        second_id, second_path = sm._reserve_session()
+
+        assert (first_id, second_id) == ('1', '2')
+        assert os.path.isdir(first_path)
+        assert os.path.isdir(second_path)
+
+    def test_free_space_check_fails_closed(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        with patch('os.statvfs', side_effect=OSError('unavailable')):
+            has_space, error = sm._check_free_space(temp_sessions_dir, 100)
+
+        assert has_space is False
+        assert 'Unable to check' in error
+
+    def test_readonly_filesystem_has_no_mutable_modes(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        assert sm._get_compatible_session_modes({
+            'is_readonly': True, 'is_posix_compatible': True, 'type': 'ext4'
+        }) == []
+
+    def test_fat32_container_limit_matches_perchsize_policy(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        assert sm._get_filesystem_limitations({'type': 'vfat'})['max_file_size'] == 4000
+
+    def test_metadata_write_uses_atomic_replace(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        sm.sessions_file = os.path.join(temp_sessions_dir, 'session.json')
+        sm.session_format = 'json'
+        with patch('os.replace', wraps=os.replace) as replace:
+            assert sm._write_sessions_metadata({'default': None, 'sessions': {}})
+
+        replace.assert_called_once()
+        with open(sm.sessions_file, encoding='utf-8') as metadata_file:
+            assert json.load(metadata_file) == {'default': None, 'sessions': {}}
+
+    def test_cleanup_rejects_nonpositive_days(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        assert sm.cleanup_old_sessions(0) == (0, ['Days threshold must be greater than zero'])
+
+    def test_native_copy_preserves_whiteouts(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        source = os.path.join(temp_sessions_dir, '1')
+        target = os.path.join(temp_sessions_dir, '2')
+        os.mkdir(source)
+        os.mkdir(target)
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        with patch('subprocess.run', return_value=MagicMock(returncode=0)) as run:
+            assert sm._copy_session_direct(source, target, 'native')
+
+        command = run.call_args[0][0]
+        assert '--exclude=.wh.*' not in command
+
+    def test_convert_new_session_delegates_to_copy_without_replacing_source(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        with patch.object(sm, 'copy_session', return_value=(True, 'copied')) as copy:
+            assert sm.convert_session('1', 'raw', size_mb=100, in_place=False) == (True, 'copied')
+
+        copy.assert_called_once_with('1', to_mode='raw', size_mb=100)
+
+    def test_lock_rejects_symlink(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        os.symlink('/tmp', os.path.join(temp_sessions_dir, '.session.lock'))
+        with pytest.raises(OSError):
+            with sm._mutation_lock():
+                pass
+
+    def test_archive_validation_rejects_path_escape_and_special_members(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        unsafe_path = MagicMock(returncode=0, stdout=b'-rw-r--r-- 0/0 1 2026-01-01 00:00 ../outside\n')
+        special_file = MagicMock(returncode=0, stdout=b'crw-r--r-- 0/0 0 2026-01-01 00:00 data/device\n')
+        with patch('subprocess.run', return_value=unsafe_path):
+            assert sm._validate_archive('session.tar.zst')[0] is False
+        with patch('subprocess.run', return_value=special_file):
+            assert sm._validate_archive('session.tar.zst')[0] is False
+
+    def test_archive_validation_has_independent_extraction_limit(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        listing = ('-rw-r--r-- 0/0 {} 2026-01-01 00:00 data/large\n'.format(
+            sm.MAX_ARCHIVE_EXTRACTED_BYTES + 1)).encode()
+        with patch('subprocess.run', return_value=MagicMock(returncode=0, stdout=listing)):
+            assert sm._validate_archive('session.tar.zst')[0] is False
+
+    def test_archive_validation_accepts_data_members_only(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        listing = b''.join((
+            b'-rw-r--r-- 0/0 2 2026-01-01 00:00 metadata.json\n',
+            b'-rw-r--r-- 0/0 2 2026-01-01 00:00 session.info\n',
+            b'drwxr-xr-x 0/0 0 2026-01-01 00:00 data/\n',
+            b'-rw-r--r-- 0/0 1 2026-01-01 00:00 data/file\n',
+        ))
+        with patch('subprocess.run', return_value=MagicMock(returncode=0, stdout=listing)):
+            assert sm._validate_archive('session.tar.zst') == (True, None)
+
+
+class TestLuksMode:
+    def test_perchsize_uses_decimal_units_and_one_tb_limit(self):
+        from minios_session import parse_perch_size
+
+        assert parse_perch_size('4000') == 4000
+        assert parse_perch_size('4GB') == 4000
+        assert parse_perch_size('1TB') == 1000000
+        with pytest.raises(Exception):
+            parse_perch_size('1001TB')
+
+    def test_luks_capability_requires_initrd_marker(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        with patch('shutil.which', return_value='/usr/bin/tool'), \
+             patch('os.path.isfile', side_effect=lambda path: path == '/run/initramfs/etc/minios-initramfs-crypt'):
+            assert sm._check_luks_available() == (True, None)
+
+    def test_luks_is_not_exposed_without_initrd_marker(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        filesystem = {'type': 'ext4', 'is_readonly': False, 'is_posix_compatible': True}
+        with patch('shutil.which', return_value='/usr/bin/tool'), \
+             patch('os.path.isfile', return_value=False):
+            assert 'luks' not in sm._get_compatible_session_modes(filesystem)
+
+    def test_luks_creation_uses_loop_mapper_and_stdin_password(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        image = os.path.join(temp_sessions_dir, 'changes.luks')
+        loop = MagicMock(returncode=0, stdout=b'/dev/loop7\n', stderr=b'')
+        ok = MagicMock(returncode=0, stdout=b'', stderr=b'')
+        with patch('subprocess.run', side_effect=[ok, loop, ok, ok, ok, ok, ok, ok]) as run:
+            sm._create_luks_container(temp_sessions_dir, 4000, b'secret')
+
+        commands = [call.args[0] for call in run.call_args_list]
+        assert ['losetup', '--find', '--show', '--', image] in commands
+        assert any(command[:3] == ['cryptsetup', 'luksFormat', '--type'] for command in commands)
+        crypt_calls = [call for call in run.call_args_list if call.args[0][0] == 'cryptsetup']
+        assert all(b'secret' not in call.args[0] for call in crypt_calls)
+        assert all(call.kwargs.get('input') == b'secret\n' for call in crypt_calls[:2])
+        assert any(command[:2] == ['cryptsetup', 'close'] for command in commands)
+
+    def test_luks_target_observes_fat32_limit(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        with patch.object(sm, '_detect_filesystem_type', return_value=({'type': 'vfat', 'is_readonly': False,
+                                                                         'is_posix_compatible': False}, None)), \
+             patch.object(sm, '_check_luks_available', return_value=(True, None)):
+            valid, message = sm._validate_target_mode('luks', 4096)
+        assert not valid
+        assert 'FAT32' in message
+
+    def test_luks_resize_recovers_durable_post_growth_metadata(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        session_path = os.path.join(temp_sessions_dir, '1')
+        os.mkdir(session_path)
+        open(os.path.join(session_path, 'changes.luks'), 'wb').close()
+        journal_path = os.path.join(session_path, '.luks-resize.json')
+        with open(journal_path, 'w') as journal:
+            json.dump({'size': 6000}, journal)
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        metadata = {'sessions': {'1': {'mode': 'luks', 'size': 4000}}}
+        with patch('os.path.getsize', return_value=6000 * 1024 * 1024), \
+             patch.object(sm, '_write_sessions_metadata', return_value=True):
+            success, message = sm._resize_luks_session(session_path, 7000, '1', metadata, b'password')
+
+        assert success
+        assert 'recovered' in message
+        assert metadata['sessions']['1']['size'] == 6000
+        assert not os.path.exists(journal_path)
