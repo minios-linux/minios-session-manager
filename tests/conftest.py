@@ -9,10 +9,17 @@ import os
 import pytest
 import tempfile
 import shutil
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 # Add lib directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
+
+
+@pytest.fixture
+def tmp_path(tmpdir):
+    """Provide pathlib-based temporary paths on Bionic's pytest 3.3."""
+    return Path(str(tmpdir))
 
 
 @pytest.fixture

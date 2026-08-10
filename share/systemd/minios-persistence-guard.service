@@ -1,0 +1,20 @@
+[Unit]
+Description=MiniOS persistence guard (backing-storage and inner-filesystem monitor)
+Documentation=man:minios-session-manager(1)
+DefaultDependencies=no
+After=local-fs.target
+Wants=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/minios-persistence-guard
+Restart=on-failure
+RestartSec=5
+# The guard only writes to /run (tmpfs); it never touches persistent storage.
+ProtectSystem=strict
+ReadWritePaths=/run/minios-persistence
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

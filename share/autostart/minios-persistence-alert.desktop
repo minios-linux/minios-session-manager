@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=MiniOS Persistence Alert
+Comment=Warn about low persistence space and missed startup warnings
+Exec=minios-persistence-alert
+Icon=dialog-warning
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+OnlyShowIn=XFCE;GNOME;KDE;LXDE;LXQt;MATE;Cinnamon;

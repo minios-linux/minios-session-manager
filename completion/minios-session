@@ -5,7 +5,7 @@ _minios_session() {
     prev="${COMP_WORDS[COMP_CWORD - 1]}"
     
     # Main commands
-    subcommands="list active running info activate create delete resize cleanup status export import copy convert"
+    subcommands="list active running info activate save create delete resize cleanup status export import copy convert"
     
     # LUKS is offered only when both userspace and the running initrd support it.
     local session_modes="native dynfilefs raw"
@@ -23,7 +23,7 @@ _minios_session() {
     local subcommand=""
     local subcommand_pos=1
     for ((i=1; i<${#COMP_WORDS[@]}; i++)); do
-        if [[ "${COMP_WORDS[i]}" =~ ^(list|active|running|info|activate|create|delete|resize|cleanup|status|export|import|copy|convert)$ ]]; then
+        if [[ "${COMP_WORDS[i]}" =~ ^(list|active|running|info|activate|save|create|delete|resize|cleanup|status|export|import|copy|convert)$ ]]; then
             subcommand="${COMP_WORDS[i]}"
             subcommand_pos=$i
             break
@@ -113,9 +113,9 @@ _minios_session() {
             esac
             ;;
         
-        activate|delete)
+        activate|save|delete)
             case "${prev}" in
-                activate|delete)
+                activate|save|delete)
                     # Get available sessions
                     local sessions=$(_get_sessions)
                     COMPREPLY=($(compgen -W "${sessions}" -- ${cur}))

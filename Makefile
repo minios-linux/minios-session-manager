@@ -1,6 +1,9 @@
-EXECUTABLES = bin/minios-session bin/minios-session-manager
+EXECUTABLES = bin/minios-session bin/minios-session-manager bin/minios-persistence-guard bin/minios-persistence-alert
 LIBRARIES = lib/*.py
 APPLICATIONS = share/applications/minios-session-manager.desktop
+AUTOSTART = share/autostart/minios-persistence-alert.desktop
+SYSTEMDUNIT = share/systemd/minios-persistence-guard.service
+INITSCRIPT = share/init.d/minios-persistence-guard
 POLICIES = share/polkit/dev.minios.session-manager.policy
 STYLES = share/styles/style.css
 COMPLETIONS = completion/minios-session
@@ -8,6 +11,9 @@ COMPLETIONS = completion/minios-session
 BINDIR = usr/bin
 LIBDIR = usr/lib/minios-session-manager
 APPLICATIONSDIR = usr/share/applications
+AUTOSTARTDIR = etc/xdg/autostart
+SYSTEMDUNITDIR = lib/systemd/system
+INITSCRIPTDIR = etc/init.d
 POLKITACTIONSDIR = usr/share/polkit-1/actions
 LOCALEDIR = usr/share/locale
 SHAREDIR = usr/share/minios-session-manager
@@ -36,6 +42,9 @@ install: build
 	install -d $(DESTDIR)/$(BINDIR) \
 				$(DESTDIR)/$(LIBDIR) \
 				$(DESTDIR)/$(APPLICATIONSDIR) \
+				$(DESTDIR)/$(AUTOSTARTDIR) \
+				$(DESTDIR)/$(SYSTEMDUNITDIR) \
+				$(DESTDIR)/$(INITSCRIPTDIR) \
 				$(DESTDIR)/$(POLKITACTIONSDIR) \
 				$(DESTDIR)/$(LOCALEDIR) \
 				$(DESTDIR)/$(SHAREDIR) \
@@ -45,7 +54,12 @@ install: build
 	cp $(LIBRARIES) $(DESTDIR)/$(LIBDIR)/
 	chmod +x $(DESTDIR)/$(LIBDIR)/minios_session.py
 	chmod +x $(DESTDIR)/$(LIBDIR)/minios_session_manager.py
+	chmod +x $(DESTDIR)/$(LIBDIR)/minios_persistence_guard.py
+	chmod +x $(DESTDIR)/$(LIBDIR)/minios_persistence_alert.py
 	cp $(APPLICATIONS) $(DESTDIR)/$(APPLICATIONSDIR)
+	install -Dm644 $(AUTOSTART) $(DESTDIR)/$(AUTOSTARTDIR)/minios-persistence-alert.desktop
+	install -Dm644 $(SYSTEMDUNIT) $(DESTDIR)/$(SYSTEMDUNITDIR)/minios-persistence-guard.service
+	install -Dm755 $(INITSCRIPT) $(DESTDIR)/$(INITSCRIPTDIR)/minios-persistence-guard
 	cp $(POLICIES) $(DESTDIR)/$(POLKITACTIONSDIR)
 	cp $(STYLES) $(DESTDIR)/$(SHAREDIR)
 	cp $(COMPLETIONS) $(DESTDIR)/$(COMPLETIONDIR)/
@@ -62,6 +76,13 @@ uninstall:
 	# Remove executables
 	rm -f $(DESTDIR)/$(BINDIR)/minios-session
 	rm -f $(DESTDIR)/$(BINDIR)/minios-session-manager
+	rm -f $(DESTDIR)/$(BINDIR)/minios-persistence-guard
+	rm -f $(DESTDIR)/$(BINDIR)/minios-persistence-alert
+
+	# Remove service and autostart integration
+	rm -f $(DESTDIR)/$(AUTOSTARTDIR)/minios-persistence-alert.desktop
+	rm -f $(DESTDIR)/$(SYSTEMDUNITDIR)/minios-persistence-guard.service
+	rm -f $(DESTDIR)/$(INITSCRIPTDIR)/minios-persistence-guard
 	
 	# Remove library directory
 	rm -rf $(DESTDIR)/$(LIBDIR)

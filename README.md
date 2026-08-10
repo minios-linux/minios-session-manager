@@ -2,6 +2,10 @@
 
 Utility suite for managing MiniOS persistent sessions from within the running system.
 
+The planned numbered SquashFS session mode, persistence alert integration, save
+policies, and cross-component contracts are defined in the
+[project contract](../../projects/minios-session-manager/PROJECT.md).
+
 ## Components
 
 - **minios-session-manager** - GTK3 GUI application
@@ -18,6 +22,7 @@ minios-session list
 minios-session create native
 minios-session create luks 4GB
 minios-session activate <id>
+minios-session save <running-squashfs-id>
 minios-session delete <id>
 minios-session cleanup --days 30
 minios-session status
@@ -43,6 +48,18 @@ minios-session resize <id> 8GB
 - **dynfilefs** - Expandable container files (works on any filesystem including FAT32/NTFS/exFAT)
 - **raw** - Fixed-size image files (works on any filesystem including FAT32/NTFS/exFAT)
 - **luks** - LUKS2-encrypted ext4 file (`changes.luks`), with no partition table or nested container
+- **squashfs** - Exact compressed snapshots managed as `changes.sb` and one
+  `changes.sb.old` generation; creation and activation remain unavailable until
+  boot resume support is complete
+
+The `save` command is available only for a running session already identified
+as SquashFS metadata. It uses `savechanges --profile exact`, verifies the
+structured result, extraction footprint, output identity, size, magic, and
+digest, durably rotates one prior generation, and updates synchronized session
+metadata only after artifact publication. An uncertain metadata directory sync
+leaves the recovery journal and rotated artifacts for restart reconciliation;
+the next public save request performs that reconciliation before checking
+whether the current generation activated successfully.
 
 `copy` always creates a new session. `convert` replaces the source by default;
 use `--new-session` to preserve it.
@@ -52,6 +69,10 @@ use `--new-session` to preserve it.
 - **POSIX filesystems** - Native mode and available container modes
 - **FAT32/NTFS/exFAT** - DynFileFS and raw containers; LUKS containers when
   cryptsetup, loop support, and the initrd LUKS hook are available
+- SquashFS save currently requires a POSIX persistence filesystem because its
+  private exact-capture staging must preserve links, ownership, modes, xattrs,
+  ACLs, capabilities, and whiteouts. FAT32/NTFS/exFAT activation remains gated
+  until a metadata-capable bounded workspace is implemented.
 - DynFileFS, raw, and LUKS default to 4000 MB. CLI sizes accept decimal
   `MB`/`GB`/`TB` units up to 1 TB. Raw and LUKS are capped at 4000 MB on FAT32.
 - Containers only grow; shrinking is unsupported.

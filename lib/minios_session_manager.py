@@ -17,8 +17,9 @@ import gettext
 from datetime import datetime
 
 gi.require_version('Gtk', '3.0')
-gi.require_version('Gdk', '3.0')
-from gi.repository import Gtk, GLib, Pango, Gdk
+from gi.repository import Gdk, Gtk, GLib, Pango
+from minios_gui import (apply_minios_css, ask_confirmation, new_icon,
+                        show_error_dialog, show_info_dialog)
 
 # Internationalization setup
 try:
@@ -27,6 +28,14 @@ try:
     _ = gettext.gettext
 except Exception:
     _ = lambda x: x
+
+
+def _style_dialog_affirmative(dialog, label):
+    button = dialog.get_widget_for_response(Gtk.ResponseType.OK)
+    if button is not None:
+        button.set_label(label)
+        button.get_style_context().add_class('suggested-action')
+    dialog.set_default_response(Gtk.ResponseType.OK)
 
 class SessionManagerGUI:
     """GUI application for session management"""
@@ -53,28 +62,17 @@ class SessionManagerGUI:
         self.refresh_session_list()
 
     def _load_css(self):
-        """Load CSS styling for the application"""
-        css_paths = [
+        """Load the MiniOS base CSS followed by the first app override found."""
+        app_css = None
+        for css_path in (
             "/usr/share/minios-session-manager/style.css",
-            os.path.join(os.path.dirname(os.path.dirname(__file__)), "share", "styles", "style.css")
-        ]
-        
-        for css_path in css_paths:
-            if os.path.exists(css_path):
-                try:
-                    provider = Gtk.CssProvider()
-                    provider.load_from_path(css_path)
-                    # Use Gdk.Screen.get_default() for GTK 3
-                    screen = Gdk.Screen.get_default()
-                    Gtk.StyleContext.add_provider_for_screen(
-                        screen,
-                        provider,
-                        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
-                    )
-                    break
-                except Exception as e:
-                    print(f"Warning: Failed to load CSS from {css_path}: {e}")
-                    continue
+            os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                         "share", "styles", "style.css"),
+        ):
+            if os.path.isfile(css_path):
+                app_css = css_path
+                break
+        apply_minios_css(app_css)
 
     def _get_minios_session_cli_path(self):
         """Get the path to minios-session CLI tool"""
@@ -98,7 +96,8 @@ class SessionManagerGUI:
                     return False, "", _("Operation cancelled")
                 self._cli_process = subprocess.Popen(
                     cmd, stdin=subprocess.PIPE if input_data is not None else None,
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    universal_newlines=True)
                 try:
                     output, error = self._cli_process.communicate(input=input_data)
                     return self._cli_process.returncode == 0, output, error
@@ -112,6 +111,7 @@ class SessionManagerGUI:
         dialog = Gtk.Dialog(title=_("LUKS Passphrase"), parent=self.window)
         dialog.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
                            Gtk.STOCK_OK, Gtk.ResponseType.OK)
+        _style_dialog_affirmative(dialog, _('Continue'))
         content = dialog.get_content_area()
         first = Gtk.Entry()
         first.set_visibility(False)
@@ -193,22 +193,21 @@ class SessionManagerGUI:
     def _build_sessions_status_info(self, main_box):
         """Build sessions directory status information panel"""
         sessions_hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        sessions_hbox.get_style_context().add_class("manager-status-banner")
         
         if self.sessions_status.get('found', False) and self.sessions_writable:
             status_icon_name = "emblem-default"  # Green checkmark
-            sessions_hbox.get_style_context().add_class("status-success")
+            sessions_hbox.get_style_context().add_class("success-banner")
             status_text = _("Sessions directory is writable")
         else:
             status_icon_name = "dialog-error"  # Error icon
-            sessions_hbox.get_style_context().add_class("status-error")
+            sessions_hbox.get_style_context().add_class("error-banner")
             if self.sessions_status.get('found', False):
                 status_text = _("Sessions directory is read-only")
             else:
                 status_text = _("Sessions directory not found")
         
         # Status icon
-        status_icon = Gtk.Image.new_from_icon_name(status_icon_name, Gtk.IconSize.MENU)
+        status_icon = new_icon(status_icon_name, Gtk.IconSize.LARGE_TOOLBAR)
         sessions_hbox.pack_start(status_icon, False, False, 0)
         
         # Status text
@@ -218,6 +217,86 @@ class SessionManagerGUI:
         sessions_hbox.pack_start(sessions_status_label, False, False, 0)
         
         main_box.pack_start(sessions_hbox, False, False, 0)
+
+    PERSISTENCE_STATE_FILE = "/run/minios-persistence/state"
+
+    def _read_persistence_state(self):
+        """Read the persistence guard state file (key=value) from tmpfs."""
+        state = {}
+        try:
+            with open(self.PERSISTENCE_STATE_FILE, encoding="utf-8", errors="replace") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if "=" in line:
+                        key, value = line.split("=", 1)
+                        state[key] = value
+        except OSError:
+            pass
+        return state
+
+    def _persistence_health_text(self, state):
+        """Return (icon, style_class, text) for the persistence health banner."""
+        level = state.get("level", "ok")
+        degraded = state.get("degraded") == "1"
+        pending = state.get("boot_warnings_pending", "0")
+        if degraded or level == "emergency":
+            return ("dialog-error", "error-banner",
+                    _("Persistence is read-only (out of space)"))
+        if level in ("advisory", "critical"):
+            free = state.get("free_outer_bytes")
+            try:
+                free_mb = int(free) // (1024 * 1024) if free is not None else None
+            except (TypeError, ValueError):
+                free_mb = None
+            if free_mb is not None:
+                return ("dialog-warning", "warning-banner",
+                        _("Low space on persistence device ({} MB free)").format(free_mb))
+            return ("dialog-warning", "warning-banner",
+                    _("Low space on persistence device"))
+        try:
+            if int(pending) > 0:
+                return ("dialog-warning", "warning-banner",
+                        _("{} startup warnings - click to review").format(int(pending)))
+        except (TypeError, ValueError):
+            pass
+        return None
+
+    def _build_persistence_health_banner(self, main_box):
+        """Add a banner reflecting persistence health, refreshed every few minutes."""
+        self._persistence_banner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        # Control visibility ourselves so the window's show_all() cannot force
+        # the banner visible when persistence is healthy.
+        self._persistence_banner.set_no_show_all(True)
+        self._persistence_banner_icon = new_icon(
+            "dialog-warning", Gtk.IconSize.LARGE_TOOLBAR)
+        self._persistence_banner.pack_start(self._persistence_banner_icon, False, False, 0)
+        self._persistence_banner_icon.show()
+        self._persistence_banner_label = Gtk.Label()
+        self._persistence_banner_label.set_halign(Gtk.Align.START)
+        self._persistence_banner.pack_start(self._persistence_banner_label, False, False, 0)
+        self._persistence_banner_label.show()
+        main_box.pack_start(self._persistence_banner, False, False, 0)
+
+        self._refresh_persistence_banner()
+        # The guard samples quickly; the GUI only needs to poll every few minutes.
+        GLib.timeout_add_seconds(180, self._refresh_persistence_banner)
+
+    def _refresh_persistence_banner(self):
+        state = self._read_persistence_state()
+        info = self._persistence_health_text(state)
+        if info is None:
+            self._persistence_banner.hide()
+            return True
+        icon_name, style_class, text = info
+        context = self._persistence_banner.get_style_context()
+        for cls in ("warning-banner", "error-banner", "success-banner"):
+            context.remove_class(cls)
+        context.add_class(style_class)
+        self._persistence_banner_icon.set_from_icon_name(
+            icon_name, Gtk.IconSize.LARGE_TOOLBAR)
+        self._persistence_banner_label.set_markup(f"<b>{GLib.markup_escape_text(text)}</b>")
+        self._persistence_banner.show()
+        return True
 
     def _build_header_bar(self):
         """Build the header bar"""
@@ -231,7 +310,7 @@ class SessionManagerGUI:
         """Create the main interface"""
         
         self.window = Gtk.Window()
-        self.window.set_icon_name("preferences-desktop-personal")  # Personal desktop preferences icon
+        self.window.set_icon_name("media-floppy")  # match the .desktop Icon
         self.window.set_default_size(600, 500)
         self.window.set_position(Gtk.WindowPosition.CENTER)
         self.window.connect("destroy", self._on_window_destroy)
@@ -251,11 +330,16 @@ class SessionManagerGUI:
         
         # Sessions directory status
         self._build_sessions_status_info(main_box)
+
+        # Persistence health (low space / degraded / missed startup warnings)
+        self._build_persistence_health_banner(main_box)
         
         # Sessions list
         self.sessions_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
+        self.sessions_list.get_style_context().add_class('minios-selectable')
         self.sessions_list.connect("row-selected", self._on_session_selected)
         self.sessions_list.connect("button-press-event", self._on_list_button_press)
+        self.sessions_list.connect("popup-menu", self._on_list_popup_menu)
 
         # ScrolledWindow setup
         scrolled = Gtk.ScrolledWindow()
@@ -290,42 +374,30 @@ class SessionManagerGUI:
         self.selected_session_id = None
         
         # Toolbar buttons
-        toolbar_box = Gtk.Grid(column_spacing=15)
+        toolbar_box = Gtk.Grid(column_spacing=8)
         toolbar_box.set_column_homogeneous(True)
         toolbar_box.get_style_context().add_class("manager-footer")
-        toolbar_box.set_hexpand(True)
+        toolbar_box.set_halign(Gtk.Align.END)
         toolbar_box.set_margin_top(15)
         main_box.pack_start(toolbar_box, False, False, 0)
         
         # Create button
-        create_btn = Gtk.Button()
-        create_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        create_icon = Gtk.Image.new_from_icon_name("document-new", Gtk.IconSize.BUTTON)
-        create_label = Gtk.Label(label=_("Create"))
-        create_box.pack_start(create_icon, False, False, 0)
-        create_box.pack_start(create_label, False, False, 0)
-        create_btn.add(create_box)
+        create_btn = Gtk.Button(label=_("Create"))
+        create_btn.set_image(
+            new_icon("document-new-symbolic", Gtk.IconSize.BUTTON))
         create_btn.connect("clicked", self.on_create_clicked)
         create_btn.get_style_context().add_class('suggested-action')
-        create_btn.get_style_context().add_class('create-button')
-        create_btn.set_hexpand(True)
         # Disable create button if sessions directory is not writable
         create_btn.set_sensitive(self.sessions_writable)
-        toolbar_box.attach(create_btn, 0, 0, 1, 1)
+        toolbar_box.attach(create_btn, 2, 0, 1, 1)
 
         self.create_btn = create_btn  # Store reference for later use
 
         # Import button
-        import_btn = Gtk.Button()
-        import_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        import_icon = Gtk.Image.new_from_icon_name("document-open", Gtk.IconSize.BUTTON)
-        import_label = Gtk.Label(label=_("Import"))
-        import_box.pack_start(import_icon, False, False, 0)
-        import_box.pack_start(import_label, False, False, 0)
-        import_btn.add(import_box)
+        import_btn = Gtk.Button(label=_("Import"))
+        import_btn.set_image(
+            new_icon("document-open-symbolic", Gtk.IconSize.BUTTON))
         import_btn.connect("clicked", self.on_import_clicked)
-        import_btn.get_style_context().add_class('import-button')
-        import_btn.set_hexpand(True)
         # Disable import button if sessions directory is not writable
         import_btn.set_sensitive(self.sessions_writable)
         toolbar_box.attach(import_btn, 1, 0, 1, 1)
@@ -333,19 +405,14 @@ class SessionManagerGUI:
         self.import_btn = import_btn  # Store reference for later use
 
         # Cleanup button
-        cleanup_btn = Gtk.Button()
-        cleanup_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        cleanup_icon = Gtk.Image.new_from_icon_name("user-trash", Gtk.IconSize.BUTTON)
-        cleanup_label = Gtk.Label(label=_("Cleanup"))
-        cleanup_box.pack_start(cleanup_icon, False, False, 0)
-        cleanup_box.pack_start(cleanup_label, False, False, 0)
-        cleanup_btn.add(cleanup_box)
+        cleanup_btn = Gtk.Button(label=_("Cleanup"))
+        cleanup_btn.set_image(
+            new_icon("user-trash-symbolic", Gtk.IconSize.BUTTON))
         cleanup_btn.connect("clicked", self.on_cleanup_clicked)
-        cleanup_btn.get_style_context().add_class('cleanup-button')
-        cleanup_btn.set_hexpand(True)
+        cleanup_btn.get_style_context().add_class('destructive-action')
         # Disable cleanup button if sessions directory is not writable
         cleanup_btn.set_sensitive(self.sessions_writable)
-        toolbar_box.attach(cleanup_btn, 2, 0, 1, 1)
+        toolbar_box.attach(cleanup_btn, 0, 0, 1, 1)
         
         self.cleanup_btn = cleanup_btn  # Store reference for later use
 
@@ -520,16 +587,18 @@ class SessionManagerGUI:
         
         # Add CSS classes based on session status
         if is_active:
-            row.get_style_context().add_class('session-status-active')  # Use 'active' style for current
+            row.get_style_context().add_class('row-status-active')
+        elif is_running:
+            row.get_style_context().add_class('row-status-running')
         else:
-            row.get_style_context().add_class('session-status-available')
+            row.get_style_context().add_class('row-status-available')
         
         main_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=15)
-        main_box.get_style_context().add_class('session-item')
+        main_box.get_style_context().add_class('manager-state-row-content')
         
         # Session icon
         icon_name = 'media-floppy'
-        img = Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.DND)
+        img = new_icon(icon_name, Gtk.IconSize.DND)
         main_box.pack_start(img, False, False, 0)
         
         # Session info box
@@ -599,12 +668,12 @@ class SessionManagerGUI:
         
         # Primary status badge
         status_label = Gtk.Label()
+        status_label.get_style_context().add_class('badge')
         if is_active:
             status_text = _('ACTIVE')
-            status_label.get_style_context().add_class('active-session-badge')
+            status_label.get_style_context().add_class('badge-success')
         else:
             status_text = _('AVAILABLE')
-            status_label.get_style_context().add_class('available-session-badge')
         
         status_label.set_markup(f'<span size="small" weight="bold">{GLib.markup_escape_text(status_text)}</span>')
         status_label.set_halign(Gtk.Align.CENTER)
@@ -614,7 +683,8 @@ class SessionManagerGUI:
         if is_running:
             running_label = Gtk.Label()
             running_text = _('RUNNING')
-            running_label.get_style_context().add_class('running-session-badge')
+            running_label.get_style_context().add_class('badge')
+            running_label.get_style_context().add_class('badge-warning')
             running_label.set_markup(f'<span size="small" weight="bold">{GLib.markup_escape_text(running_text)}</span>')
             running_label.set_halign(Gtk.Align.CENTER)
             status_box.pack_start(running_label, False, False, 0)
@@ -642,13 +712,13 @@ class SessionManagerGUI:
         self.context_menu.get_style_context().add_class('session-context-menu')
 
         # Activate menu item
-        activate_item = Gtk.MenuItem(label=_("Activate Session"))
+        activate_item = Gtk.MenuItem.new_with_mnemonic(_("_Activate Session"))
         activate_item.get_style_context().add_class('context-menu-activate')
         activate_item.connect("activate", self._on_context_activate)
         self.context_menu.append(activate_item)
 
         # Resize menu item
-        resize_item = Gtk.MenuItem(label=_("Resize Session"))
+        resize_item = Gtk.MenuItem.new_with_mnemonic(_("_Resize Session"))
         resize_item.get_style_context().add_class('context-menu-resize')
         resize_item.connect("activate", self._on_context_resize)
         self.context_menu.append(resize_item)
@@ -658,19 +728,19 @@ class SessionManagerGUI:
         self.context_menu.append(separator1)
 
         # Export menu item
-        export_item = Gtk.MenuItem(label=_("Export Session"))
+        export_item = Gtk.MenuItem.new_with_mnemonic(_("_Export Session"))
         export_item.get_style_context().add_class('context-menu-export')
         export_item.connect("activate", self._on_context_export)
         self.context_menu.append(export_item)
 
         # Copy menu item
-        copy_item = Gtk.MenuItem(label=_("Copy Session"))
+        copy_item = Gtk.MenuItem.new_with_mnemonic(_("_Copy Session"))
         copy_item.get_style_context().add_class('context-menu-copy')
         copy_item.connect("activate", self._on_context_copy)
         self.context_menu.append(copy_item)
 
         # Convert menu item
-        convert_item = Gtk.MenuItem(label=_("Convert Session"))
+        convert_item = Gtk.MenuItem.new_with_mnemonic(_("Con_vert Session"))
         convert_item.get_style_context().add_class('context-menu-convert')
         convert_item.connect("activate", self._on_context_convert)
         self.context_menu.append(convert_item)
@@ -680,7 +750,7 @@ class SessionManagerGUI:
         self.context_menu.append(separator2)
 
         # Open folder menu item
-        open_folder_item = Gtk.MenuItem(label=_("Open Folder"))
+        open_folder_item = Gtk.MenuItem.new_with_mnemonic(_("_Open Folder"))
         open_folder_item.get_style_context().add_class('context-menu-open-folder')
         open_folder_item.connect("activate", self._on_context_open_folder)
         self.context_menu.append(open_folder_item)
@@ -690,7 +760,7 @@ class SessionManagerGUI:
         self.context_menu.append(separator3)
 
         # Delete menu item
-        delete_item = Gtk.MenuItem(label=_("Delete Session"))
+        delete_item = Gtk.MenuItem.new_with_mnemonic(_("_Delete Session"))
         delete_item.get_style_context().add_class('context-menu-delete')
         delete_item.connect("activate", self._on_context_delete)
         self.context_menu.append(delete_item)
@@ -706,63 +776,43 @@ class SessionManagerGUI:
                 # Select the row
                 self.sessions_list.select_row(row)
                 self.selected_session_id = row.session_id
-
-                # Update menu items based on session status
-                activate_item = self.context_menu.get_children()[0]
-                resize_item = self.context_menu.get_children()[1]
-                export_item = self.context_menu.get_children()[3]
-                copy_item = self.context_menu.get_children()[4]
-                convert_item = self.context_menu.get_children()[5]
-                open_folder_item = self.context_menu.get_children()[7]
-                delete_item = self.context_menu.get_children()[9]
-
-                # Check session mode for resize/convert availability
-                session_mode = getattr(row, 'mode', 'unknown')
-                resize_available = session_mode in ['dynfilefs', 'raw', 'luks']
-
-                # Check if sessions directory is writable for create/delete operations
-                if not self.sessions_writable:
-                    activate_item.set_sensitive(False)
-                    resize_item.set_sensitive(False)
-                    export_item.set_sensitive(True)  # Can export even if not writable
-                    copy_item.set_sensitive(False)
-                    convert_item.set_sensitive(False)
-                    delete_item.set_sensitive(False)
-                elif hasattr(row, 'is_active') and row.is_active:
-                    # Disable activate if already active (regardless of running status)
-                    activate_item.set_sensitive(False)
-                    # For active sessions, check if also running to determine resize availability
-                    if hasattr(row, 'is_running') and row.is_running:
-                        resize_item.set_sensitive(False)  # Can't resize running session
-                        export_item.set_sensitive(False)  # Can't export running session
-                        copy_item.set_sensitive(False)  # Can't copy running session
-                        convert_item.set_sensitive(False)  # Can't convert running session
-                    else:
-                        resize_item.set_sensitive(resize_available)  # Can resize active session
-                        export_item.set_sensitive(True)  # Can export active (not running) session
-                        copy_item.set_sensitive(True)  # Can copy active (not running) session
-                        convert_item.set_sensitive(True)  # Can convert active (not running) session
-                    delete_item.set_sensitive(False)  # Can't delete active session
-                elif hasattr(row, 'is_running') and row.is_running:
-                    # Can activate running session (not active), but can't delete or resize it
-                    activate_item.set_sensitive(True)
-                    resize_item.set_sensitive(False)  # Can't resize running session
-                    export_item.set_sensitive(False)  # Can't export running session
-                    copy_item.set_sensitive(False)  # Can't copy running session
-                    convert_item.set_sensitive(False)  # Can't convert running session
-                    delete_item.set_sensitive(False)  # Can't delete running session
-                else:
-                    activate_item.set_sensitive(True)
-                    resize_item.set_sensitive(resize_available)
-                    export_item.set_sensitive(True)
-                    copy_item.set_sensitive(True)
-                    convert_item.set_sensitive(True)
-                    delete_item.set_sensitive(True)
-
-                # Show context menu
+                self._prepare_context_menu(row)
                 self.context_menu.popup_at_pointer(event)
                 return True
         return False
+
+    def _on_list_popup_menu(self, _widget):
+        row = self.sessions_list.get_selected_row()
+        if row is None:
+            return False
+        self._prepare_context_menu(row)
+        self.context_menu.popup_at_widget(
+            self.sessions_list, Gdk.Gravity.SOUTH_WEST,
+            Gdk.Gravity.NORTH_WEST, None)
+        return True
+
+    def _prepare_context_menu(self, row):
+        children = self.context_menu.get_children()
+        activate_item, resize_item = children[0], children[1]
+        export_item, copy_item, convert_item = children[3:6]
+        delete_item = children[9]
+        resize_available = getattr(row, 'mode', 'unknown') in (
+            'dynfilefs', 'raw', 'luks')
+        supported_operations = getattr(row, 'mode', 'unknown') != 'squashfs'
+        active = getattr(row, 'is_active', False)
+        running = getattr(row, 'is_running', False)
+
+        activate_item.set_sensitive(
+            self.sessions_writable and not active and supported_operations)
+        resize_item.set_sensitive(
+            self.sessions_writable and not running and resize_available)
+        export_item.set_sensitive(not running and supported_operations)
+        copy_item.set_sensitive(
+            self.sessions_writable and not running and supported_operations)
+        convert_item.set_sensitive(
+            self.sessions_writable and not running and supported_operations)
+        delete_item.set_sensitive(
+            self.sessions_writable and not active and not running)
 
     def _on_context_activate(self, menu_item):
         """Handle activate from context menu"""
@@ -858,6 +908,7 @@ class SessionManagerGUI:
             Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
             Gtk.STOCK_OK, Gtk.ResponseType.OK
         )
+        _style_dialog_affirmative(dialog, _('Create'))
         
         content_area = dialog.get_content_area()
         content_area.set_spacing(10)
@@ -919,7 +970,7 @@ class SessionManagerGUI:
             radio_buttons['luks'] = luks_radio
             if first_radio is None:
                 first_radio = luks_radio
-        
+
         # Size selection for container modes.
         size_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         content_area.pack_start(size_box, False, False, 0)
@@ -970,14 +1021,6 @@ class SessionManagerGUI:
         on_mode_changed(None)
         
         dialog.show_all()
-        
-        # Style the dialog buttons to remove white colors
-        cancel_button = dialog.get_widget_for_response(Gtk.ResponseType.CANCEL)
-        ok_button = dialog.get_widget_for_response(Gtk.ResponseType.OK)
-        if cancel_button:
-            cancel_button.get_style_context().add_class('dialog-neutral-button')
-        if ok_button:
-            ok_button.get_style_context().add_class('dialog-neutral-button')
         
         response = dialog.run()
         
@@ -1053,30 +1096,14 @@ class SessionManagerGUI:
         
         session_id = self.selected_session_id
         
-        # Confirm deletion
-        dialog = Gtk.MessageDialog(
-            parent=self.window,
-            message_type=Gtk.MessageType.QUESTION,
-            buttons=Gtk.ButtonsType.YES_NO,
-            text=_("Delete this session?")
-        )
-        dialog.format_secondary_text(
-            _("You're about to permanently delete session #{}.\n\nThis action cannot be undone and all data in this session will be lost forever.\n\nAre you absolutely sure you want to proceed?").format(session_id)
-        )
-        
-        # Style the dialog buttons
-        dialog.get_style_context().add_class('friendly-dialog')
-        yes_button = dialog.get_widget_for_response(Gtk.ResponseType.YES)
-        no_button = dialog.get_widget_for_response(Gtk.ResponseType.NO)
-        yes_button.set_label(_("Yes, delete it"))
-        no_button.set_label(_("Keep it safe"))
-        yes_button.get_style_context().add_class('destructive-action')
-        no_button.get_style_context().add_class('suggested-action')
-        
-        response = dialog.run()
-        dialog.destroy()
-        
-        if response == Gtk.ResponseType.YES:
+        if ask_confirmation(
+                self.window,
+                _("Delete this session?"),
+                _("Session #{} and all of its data will be permanently "
+                  "deleted. This action cannot be undone.").format(session_id),
+                destructive=True,
+                confirm_label=_("Delete Session"),
+                cancel_label=_("Keep Session")):
             # Show loading overlay
             self._show_loading(True, _("Deleting session, please wait..."))
             
@@ -1108,6 +1135,7 @@ class SessionManagerGUI:
             Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
             Gtk.STOCK_OK, Gtk.ResponseType.OK
         )
+        _style_dialog_affirmative(dialog, _('Continue'))
         
         content_area = dialog.get_content_area()
         content_area.set_spacing(10)
@@ -1127,14 +1155,6 @@ class SessionManagerGUI:
         
         dialog.show_all()
         
-        # Style the dialog buttons to remove white colors
-        cancel_button = dialog.get_widget_for_response(Gtk.ResponseType.CANCEL)
-        ok_button = dialog.get_widget_for_response(Gtk.ResponseType.OK)
-        if cancel_button:
-            cancel_button.get_style_context().add_class('dialog-neutral-button')
-        if ok_button:
-            ok_button.get_style_context().add_class('dialog-neutral-button')
-        
         response = dialog.run()
         
         if response == Gtk.ResponseType.OK:
@@ -1142,20 +1162,13 @@ class SessionManagerGUI:
             dialog.destroy()
             
             # Confirm cleanup
-            confirm_dialog = Gtk.MessageDialog(
-                parent=self.window,
-                message_type=Gtk.MessageType.QUESTION,
-                buttons=Gtk.ButtonsType.YES_NO,
-                text=_("Confirm Cleanup")
-            )
-            confirm_dialog.format_secondary_text(
-                _("This will delete all sessions older than {} days.\n\nContinue?").format(days)
-            )
-            
-            confirm_response = confirm_dialog.run()
-            confirm_dialog.destroy()
-            
-            if confirm_response == Gtk.ResponseType.YES:
+            if ask_confirmation(
+                    self.window,
+                    _("Delete old sessions?"),
+                    _("All sessions older than {} days will be permanently "
+                      "deleted.").format(days),
+                    destructive=True,
+                    confirm_label=_("Delete Old Sessions")):
                 # Show loading overlay
                 self._show_loading(True, _("Cleaning up old sessions, please wait..."))
                 
@@ -1175,42 +1188,13 @@ class SessionManagerGUI:
 
 
     def _show_error(self, message):
-        """Show error dialog with friendly styling"""
-        dialog = Gtk.MessageDialog(
-            parent=self.window,
-            message_type=Gtk.MessageType.ERROR,
-            buttons=Gtk.ButtonsType.OK,
-            text=_("Oops! Something went wrong")
-        )
-        dialog.format_secondary_text(str(message))
-
-        # Style the dialog
-        dialog.get_style_context().add_class('friendly-dialog')
-        ok_button = dialog.get_widget_for_response(Gtk.ResponseType.OK)
-        ok_button.set_label(_("Got it"))
-        ok_button.get_style_context().add_class('suggested-action')
-
-        dialog.run()
-        dialog.destroy()
+        """Show a standard error attached to the main window."""
+        show_error_dialog(
+            self.window, _("Something went wrong"), str(message))
 
     def _show_info(self, message):
-        """Show info dialog"""
-        dialog = Gtk.MessageDialog(
-            parent=self.window,
-            message_type=Gtk.MessageType.INFO,
-            buttons=Gtk.ButtonsType.OK,
-            text=_("Success")
-        )
-        dialog.format_secondary_text(str(message))
-
-        # Style the dialog
-        dialog.get_style_context().add_class('friendly-dialog')
-        ok_button = dialog.get_widget_for_response(Gtk.ResponseType.OK)
-        ok_button.set_label(_("OK"))
-        ok_button.get_style_context().add_class('suggested-action')
-
-        dialog.run()
-        dialog.destroy()
+        """Show a standard informational message attached to the main window."""
+        show_info_dialog(self.window, _("Completed"), str(message))
 
 
     def _create_progress_dialog(self, title, message):
@@ -1353,6 +1337,7 @@ class SessionManagerGUI:
             Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
             Gtk.STOCK_OK, Gtk.ResponseType.OK
         )
+        _style_dialog_affirmative(dialog, _('Resize'))
         
         content_area = dialog.get_content_area()
         content_area.set_spacing(10)
@@ -1437,6 +1422,7 @@ class SessionManagerGUI:
             Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
             Gtk.STOCK_SAVE, Gtk.ResponseType.OK
         )
+        _style_dialog_affirmative(dialog, _('Export'))
 
         # Set default filename
         dialog.set_current_name(f"session_{session_id}.tar.zst")
@@ -1520,6 +1506,7 @@ class SessionManagerGUI:
             Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
             Gtk.STOCK_OPEN, Gtk.ResponseType.OK
         )
+        _style_dialog_affirmative(dialog, _('Open'))
 
         # Add file filter for tar.zst
         filter_tar = Gtk.FileFilter()
@@ -1552,6 +1539,7 @@ class SessionManagerGUI:
             Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
             Gtk.STOCK_OK, Gtk.ResponseType.OK
         )
+        _style_dialog_affirmative(dialog, _('Import'))
 
         content_area = dialog.get_content_area()
         content_area.set_spacing(10)
@@ -1653,6 +1641,7 @@ class SessionManagerGUI:
             Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
             Gtk.STOCK_OK, Gtk.ResponseType.OK
         )
+        _style_dialog_affirmative(dialog, _('Copy'))
 
         content_area = dialog.get_content_area()
         content_area.set_spacing(10)
@@ -1802,6 +1791,7 @@ class SessionManagerGUI:
             Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
             Gtk.STOCK_OK, Gtk.ResponseType.OK
         )
+        _style_dialog_affirmative(dialog, _('Convert'))
 
         content_area = dialog.get_content_area()
         content_area.set_spacing(10)

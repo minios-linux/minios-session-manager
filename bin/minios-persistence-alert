@@ -1,0 +1,18 @@
+#!/bin/sh
+#
+# MiniOS Persistence Alert launcher (unprivileged, per graphical session).
+# Watches /run/minios-persistence/state and surfaces low-space, degraded, and
+# missed-boot warnings in the MiniOS GTK style. Started via XDG autostart.
+#
+
+set -e
+
+SCRIPT_DIR=$(dirname "$(readlink -f -- "$0")")
+
+if [ -f "/usr/lib/minios-session-manager/minios_persistence_alert.py" ]; then
+    DIR="/usr/lib/minios-session-manager"
+else
+    DIR="$(dirname "$SCRIPT_DIR")/lib"
+fi
+
+exec python3 -u "$DIR/minios_persistence_alert.py" "$@"
