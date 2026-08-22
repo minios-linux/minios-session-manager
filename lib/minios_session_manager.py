@@ -12,14 +12,16 @@ import sys
 import json
 import shutil
 import subprocess
+import tempfile
 import threading
 import gettext
 from datetime import datetime
 
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gdk, Gtk, GLib, Pango
-from minios_gui import (apply_minios_css, ask_confirmation, new_icon,
-                        show_error_dialog, show_info_dialog)
+gi.require_version('Gdk', '3.0')
+from gi.repository import Gdk, Gio, Gtk, GLib, Pango
+from minios_gui import (StatusBanner, apply_minios_css, ask_confirmation,
+                        new_header_bar, new_icon, show_error_dialog, show_info_dialog)
 
 # Internationalization setup
 try:
@@ -36,6 +38,34 @@ def _style_dialog_affirmative(dialog, label):
         button.set_label(label)
         button.get_style_context().add_class('suggested-action')
     dialog.set_default_response(Gtk.ResponseType.OK)
+
+
+def _send_desktop_notification(summary, body):
+    try:
+        connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        parameters = GLib.Variant(
+            '(susssasa{sv}i)',
+            ('MiniOS Session Manager', 0, 'document-save', summary, body, [], {}, 4000))
+        connection.call_sync(
+            'org.freedesktop.Notifications', '/org/freedesktop/Notifications',
+            'org.freedesktop.Notifications', 'Notify', parameters,
+            GLib.VariantType.new('(u)'), Gio.DBusCallFlags.NONE, 2000, None)
+        return True
+    except Exception:
+        return False
+
+
+def _save_phase_text(phase):
+    return {
+        'prepare': _("Preparing session..."),
+        'inventory': _("Scanning session changes..."),
+        'capture': _("Collecting session changes..."),
+        'compress': _("Compressing session..."),
+        'verify': _("Verifying session..."),
+        'publish': _("Finishing session save..."),
+        'complete': _("Finishing session save..."),
+    }.get(phase, _("Saving session..."))
+
 
 class SessionManagerGUI:
     """GUI application for session management"""
@@ -103,6 +133,40 @@ class SessionManagerGUI:
                     return self._cli_process.returncode == 0, output, error
                 finally:
                     self._cli_process = None
+        except Exception as e:
+            return False, "", str(e)
+
+    def _run_cli_streaming_save(self, session_id, phase_callback):
+        """Run Save Now and surface validated phase events while it is active."""
+        try:
+            cmd = ['pkexec', self.cli_command, 'save', session_id, '--json', '--progress']
+            with self._cli_lock:
+                if self._closing:
+                    return False, "", _("Operation cancelled")
+                with tempfile.TemporaryFile() as error_file:
+                    self._cli_process = subprocess.Popen(
+                        cmd, stdout=subprocess.PIPE, stderr=error_file,
+                        universal_newlines=True)
+                    final_output = ""
+                    try:
+                        for line in self._cli_process.stdout:
+                            stripped = line.strip()
+                            if not stripped:
+                                continue
+                            try:
+                                event = json.loads(stripped)
+                            except (TypeError, ValueError):
+                                continue
+                            if event.get('type') == 'phase':
+                                phase_callback(event.get('phase'))
+                            else:
+                                final_output = stripped
+                        self._cli_process.wait()
+                        error_file.seek(0)
+                        error = error_file.read().decode('utf-8', 'replace')
+                        return self._cli_process.returncode == 0, final_output, error
+                    finally:
+                        self._cli_process = None
         except Exception as e:
             return False, "", str(e)
 
@@ -191,32 +255,20 @@ class SessionManagerGUI:
             }
 
     def _build_sessions_status_info(self, main_box):
-        """Build sessions directory status information panel"""
-        sessions_hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        
+        """Build sessions directory status information panel."""
         if self.sessions_status.get('found', False) and self.sessions_writable:
-            status_icon_name = "emblem-default"  # Green checkmark
-            sessions_hbox.get_style_context().add_class("success-banner")
+            intent = 'success'
             status_text = _("Sessions directory is writable")
         else:
-            status_icon_name = "dialog-error"  # Error icon
-            sessions_hbox.get_style_context().add_class("error-banner")
-            if self.sessions_status.get('found', False):
-                status_text = _("Sessions directory is read-only")
-            else:
-                status_text = _("Sessions directory not found")
-        
-        # Status icon
-        status_icon = new_icon(status_icon_name, Gtk.IconSize.LARGE_TOOLBAR)
-        sessions_hbox.pack_start(status_icon, False, False, 0)
-        
-        # Status text
-        sessions_status_label = Gtk.Label()
-        sessions_status_label.set_markup(f'<b>{GLib.markup_escape_text(status_text)}</b>')
-        sessions_status_label.set_halign(Gtk.Align.START)
-        sessions_hbox.pack_start(sessions_status_label, False, False, 0)
-        
-        main_box.pack_start(sessions_hbox, False, False, 0)
+            intent = 'error'
+            status_text = (
+                _("Sessions directory is read-only")
+                if self.sessions_status.get('found', False)
+                else _("Sessions directory not found"))
+        banner = StatusBanner(status_text, intent=intent)
+        banner.label.set_markup(
+            '<b>{}</b>'.format(GLib.markup_escape_text(status_text)))
+        main_box.pack_start(banner, False, False, 0)
 
     PERSISTENCE_STATE_FILE = "/run/minios-persistence/state"
 
@@ -263,18 +315,13 @@ class SessionManagerGUI:
 
     def _build_persistence_health_banner(self, main_box):
         """Add a banner reflecting persistence health, refreshed every few minutes."""
-        self._persistence_banner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self._persistence_banner = StatusBanner('', intent='warning')
+        # Keep these aliases for existing callers/tests that inspect the parts.
+        self._persistence_banner_icon = self._persistence_banner.icon
+        self._persistence_banner_label = self._persistence_banner.label
         # Control visibility ourselves so the window's show_all() cannot force
         # the banner visible when persistence is healthy.
         self._persistence_banner.set_no_show_all(True)
-        self._persistence_banner_icon = new_icon(
-            "dialog-warning", Gtk.IconSize.LARGE_TOOLBAR)
-        self._persistence_banner.pack_start(self._persistence_banner_icon, False, False, 0)
-        self._persistence_banner_icon.show()
-        self._persistence_banner_label = Gtk.Label()
-        self._persistence_banner_label.set_halign(Gtk.Align.START)
-        self._persistence_banner.pack_start(self._persistence_banner_label, False, False, 0)
-        self._persistence_banner_label.show()
         main_box.pack_start(self._persistence_banner, False, False, 0)
 
         self._refresh_persistence_banner()
@@ -288,23 +335,21 @@ class SessionManagerGUI:
             self._persistence_banner.hide()
             return True
         icon_name, style_class, text = info
-        context = self._persistence_banner.get_style_context()
-        for cls in ("warning-banner", "error-banner", "success-banner"):
-            context.remove_class(cls)
-        context.add_class(style_class)
-        self._persistence_banner_icon.set_from_icon_name(
-            icon_name, Gtk.IconSize.LARGE_TOOLBAR)
-        self._persistence_banner_label.set_markup(f"<b>{GLib.markup_escape_text(text)}</b>")
+        intent = {
+            'warning-banner': 'warning',
+            'error-banner': 'error',
+            'success-banner': 'success',
+            'info-banner': 'info',
+        }.get(style_class, 'warning')
+        self._persistence_banner.set_intent(intent, icon=icon_name)
+        self._persistence_banner_label.set_markup(
+            '<b>{}</b>'.format(GLib.markup_escape_text(text)))
         self._persistence_banner.show()
         return True
 
     def _build_header_bar(self):
         """Build the header bar"""
-        header = Gtk.HeaderBar(show_close_button=True)
-        header.set_has_subtitle(False)
-        header.get_style_context().add_class("minios-headerbar")
-        header.props.title = _("MiniOS Session Manager")
-        self.window.set_titlebar(header)
+        self.window.set_titlebar(new_header_bar(_("MiniOS Session Manager")))
 
     def create_interface(self):
         """Create the main interface"""
@@ -385,6 +430,7 @@ class SessionManagerGUI:
         create_btn = Gtk.Button(label=_("Create"))
         create_btn.set_image(
             new_icon("document-new-symbolic", Gtk.IconSize.BUTTON))
+        create_btn.get_style_context().add_class('minios-text-button')
         create_btn.connect("clicked", self.on_create_clicked)
         create_btn.get_style_context().add_class('suggested-action')
         # Disable create button if sessions directory is not writable
@@ -393,10 +439,19 @@ class SessionManagerGUI:
 
         self.create_btn = create_btn  # Store reference for later use
 
+        save_btn = Gtk.Button(label=_("Save Now"))
+        save_btn.set_image(new_icon("document-save-symbolic", Gtk.IconSize.BUTTON))
+        save_btn.get_style_context().add_class('minios-text-button')
+        save_btn.connect("clicked", self.on_save_clicked)
+        save_btn.set_sensitive(False)
+        toolbar_box.attach(save_btn, 3, 0, 1, 1)
+        self.save_btn = save_btn
+
         # Import button
         import_btn = Gtk.Button(label=_("Import"))
         import_btn.set_image(
             new_icon("document-open-symbolic", Gtk.IconSize.BUTTON))
+        import_btn.get_style_context().add_class('minios-text-button')
         import_btn.connect("clicked", self.on_import_clicked)
         # Disable import button if sessions directory is not writable
         import_btn.set_sensitive(self.sessions_writable)
@@ -408,6 +463,7 @@ class SessionManagerGUI:
         cleanup_btn = Gtk.Button(label=_("Cleanup"))
         cleanup_btn.set_image(
             new_icon("user-trash-symbolic", Gtk.IconSize.BUTTON))
+        cleanup_btn.get_style_context().add_class('minios-text-button')
         cleanup_btn.connect("clicked", self.on_cleanup_clicked)
         cleanup_btn.get_style_context().add_class('destructive-action')
         # Disable cleanup button if sessions directory is not writable
@@ -705,6 +761,11 @@ class SessionManagerGUI:
             self.selected_session_id = row.session_id
         else:
             self.selected_session_id = None
+        if hasattr(self, 'save_btn'):
+            self.save_btn.set_sensitive(bool(
+                row and self.sessions_writable and
+                getattr(row, 'mode', 'unknown') == 'squashfs' and
+                getattr(row, 'is_running', False)))
 
     def _create_context_menu(self):
         """Create context menu for session items"""
@@ -716,6 +777,10 @@ class SessionManagerGUI:
         activate_item.get_style_context().add_class('context-menu-activate')
         activate_item.connect("activate", self._on_context_activate)
         self.context_menu.append(activate_item)
+
+        save_settings_item = Gtk.MenuItem.new_with_mnemonic(_("Save _Settings..."))
+        save_settings_item.connect("activate", self._on_context_save_settings)
+        self.context_menu.append(save_settings_item)
 
         # Resize menu item
         resize_item = Gtk.MenuItem.new_with_mnemonic(_("_Resize Session"))
@@ -793,9 +858,9 @@ class SessionManagerGUI:
 
     def _prepare_context_menu(self, row):
         children = self.context_menu.get_children()
-        activate_item, resize_item = children[0], children[1]
-        export_item, copy_item, convert_item = children[3:6]
-        delete_item = children[9]
+        activate_item, save_settings_item, resize_item = children[0:3]
+        export_item, copy_item, convert_item = children[4:7]
+        delete_item = children[10]
         resize_available = getattr(row, 'mode', 'unknown') in (
             'dynfilefs', 'raw', 'luks')
         supported_operations = getattr(row, 'mode', 'unknown') != 'squashfs'
@@ -803,7 +868,9 @@ class SessionManagerGUI:
         running = getattr(row, 'is_running', False)
 
         activate_item.set_sensitive(
-            self.sessions_writable and not active and supported_operations)
+            self.sessions_writable and not active)
+        save_settings_item.set_sensitive(
+            self.sessions_writable and getattr(row, 'mode', 'unknown') == 'squashfs')
         resize_item.set_sensitive(
             self.sessions_writable and not running and resize_available)
         export_item.set_sensitive(not running and supported_operations)
@@ -812,7 +879,8 @@ class SessionManagerGUI:
         convert_item.set_sensitive(
             self.sessions_writable and not running and supported_operations)
         delete_item.set_sensitive(
-            self.sessions_writable and not active and not running)
+            self.sessions_writable and not active and
+            (not running or getattr(row, 'mode', 'unknown') == 'squashfs'))
 
     def _on_context_activate(self, menu_item):
         """Handle activate from context menu"""
@@ -823,6 +891,11 @@ class SessionManagerGUI:
         """Handle delete from context menu"""
         if self.selected_session_id:
             self.on_delete_clicked(None)
+
+    def _on_context_save_settings(self, menu_item):
+        """Configure automatic saving for a SquashFS session."""
+        if self.selected_session_id:
+            self._show_squashfs_settings_dialog(self.selected_session_id)
 
     def _on_context_resize(self, menu_item):
         """Handle resize from context menu"""
@@ -893,10 +966,9 @@ class SessionManagerGUI:
                 print(f"Error parsing filesystem info: {e}")
                 # Fallback: determine compatibility based on filesystem type
                 if filesystem_type in ['ext2', 'ext3', 'ext4', 'btrfs', 'xfs', 'f2fs', 'reiserfs']:
-                    # POSIX-compatible filesystems support all modes
-                    compatible_modes = ['native', 'dynfilefs', 'raw']
+                    compatible_modes = ['native', 'squashfs', 'dynfilefs', 'raw']
                 else:
-                    # Non-POSIX filesystems only support container modes
+                    # Non-POSIX filesystems only support container modes.
                     compatible_modes = ['dynfilefs', 'raw']
         
         # Create session mode selection dialog
@@ -944,6 +1016,15 @@ class SessionManagerGUI:
             native_radio.set_sensitive(False)
             content_area.pack_start(native_radio, False, False, 0)
         
+        if 'squashfs' in compatible_modes:
+            base_radio = first_radio if first_radio else None
+            squashfs_radio = Gtk.RadioButton.new_with_label_from_widget(base_radio, _("SquashFS Mode"))
+            squashfs_radio.set_tooltip_text(_("Compressed snapshot of current live changes"))
+            content_area.pack_start(squashfs_radio, False, False, 0)
+            radio_buttons['squashfs'] = squashfs_radio
+            if first_radio is None:
+                first_radio = squashfs_radio
+
         if 'dynfilefs' in compatible_modes:
             base_radio = first_radio if first_radio else None
             dynfilefs_radio = Gtk.RadioButton.new_with_label_from_widget(base_radio, _("DynFileFS Mode"))
@@ -971,6 +1052,40 @@ class SessionManagerGUI:
             if first_radio is None:
                 first_radio = luks_radio
 
+        # SquashFS save policy and optional periodic saving.
+        squashfs_options = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+        content_area.pack_start(squashfs_options, False, False, 0)
+        shutdown_check = Gtk.CheckButton(
+            label=_("Save automatically at shutdown (recommended)"))
+        shutdown_check.set_active(True)
+        squashfs_options.pack_start(shutdown_check, False, False, 0)
+
+        policy_description = Gtk.Label()
+        policy_description.set_halign(Gtk.Align.START)
+        policy_description.set_line_wrap(True)
+        squashfs_options.pack_start(policy_description, False, False, 0)
+
+        autosave_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        squashfs_options.pack_start(autosave_box, False, False, 0)
+        autosave_box.pack_start(Gtk.Label(label=_("Periodic save:")), False, False, 0)
+        autosave_combo = Gtk.ComboBoxText()
+        for value, label_text in (
+                ('0', _("Off")), ('30', _("Every 30 minutes")),
+                ('60', _("Every 1 hour")), ('120', _("Every 2 hours")),
+                ('240', _("Every 4 hours")), ('480', _("Every 8 hours"))):
+            autosave_combo.append(value, label_text)
+        autosave_combo.set_active_id('0')
+        autosave_box.pack_start(autosave_combo, False, False, 0)
+
+        autosave_warning = Gtk.Label(label=_(
+            "Periodic saving increases CPU usage and writes to storage. "
+            "An interval of 1 hour or longer is recommended."))
+        autosave_warning.set_halign(Gtk.Align.START)
+        autosave_warning.set_line_wrap(True)
+        autosave_warning.get_style_context().add_class('warning-label')
+        autosave_warning.set_no_show_all(True)
+        squashfs_options.pack_start(autosave_warning, False, False, 0)
+
         # Size selection for container modes.
         size_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         content_area.pack_start(size_box, False, False, 0)
@@ -994,8 +1109,18 @@ class SessionManagerGUI:
             is_dynfilefs_active = 'dynfilefs' in radio_buttons and radio_buttons['dynfilefs'].get_active()
             is_raw_active = 'raw' in radio_buttons and radio_buttons['raw'].get_active()
             is_luks_active = 'luks' in radio_buttons and radio_buttons['luks'].get_active()
+            is_squashfs_active = 'squashfs' in radio_buttons and radio_buttons['squashfs'].get_active()
             is_sized_mode = is_dynfilefs_active or is_raw_active or is_luks_active
-            
+
+            squashfs_options.set_sensitive(is_squashfs_active)
+            policy_description.set_text(
+                _("You can also save manually at any time using Save Now.")
+                if shutdown_check.get_active() else
+                _("Changes since the last save are discarded when the computer is turned off."))
+            if is_squashfs_active and (autosave_combo.get_active_id() or '0') != '0':
+                autosave_warning.show()
+            else:
+                autosave_warning.hide()
             size_label.set_sensitive(is_sized_mode)
             size_spinbutton.set_sensitive(is_sized_mode)
             size_info_label.set_sensitive(not is_sized_mode)
@@ -1016,6 +1141,8 @@ class SessionManagerGUI:
         # Connect signals only for existing radio buttons
         for mode, radio in radio_buttons.items():
             radio.connect("toggled", on_mode_changed)
+        shutdown_check.connect("toggled", on_mode_changed)
+        autosave_combo.connect("changed", on_mode_changed)
         
         # Initialize sensitivity
         on_mode_changed(None)
@@ -1032,9 +1159,11 @@ class SessionManagerGUI:
                     mode = mode_name
                     break
             
-            # Get size if needed
+            # Get size/save settings if needed.
             size_mb = int(size_spinbutton.get_value())
-            
+            squashfs_policy = 'shutdown' if shutdown_check.get_active() else 'manual'
+            squashfs_autosave = int(autosave_combo.get_active_id() or '0')
+
             dialog.destroy()
             
             # Create session in background thread
@@ -1045,6 +1174,10 @@ class SessionManagerGUI:
                         if mode == 'luks':
                             command.append('--password-stdin')
                         success, output, error = self._run_cli_command(command, password_input)
+                    elif mode == 'squashfs':
+                        success, output, error = self._run_cli_command([
+                            'create', mode, '--policy', squashfs_policy,
+                            '--autosave', str(squashfs_autosave), '--json'])
                     else:
                         success, output, error = self._run_cli_command(['create', mode, '--json'])
                     
@@ -1062,6 +1195,68 @@ class SessionManagerGUI:
             thread.start()
         else:
             dialog.destroy()
+
+    def on_save_clicked(self, button):
+        """Save the selected running SquashFS session."""
+        row = self.sessions_list.get_selected_row()
+        if (not row or not self.sessions_writable or
+                getattr(row, 'mode', 'unknown') != 'squashfs' or
+                not getattr(row, 'is_running', False)):
+            self._show_error(_("Save Now is available only for the running SquashFS session."))
+            return
+        session_id = row.session_id
+        state = {'done': False, 'dialog': None, 'shown': False, 'phase': 'prepare'}
+
+        def update_phase(phase):
+            state['phase'] = phase
+            if state['dialog'] is not None:
+                state['dialog'].message_label.set_text(_save_phase_text(phase))
+            return False
+
+        def show_progress_if_needed():
+            if state['done']:
+                return False
+            dialog = self._create_progress_dialog(
+                _("Saving Session"), _save_phase_text(state['phase']))
+            state['dialog'] = dialog
+            state['shown'] = True
+            dialog.show_all()
+            return False
+
+        def finish_save(success, output, error):
+            state['done'] = True
+            if state['dialog'] is not None:
+                state['dialog'].destroy()
+                state['dialog'] = None
+            detail = error.strip()
+            try:
+                result = json.loads(output) if output else {}
+                detail = result.get('message') or detail
+            except (TypeError, ValueError):
+                pass
+            if success:
+                self.refresh_session_list()
+                if not state['shown']:
+                    _send_desktop_notification(
+                        _("Session saved"),
+                        _("SquashFS session #{} was saved successfully.").format(session_id))
+            else:
+                message = _("Failed to save session")
+                if detail:
+                    message = "{}: {}".format(message, detail)
+                self._show_error(message)
+            return False
+
+        def save_session_bg():
+            success, output, error = self._run_cli_streaming_save(
+                session_id,
+                lambda phase: GLib.idle_add(update_phase, phase))
+            GLib.idle_add(finish_save, success, output, error)
+
+        GLib.timeout_add(500, show_progress_if_needed)
+        thread = threading.Thread(target=save_session_bg)
+        thread.daemon = True
+        thread.start()
 
     def on_activate_clicked(self, button):
         """Handle activate session action"""
@@ -1089,35 +1284,66 @@ class SessionManagerGUI:
 
     def on_delete_clicked(self, button):
         """Handle delete session action"""
-        # Check if sessions directory is writable
         if not self.sessions_writable:
             self._show_error(_("Sessions directory is not writable. Cannot delete sessions."))
             return
-        
-        session_id = self.selected_session_id
-        
-        if ask_confirmation(
-                self.window,
-                _("Delete this session?"),
-                _("Session #{} and all of its data will be permanently "
-                  "deleted. This action cannot be undone.").format(session_id),
-                destructive=True,
-                confirm_label=_("Delete Session"),
-                cancel_label=_("Keep Session")):
-            # Show loading overlay
-            self._show_loading(True, _("Deleting session, please wait..."))
-            
-            # Delete session in background thread
-            def delete_session_bg():
-                try:
-                    success, output, error = self._run_cli_command(['delete', session_id, '--json'])
-                    GLib.idle_add(self._on_session_operation_complete, success, output, error, None, _("Session deleted successfully"), _("Failed to delete session"))
-                except Exception as e:
-                    GLib.idle_add(self._on_session_operation_complete, False, "", str(e), None, "", _("Failed to delete session"))
-            
-            thread = threading.Thread(target=delete_session_bg)
-            thread.daemon = True
-            thread.start()
+
+        row = self.sessions_list.get_selected_row()
+        if row is None:
+            return
+        session_id = row.session_id
+        handoff = (getattr(row, 'mode', 'unknown') == 'squashfs' and
+                   getattr(row, 'is_running', False))
+        target = None
+        if handoff:
+            target = next((candidate for candidate in self.sessions_list.get_children()
+                           if getattr(candidate, 'is_active', False) and
+                           candidate.session_id != session_id), None)
+            if target is None or getattr(target, 'mode', 'unknown') != 'squashfs':
+                self._show_error(_(
+                    "Create and activate another SquashFS session before deleting "
+                    "the running SquashFS session."))
+                return
+            title = _("Delete running SquashFS session?")
+            message = _(
+                "The current system is already running from RAM. Session #{} will "
+                "become the save target for this boot. Future manual and automatic "
+                "saves will be written to it. Session #{} will then be permanently "
+                "deleted.").format(target.session_id, session_id)
+            confirm_label = _("Delete and Continue")
+        else:
+            title = _("Delete this session?")
+            message = _("Session #{} and all of its data will be permanently "
+                        "deleted. This action cannot be undone.").format(session_id)
+            confirm_label = _("Delete Session")
+
+        if not ask_confirmation(
+                self.window, title, message, destructive=True,
+                confirm_label=confirm_label, cancel_label=_("Keep Session")):
+            return
+
+        self._show_loading(
+            True, _("Switching save target and deleting session...") if handoff else
+            _("Deleting session, please wait..."))
+
+        def delete_session_bg():
+            try:
+                command = ['delete', session_id]
+                if handoff:
+                    command.append('--handoff')
+                command.append('--json')
+                success, output, error = self._run_cli_command(command)
+                GLib.idle_add(
+                    self._on_session_operation_complete, success, output, error, None,
+                    _("Session deleted successfully"), _("Failed to delete session"))
+            except Exception as e:
+                GLib.idle_add(
+                    self._on_session_operation_complete, False, "", str(e), None,
+                    "", _("Failed to delete session"))
+
+        thread = threading.Thread(target=delete_session_bg)
+        thread.daemon = True
+        thread.start()
 
     def on_cleanup_clicked(self, button):
         """Handle cleanup button click"""
@@ -1232,6 +1458,7 @@ class SessionManagerGUI:
         progress_box.pack_start(message_label, False, False, 0)
         
         content_area.pack_start(progress_box, True, True, 0)
+        progress_dialog.message_label = message_label
         
         return progress_dialog
 
@@ -1260,7 +1487,14 @@ class SessionManagerGUI:
             # Skip showing success info dialog, just refresh the list
             self.refresh_session_list()
         else:
-            error_message = f"{error_prefix}: {error}" if error else error_prefix
+            detail = error.strip() if error else ''
+            if output:
+                try:
+                    result = json.loads(output)
+                    detail = result.get('message') or result.get('error') or detail
+                except (TypeError, ValueError):
+                    pass
+            error_message = "{}: {}".format(error_prefix, detail) if detail else error_prefix
             self._show_error(error_message)
 
     def _show_loading(self, show, text=None):
@@ -1277,6 +1511,99 @@ class SessionManagerGUI:
             self.loading_spinner.stop()
             # Reset to default text
             self.loading_label.set_text(_("Loading sessions..."))
+
+    def _show_squashfs_settings_dialog(self, session_id):
+        """Show user-facing automatic-save settings for a SquashFS session."""
+        success, output, error = self._run_cli_command(['list', '--json'])
+        if not success:
+            self._show_error(error or _("Failed to get session information"))
+            return
+        try:
+            session = next(item for item in json.loads(output)
+                           if item.get('id') == session_id)
+        except (StopIteration, TypeError, ValueError):
+            self._show_error(_("Session not found"))
+            return
+        if session.get('mode') != 'squashfs':
+            self._show_error(_("Save settings are available only for SquashFS sessions."))
+            return
+
+        dialog = Gtk.Dialog(title=_("SquashFS Save Settings"), parent=self.window)
+        dialog.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+                           Gtk.STOCK_OK, Gtk.ResponseType.OK)
+        _style_dialog_affirmative(dialog, _("Apply"))
+        content = dialog.get_content_area()
+        content.set_spacing(8)
+        content.set_margin_start(12)
+        content.set_margin_end(12)
+        content.set_margin_top(12)
+        content.set_margin_bottom(12)
+
+        shutdown_check = Gtk.CheckButton(
+            label=_("Save automatically at shutdown (recommended)"))
+        shutdown_check.set_active(session.get('policy', 'manual') == 'shutdown')
+        content.pack_start(shutdown_check, False, False, 0)
+        description = Gtk.Label()
+        description.set_halign(Gtk.Align.START)
+        description.set_line_wrap(True)
+        content.pack_start(description, False, False, 0)
+
+        autosave_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        autosave_box.pack_start(Gtk.Label(label=_("Periodic save:")), False, False, 0)
+        autosave_combo = Gtk.ComboBoxText()
+        for value, label_text in (
+                ('0', _("Off")), ('30', _("Every 30 minutes")),
+                ('60', _("Every 1 hour")), ('120', _("Every 2 hours")),
+                ('240', _("Every 4 hours")), ('480', _("Every 8 hours"))):
+            autosave_combo.append(value, label_text)
+        autosave_combo.set_active_id(str(session.get('autosave') or 0))
+        autosave_box.pack_start(autosave_combo, False, False, 0)
+        content.pack_start(autosave_box, False, False, 0)
+
+        warning = Gtk.Label(label=_(
+            "Periodic saving increases CPU usage and writes to storage. "
+            "An interval of 1 hour or longer is recommended."))
+        warning.set_halign(Gtk.Align.START)
+        warning.set_line_wrap(True)
+        warning.get_style_context().add_class('warning-label')
+        warning.set_no_show_all(True)
+        content.pack_start(warning, False, False, 0)
+
+        def update_settings_text(_widget=None):
+            description.set_text(
+                _("You can also save manually at any time using Save Now.")
+                if shutdown_check.get_active() else
+                _("Changes since the last save are discarded when the computer is turned off."))
+            if (autosave_combo.get_active_id() or '0') != '0':
+                warning.show()
+            else:
+                warning.hide()
+
+        shutdown_check.connect('toggled', update_settings_text)
+        autosave_combo.connect('changed', update_settings_text)
+        dialog.show_all()
+        update_settings_text()
+        response = dialog.run()
+        if response != Gtk.ResponseType.OK:
+            dialog.destroy()
+            return
+        shutdown = 'on' if shutdown_check.get_active() else 'off'
+        autosave = autosave_combo.get_active_id() or '0'
+        dialog.destroy()
+
+        self._show_loading(True, _("Updating save settings..."))
+
+        def update_bg():
+            ok, out, err = self._run_cli_command([
+                'settings', session_id, '--shutdown', shutdown,
+                '--autosave', autosave, '--json'])
+            GLib.idle_add(
+                self._on_session_operation_complete, ok, out, err, None,
+                _("Save settings updated"), _("Failed to update save settings"))
+
+        thread = threading.Thread(target=update_bg)
+        thread.daemon = True
+        thread.start()
 
     def _show_resize_dialog(self, session_id):
         """Show resize dialog for a session"""

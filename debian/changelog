@@ -1,17 +1,42 @@
 minios-session-manager (1.2.1) unstable; urgency=medium
 
+  * Reject partial rsync transfers when copying or converting sessions so
+    incomplete session trees are never published as successful copies.
+  * Harden the predictable /tmp size-cache directory against symlink following
+    by validating and chmodding an O_NOFOLLOW directory file descriptor.
+  * Use minios-gui 1.1.0 shared HeaderBar and status banner components.
   * Restore Python 3.6 GUI helper compatibility by using universal-newline
     subprocess pipes instead of the Python 3.7-only text keyword.
   * Use shared manager row sizing and active-first status accents consistent
     with Kernel Manager.
-  * Add the fail-closed manual SquashFS save, rotation, and recovery transaction.
-  * Validate and retain the versioned exact-capture extraction footprint for
-    current and rollback SquashFS generations.
-  * Recompute captured module digests before rotation and preserve the recovery
-    journal when metadata publication durability is uncertain.
+  * Add fail-closed SquashFS saving through savechanges exact capture.
+  * Build each save under a private temporary name, verify its identity, size,
+    SquashFS header, digest, and extraction footprint, then atomically replace
+    the current changes.sb without retaining a rollback generation.
   * Reject SquashFS saving on storage that cannot preserve exact staging
     metadata until a metadata-capable workspace is available.
-  * Retain the union backend for the rollback generation.
+  * Create and activate SquashFS snapshots with manual or automatic-at-shutdown
+    save policy, while keeping Save Now available for the running session.
+  * Show a desktop save icon for the running SquashFS session and a progress
+    window during forced saves.
+  * Delegate running SquashFS saves to the MiniOS Tools backend; shutdown
+    saving no longer depends on Session Manager being installed.
+  * Require MiniOS Tools 1.6.0 for the shared SquashFS save backend and exact
+    capture across preserved post-switch-root module mount aliases.
+  * Create the persistence guard runtime directory before systemd applies its
+    read-write sandbox so the desktop SquashFS save indicator can start.
+  * Improve SquashFS save UX with phase-aware delayed progress, quick-save and
+    first-use desktop notifications, and shutdown output matching MiniOS teardown.
+  * Add independent automatic-at-shutdown and periodic save controls in the GTK
+    manager and tray, with a 30-minute minimum and explicit storage-write warning.
+  * Register the persistence guard on SysV systems and add a Devuan periodic-save
+    worker that performs the same 30-minute due checks as the systemd timer.
+  * Show SquashFS logical snapshot size and saved time in session rows instead of
+    compressed artifact size and directory timestamps.
+  * Allow a running unpacked SquashFS session to hand off to a snapshot captured
+    and activated during the current boot before deleting the old snapshot.
+  * Warn after an unclean SquashFS boot and restore the last successfully saved
+    snapshot without inventing a rollback generation.
 
  -- crims0n <crims0n@minios.dev>  Mon, 10 Aug 2026 00:29:10 +0300
 

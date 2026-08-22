@@ -2,3 +2,7 @@
 
 %:
 	dh $@
+
+override_dh_installinit:
+	dh_installinit --name=minios-persistence-guard --only-scripts
+	dh_installinit --name=minios-session-autosave --only-scripts

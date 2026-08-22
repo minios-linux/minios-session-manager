@@ -32,6 +32,11 @@ class TestAcknowledge:
         assert not alert.already_acknowledged("boot-other")
 
 
+class TestBootWarningSource:
+    def test_alert_reads_guard_published_warning_copy(self):
+        assert alert.BOOT_WARNINGS_FILE == "/run/minios-persistence/boot-warnings"
+
+
 class TestBootWarnings:
     def test_format_groups_by_category(self):
         records = [
@@ -47,6 +52,15 @@ class TestBootWarnings:
         assert "backend gone" in text
         # Space category groups both of its messages.
         assert text.count("Disk space") == 1
+
+    def test_format_escapes_warning_markup(self):
+        records = [{
+            "boot_id": "b", "timestamp": "1", "severity": "warning",
+            "category": "other", "message": "<b>not markup</b> & text",
+        }]
+        text = alert.format_boot_warnings(records)
+        assert "&lt;b&gt;not markup&lt;/b&gt; &amp; text" in text
+        assert "<b>not markup</b>" not in text
 
     def test_worst_severity(self):
         assert alert.worst_severity([{"severity": "warning"}]) == "warning"
@@ -72,3 +86,57 @@ class TestLevelMessage:
     def test_advisory_is_warning(self):
         info = alert.level_message({"level": "advisory", "degraded": "0"})
         assert info[2] == "warning"
+
+
+class TestSquashfsTray:
+    def test_icon_appears_only_for_active_squashfs_session(self):
+        assert alert.squashfs_session_id({
+            "boot_level": "ok", "mode": "squashfs", "session": "7"}) == "7"
+        assert alert.squashfs_session_id({
+            "boot_level": "ok", "mode": "raw", "session": "7"}) is None
+        assert alert.squashfs_session_id({
+            "boot_level": "failed", "mode": "squashfs", "session": "7"}) is None
+        assert alert.squashfs_session_id({
+            "boot_level": "ok", "mode": "squashfs", "session": "../7"}) is None
+
+    def test_save_command_uses_privileged_session_backend(self):
+        assert alert.save_command("3", "/usr/bin/minios-session") == [
+            "pkexec", "/usr/bin/minios-session", "save", "3", "--json"]
+
+    def test_save_result_prefers_cli_message(self):
+        success, message = alert.save_result(
+            0, '{"success": true, "message": "saved"}\n', "")
+        assert success is True and message == "saved"
+        success, message = alert.save_result(1, "", "permission denied")
+        assert success is False and message == "permission denied"
+
+
+class TestSquashfsSaveUx:
+    def test_progress_save_command_uses_same_backend(self):
+        assert alert.save_command("3", "/usr/bin/minios-session", progress=True) == [
+            "pkexec", "/usr/bin/minios-session", "save", "3", "--json", "--progress"]
+
+    def test_settings_command_enforces_supported_intervals(self):
+        assert alert.settings_command(
+            "3", shutdown=True, autosave=60,
+            command="/usr/bin/minios-session") == [
+                "pkexec", "/usr/bin/minios-session", "settings", "3",
+                "--shutdown", "on", "--autosave", "60", "--json"]
+        try:
+            alert.settings_command("3", autosave=10)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("10-minute automatic saving must not be accepted")
+
+    def test_streamed_save_result_uses_final_result_message(self):
+        output = (
+            '{"type":"phase","phase":"compress"}\n'
+            '{"success":true,"message":"saved"}\n')
+        assert alert.save_result(0, output, "") == (True, "saved")
+
+    def test_one_time_squashfs_notice_marker_is_persistent(self, tmp_path):
+        path = str(tmp_path / "config" / "notice")
+        assert not alert.squashfs_notice_seen(path)
+        assert alert.mark_squashfs_notice_seen(path)
+        assert alert.squashfs_notice_seen(path)

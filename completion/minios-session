@@ -5,10 +5,10 @@ _minios_session() {
     prev="${COMP_WORDS[COMP_CWORD - 1]}"
     
     # Main commands
-    subcommands="list active running info activate save create delete resize cleanup status export import copy convert"
+    subcommands="list active running info activate save create settings delete resize cleanup status export import copy convert"
     
     # LUKS is offered only when both userspace and the running initrd support it.
-    local session_modes="native dynfilefs raw"
+    local session_modes="native squashfs dynfilefs raw"
     local luks_opt=""
     if command -v cryptsetup >/dev/null 2>&1 && command -v losetup >/dev/null 2>&1 &&
        [[ -f /run/initramfs/etc/minios-initramfs-crypt ]]; then
@@ -23,7 +23,7 @@ _minios_session() {
     local subcommand=""
     local subcommand_pos=1
     for ((i=1; i<${#COMP_WORDS[@]}; i++)); do
-        if [[ "${COMP_WORDS[i]}" =~ ^(list|active|running|info|activate|save|create|delete|resize|cleanup|status|export|import|copy|convert)$ ]]; then
+        if [[ "${COMP_WORDS[i]}" =~ ^(list|active|running|info|activate|save|create|settings|delete|resize|cleanup|status|export|import|copy|convert)$ ]]; then
             subcommand="${COMP_WORDS[i]}"
             subcommand_pos=$i
             break
@@ -96,9 +96,15 @@ _minios_session() {
                 --sessions-dir)
                     COMPREPLY=($(compgen -d -- ${cur}))
                     ;;
+                --policy)
+                    COMPREPLY=($(compgen -W "manual shutdown" -- ${cur}))
+                    ;;
+                --autosave)
+                    COMPREPLY=($(compgen -W "0 30 60 120 240 480" -- ${cur}))
+                    ;;
                 *)
                     if [[ ${cur} == -* ]]; then
-                        local create_opts="--help --json --sessions-dir${luks_opt}"
+                        local create_opts="--help --json --sessions-dir --policy --autosave${luks_opt}"
                         COMPREPLY=($(compgen -W "${create_opts}" -- ${cur}))
                     elif [[ $arg_count -eq 0 ]]; then
                         # First argument: mode
@@ -108,6 +114,29 @@ _minios_session() {
                         # Second argument: size
                         local sizes="1000MB 2000MB 4GB 8GB 16GB"
                         COMPREPLY=($(compgen -W "${sizes}" -- ${cur}))
+                    fi
+                    ;;
+            esac
+            ;;
+
+        settings)
+            case "${prev}" in
+                settings)
+                    local sessions=$(_get_sessions)
+                    COMPREPLY=($(compgen -W "${sessions}" -- ${cur}))
+                    ;;
+                --shutdown)
+                    COMPREPLY=($(compgen -W "on off" -- ${cur}))
+                    ;;
+                --autosave)
+                    COMPREPLY=($(compgen -W "0 30 60 120 240 480" -- ${cur}))
+                    ;;
+                --sessions-dir)
+                    COMPREPLY=($(compgen -d -- ${cur}))
+                    ;;
+                *)
+                    if [[ ${cur} == -* ]]; then
+                        COMPREPLY=($(compgen -W "--help --json --sessions-dir --shutdown --autosave" -- ${cur}))
                     fi
                     ;;
             esac
@@ -126,6 +155,8 @@ _minios_session() {
                 *)
                     if [[ ${cur} == -* ]]; then
                         local cmd_opts="--help --json --sessions-dir${luks_opt}"
+                        [[ "$subcommand" == save ]] && cmd_opts+=" --progress"
+                        [[ "$subcommand" == delete ]] && cmd_opts+=" --handoff"
                         COMPREPLY=($(compgen -W "${cmd_opts}" -- ${cur}))
                     fi
                     ;;

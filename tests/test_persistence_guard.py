@@ -4,6 +4,7 @@
 
 import os
 import sys
+from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 
@@ -88,6 +89,17 @@ class TestBootWarnings:
         assert guard.ingest_boot_warnings(str(tmp_path / "nope")) == []
 
 
+    def test_public_copy_is_world_readable(self, tmp_path):
+        path = str(tmp_path / "boot-warnings")
+        records = [{
+            "boot_id": "boot-1", "timestamp": "12.3", "severity": "warning",
+            "category": "space", "message": "disk almost full",
+        }]
+        guard.write_boot_warnings_atomic(records, path)
+        assert guard.ingest_boot_warnings(path) == records
+        assert (os.stat(path).st_mode & 0o004) != 0
+
+
 class TestState:
     def test_serialize_round_trip(self):
         state = {
@@ -112,6 +124,27 @@ class TestState:
         # World-readable so an unprivileged notifier can read it.
         assert (os.stat(path).st_mode & 0o004) != 0
 
+
+    def test_run_once_publishes_boot_warning_copy(self, tmp_path, monkeypatch):
+        source = tmp_path / "private-warnings"
+        source.write_text("boot-1\t1.0\twarning\tmode\tnew session created\n")
+        public = tmp_path / "public-warnings"
+        state_path = tmp_path / "state"
+        monkeypatch.setattr(guard, "BOOT_WARNINGS_FILE", str(source))
+        original = guard.write_boot_warnings_atomic
+        monkeypatch.setattr(
+            guard, "write_boot_warnings_atomic",
+            lambda records: original(records, str(public)))
+
+        g = guard.PersistenceGuard(sessions_dir=None, state_path=str(state_path))
+        g.backing_and_inner = lambda: (None, None)
+        state = g.run_once()
+        assert state["boot_warnings_pending"] == 1
+        records = guard.ingest_boot_warnings(str(public))
+        assert len(records) == 1
+        assert records[0]["message"] == "new session created"
+        assert (os.stat(public).st_mode & 0o004) != 0
+
     def test_read_boot_state(self, tmp_path):
         p = tmp_path / "boot-state"
         p.write_text("boot_level=failed\nmode=dynfilefs\nsession=3\n")
@@ -132,3 +165,37 @@ class TestSampleIntegration:
         assert state["degraded"] == 1
         assert state["level"] in ("critical", "emergency")
         assert state["mode"] == "dynfilefs"
+
+
+def test_systemd_unit_creates_runtime_directory_before_sandboxing():
+    unit = (Path(__file__).resolve().parent.parent /
+            "share" / "systemd" / "minios-persistence-guard.service")
+    text = unit.read_text()
+    assert "RuntimeDirectory=minios-persistence" in text
+    assert "RuntimeDirectoryMode=0755" in text
+    assert "ReadWritePaths=/run/minios-persistence" in text
+
+
+def test_squashfs_settings_are_published_for_tray(tmp_path, monkeypatch):
+    sessions = tmp_path / "changes"
+    sessions.mkdir()
+    (sessions / "session.conf").write_text(
+        "default=1\nrunning=1\n"
+        "session_mode[1]=squashfs\n"
+        "session_policy[1]=shutdown\n"
+        "session_autosave[1]=60\n"
+        "session_saved[1]=2026-08-18T13:00:04Z\n")
+    boot_state = tmp_path / "boot-state"
+    boot_state.write_text("boot_level=ok\nmode=squashfs\nsession=1\n")
+    monkeypatch.setattr(guard, "BOOT_STATE_FILE", str(boot_state))
+    monkeypatch.setattr(guard, "BOOT_WARNINGS_FILE", str(tmp_path / "warnings"))
+
+    g = guard.PersistenceGuard(sessions_dir=str(sessions))
+    g.backing_and_inner = lambda: (None, None)
+    state = g.sample(now=1000)
+    assert state["policy"] == "shutdown"
+    assert state["autosave"] == "60"
+    assert state["saved"] == "2026-08-18T13:00:04Z"
+    serialized = guard.serialize_state(state)
+    assert "policy=shutdown" in serialized
+    assert "autosave=60" in serialized

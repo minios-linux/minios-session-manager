@@ -10,6 +10,8 @@ Type=simple
 ExecStart=/usr/bin/minios-persistence-guard
 Restart=on-failure
 RestartSec=5
+RuntimeDirectory=minios-persistence
+RuntimeDirectoryMode=0755
 # The guard only writes to /run (tmpfs); it never touches persistent storage.
 ProtectSystem=strict
 ReadWritePaths=/run/minios-persistence

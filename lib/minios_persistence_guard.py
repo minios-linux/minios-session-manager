@@ -26,6 +26,7 @@ RUN_DIR = "/run/minios-persistence"
 STATE_FILE = os.path.join(RUN_DIR, "state")
 INITRAMFS_RUN_DIR = "/run/initramfs/minios-persistence"
 BOOT_WARNINGS_FILE = os.path.join(INITRAMFS_RUN_DIR, "boot-warnings")
+PUBLIC_BOOT_WARNINGS_FILE = os.path.join(RUN_DIR, "boot-warnings")
 BOOT_STATE_FILE = os.path.join(INITRAMFS_RUN_DIR, "boot-state")
 
 SESSION_PATHS = [
@@ -163,10 +164,30 @@ def ingest_boot_warnings(path=BOOT_WARNINGS_FILE):
         return []
 
 
+def write_boot_warnings_atomic(records, path=PUBLIC_BOOT_WARNINGS_FILE):
+    """Publish validated boot warnings to world-readable tmpfs for the notifier."""
+    directory = os.path.dirname(path)
+    os.makedirs(directory, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(prefix=".boot-warnings-", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            for record in records:
+                handle.write("{}\t{}\t{}\t{}\t{}\n".format(
+                    record["boot_id"], record["timestamp"], record["severity"],
+                    record["category"], record["message"]))
+        os.chmod(temp_name, 0o644)
+        os.replace(temp_name, path)
+        temp_name = None
+    finally:
+        if temp_name and os.path.exists(temp_name):
+            os.unlink(temp_name)
+
+
 def serialize_state(state):
     """Serialize the state dict to the key=value format the GUI reads."""
     lines = []
     for key in ("boot_level", "level", "degraded", "session", "mode",
+                "policy", "autosave", "saved",
                 "free_outer_bytes", "free_inner_bytes",
                 "free_outer_inodes", "free_inner_inodes",
                 "eta_seconds", "boot_warnings_pending", "updated"):
@@ -206,6 +227,42 @@ def read_boot_state(path=BOOT_STATE_FILE):
     return result
 
 
+def read_squashfs_settings(sessions_dir, session_id):
+    """Read the small set of SquashFS settings needed by the desktop helper."""
+    if not sessions_dir or not session_id or not session_id.isdigit():
+        return {}
+    values = {}
+    counts = {}
+    fields = ("policy", "autosave", "saved")
+    prefixes = {field: "session_{}[{}]=".format(field, session_id)
+                for field in fields}
+    try:
+        with open(os.path.join(sessions_dir, "session.conf"), "r",
+                  encoding="utf-8", errors="replace") as handle:
+            for raw_line in handle:
+                line = raw_line.rstrip("\n")
+                for field, prefix in prefixes.items():
+                    if line.startswith(prefix):
+                        counts[field] = counts.get(field, 0) + 1
+                        values[field] = line[len(prefix):]
+    except OSError:
+        return {}
+    if any(counts.get(field, 0) > 1 for field in fields):
+        return {}
+
+    policy = values.get("policy", "manual")
+    if policy not in ("manual", "shutdown"):
+        return {}
+    autosave = values.get("autosave", "0")
+    if autosave not in ("0", "30", "60", "120", "240", "480"):
+        return {}
+    saved = values.get("saved")
+    result = {"policy": policy, "autosave": autosave}
+    if saved and "\r" not in saved and "\n" not in saved:
+        result["saved"] = saved
+    return result
+
+
 class PersistenceGuard:
     """Samples backing and inner filesystems and publishes state to tmpfs."""
 
@@ -239,7 +296,7 @@ class PersistenceGuard:
                     break
         return backing, inner
 
-    def sample(self, now=None):
+    def sample(self, now=None, boot_warnings=None):
         """Take one measurement and return the state dict."""
         now = now if now is not None else time.time()
         backing, inner = self.backing_and_inner()
@@ -285,15 +342,21 @@ class PersistenceGuard:
         if boot.get("session"):
             state["session"] = boot["session"]
         state["boot_level"] = boot.get("boot_level", "ok")
+        if state.get("mode") == "squashfs" and state.get("session"):
+            state.update(read_squashfs_settings(self.sessions_dir, state["session"]))
 
-        state["boot_warnings_pending"] = len(ingest_boot_warnings(BOOT_WARNINGS_FILE))
+        if boot_warnings is None:
+            boot_warnings = ingest_boot_warnings(BOOT_WARNINGS_FILE)
+        state["boot_warnings_pending"] = len(boot_warnings)
         return state
 
     def sample_interval(self, level):
         return CRITICAL_SAMPLE_INTERVAL if level in ("critical", "emergency") else SAMPLE_INTERVAL
 
     def run_once(self):
-        state = self.sample()
+        boot_warnings = ingest_boot_warnings(BOOT_WARNINGS_FILE)
+        state = self.sample(boot_warnings=boot_warnings)
+        write_boot_warnings_atomic(boot_warnings)
         write_state_atomic(state, self.state_path)
         return state
 
@@ -323,8 +386,10 @@ def main(argv=None):
     if not guard.sessions_dir:
         # Nothing to monitor; publish a minimal ok state and exit cleanly.
         try:
+            boot_warnings = ingest_boot_warnings()
+            write_boot_warnings_atomic(boot_warnings)
             write_state_atomic({"level": "ok", "degraded": 0,
-                                "boot_warnings_pending": len(ingest_boot_warnings())})
+                                "boot_warnings_pending": len(boot_warnings)})
         except OSError as error:
             if error.errno not in (errno.EACCES, errno.EROFS):
                 raise

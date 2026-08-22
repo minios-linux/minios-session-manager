@@ -56,6 +56,26 @@ class TestSessionManagerInit:
             sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
             assert sm.cache_dir is not None
 
+    def test_cache_symlink_does_not_chmod_target(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        victim = tempfile.mkdtemp(prefix='minios-cache-victim-')
+        cache_link = os.path.join(temp_sessions_dir, 'cache-link')
+        os.chmod(victim, 0o777)
+        os.symlink(victim, cache_link)
+        sm = SessionManager.__new__(SessionManager)
+        sm.cache_dir = cache_link
+        sm.cache_file = os.path.join(cache_link, 'session_sizes.json')
+        try:
+            sm._ensure_cache_dir()
+            assert stat.S_IMODE(os.stat(victim).st_mode) == 0o777
+            assert sm.cache_dir != cache_link
+            assert not os.path.islink(sm.cache_dir)
+        finally:
+            if sm.cache_dir != cache_link:
+                shutil.rmtree(sm.cache_dir, ignore_errors=True)
+            shutil.rmtree(victim, ignore_errors=True)
+
 
 class TestFormatSize:
     """Tests for _format_size method."""
@@ -449,12 +469,14 @@ class TestAuditRegressions:
         gi.require_version = lambda *_args: None
         repository = types.ModuleType('gi.repository')
         repository.Gdk = MagicMock()
+        repository.Gio = MagicMock()
         repository.Gtk = MagicMock()
         repository.GLib = MagicMock()
         repository.Pango = MagicMock()
         minios_gui = types.ModuleType('minios_gui')
-        for name in ('apply_minios_css', 'ask_confirmation', 'new_icon',
-                     'show_error_dialog', 'show_info_dialog'):
+        for name in ('StatusBanner', 'apply_minios_css', 'ask_confirmation',
+                     'new_header_bar', 'new_icon', 'show_error_dialog',
+                     'show_info_dialog'):
             setattr(minios_gui, name, MagicMock())
 
         module_path = os.path.join(
@@ -520,6 +542,20 @@ class TestAuditRegressions:
         assert sm._get_compatible_session_modes({
             'is_readonly': True, 'is_posix_compatible': True, 'type': 'ext4'
         }) == []
+
+    def test_squashfs_mode_requires_exact_staging_filesystem(self,
+                                                              temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        ext4_modes = sm._get_compatible_session_modes({
+            'is_readonly': False, 'is_posix_compatible': True, 'type': 'ext4'
+        })
+        vfat_modes = sm._get_compatible_session_modes({
+            'is_readonly': False, 'is_posix_compatible': False, 'type': 'vfat'
+        })
+        assert 'squashfs' in ext4_modes
+        assert 'squashfs' not in vfat_modes
 
 
     def test_fat32_container_limit_matches_perchsize_policy(self, temp_sessions_dir):
@@ -775,6 +811,37 @@ class TestAuditRegressions:
         command = run.call_args[0][0]
         assert '--exclude=.wh.*' not in command
 
+    def test_native_copy_rejects_partial_rsync(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        source = os.path.join(temp_sessions_dir, '1')
+        target = os.path.join(temp_sessions_dir, '2')
+        os.mkdir(source)
+        os.mkdir(target)
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        partial = MagicMock(returncode=23, stderr=b'partial transfer')
+        with patch('subprocess.run', return_value=partial):
+            assert sm._copy_session_direct(source, target, 'native') is False
+
+    def test_conversion_rejects_partial_rsync(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        source = os.path.join(temp_sessions_dir, '1')
+        target = os.path.join(temp_sessions_dir, '2')
+        os.mkdir(source)
+        os.mkdir(target)
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        source_mount = MagicMock()
+        source_mount.__enter__.return_value = source
+        target_mount = MagicMock()
+        target_mount.__enter__.return_value = target
+        partial = MagicMock(returncode=24, stderr=b'vanished source file')
+        with patch.object(sm, '_mount_session_read', return_value=source_mount), \
+                patch.object(sm, '_mount_session_write', return_value=target_mount), \
+                patch('subprocess.run', return_value=partial):
+            assert sm._copy_session_with_conversion(
+                source, target, 'native', 'raw', 100) is False
+
     def test_convert_new_session_delegates_to_copy_without_replacing_source(self, temp_sessions_dir):
         from minios_session import SessionManager
 
@@ -832,27 +899,70 @@ class TestSquashfsGating:
     def _manager(temp_sessions_dir):
         from minios_session import SessionManager
 
-        os.mkdir(os.path.join(temp_sessions_dir, '1'))
+        session_path = os.path.join(temp_sessions_dir, '1')
+        os.mkdir(session_path)
+        payload = b'hsqs-snapshot'
+        with open(os.path.join(session_path, 'changes.sb'), 'wb') as artifact:
+            artifact.write(payload)
         with open(os.path.join(temp_sessions_dir, 'session.json'), 'w') as metadata_file:
             json.dump({
                 'default': '2',
                 'sessions': {
                     '1': {'mode': 'squashfs', 'version': '5.0',
-                          'edition': 'standard', 'union': 'overlayfs'},
+                          'edition': 'standard', 'union': 'overlayfs',
+                          'policy': 'manual',
+                          'digest': hashlib.sha256(payload).hexdigest(),
+                          'compressed': len(payload), 'uncompressed': 0,
+                          'entries': 0},
                     '2': {'mode': 'native', 'version': '5.0',
                           'edition': 'standard', 'union': 'overlayfs'},
                 },
             }, metadata_file)
-        return SessionManager(custom_sessions_dir=temp_sessions_dir)
+        manager = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        manager._get_current_union_fs = lambda: 'overlayfs'
+        return manager
 
-    def test_activation_rejects_squashfs_without_changing_default(self,
-                                                                  temp_sessions_dir):
+    def test_activation_accepts_legacy_squashfs_without_policy_as_manual(self,
+                                                                       temp_sessions_dir):
         sm = self._manager(temp_sessions_dir)
+        with open(os.path.join(temp_sessions_dir, 'session.json')) as metadata_file:
+            metadata = json.load(metadata_file)
+        metadata['sessions']['1'].pop('policy', None)
+        with open(os.path.join(temp_sessions_dir, 'session.json'), 'w') as metadata_file:
+            json.dump(metadata, metadata_file)
 
         success, message = sm.activate_session('1')
 
-        assert success is False
-        assert 'save support' in message
+        assert success is True and 'activated' in message
+        with open(os.path.join(temp_sessions_dir, 'session.json')) as metadata_file:
+            saved = json.load(metadata_file)
+        assert saved['default'] == '1'
+        assert 'policy' not in saved['sessions']['1']
+
+    @pytest.mark.parametrize('policy', ('manual', 'shutdown'))
+    def test_activation_accepts_supported_squashfs_policy(self, temp_sessions_dir, policy):
+        sm = self._manager(temp_sessions_dir)
+        with open(os.path.join(temp_sessions_dir, 'session.json')) as metadata_file:
+            metadata = json.load(metadata_file)
+        metadata['sessions']['1']['policy'] = policy
+        with open(os.path.join(temp_sessions_dir, 'session.json'), 'w') as metadata_file:
+            json.dump(metadata, metadata_file)
+
+        success, message = sm.activate_session('1')
+
+        assert success is True and 'activated' in message
+        with open(os.path.join(temp_sessions_dir, 'session.json')) as metadata_file:
+            assert json.load(metadata_file)['default'] == '1'
+
+    def test_activation_rejects_changed_squashfs_without_changing_default(self,
+                                                                          temp_sessions_dir):
+        sm = self._manager(temp_sessions_dir)
+        with open(os.path.join(temp_sessions_dir, '1', 'changes.sb'), 'ab') as artifact:
+            artifact.write(b'changed')
+
+        success, message = sm.activate_session('1')
+
+        assert success is False and 'metadata' in message
         with open(os.path.join(temp_sessions_dir, 'session.json')) as metadata_file:
             assert json.load(metadata_file)['default'] == '2'
 
@@ -964,6 +1074,76 @@ class TestSquashfsSave:
             return result
         return run
 
+    def test_create_squashfs_captures_current_changes_and_publishes_metadata(
+            self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        sm.check_sessions_directory_status = lambda: {'writable': True}
+        sm._validate_target_mode = lambda mode, size=None: (True, None)
+        sm._check_free_space = lambda *_args: (_ for _ in ()).throw(
+            AssertionError('fixed-size admission must not run for squashfs'))
+        sm._get_current_union_fs = lambda: 'overlayfs'
+
+        with patch.object(sm, '_run_savechanges', side_effect=self._capture()):
+            success, message = sm.create_session('squashfs')
+
+        assert success is True and 'squashfs' in message
+        session_path = os.path.join(temp_sessions_dir, '1')
+        with open(os.path.join(session_path, 'changes.sb'), 'rb') as artifact:
+            assert artifact.read() == b'hsqs-new-snapshot'
+        assert not any(name.startswith('.changes.sb.new-')
+                       for name in os.listdir(session_path))
+        with open(os.path.join(temp_sessions_dir, 'session.json')) as metadata_file:
+            session = json.load(metadata_file)['sessions']['1']
+        assert session['mode'] == 'squashfs'
+        assert session['policy'] == 'shutdown'
+        assert session['digest'] == hashlib.sha256(b'hsqs-new-snapshot').hexdigest()
+        assert session['compressed'] == '17'
+        assert session['uncompressed'] == '2048'
+        assert session['entries'] == '12'
+        assert session['generation'] == '1'
+        assert session['union'] == 'overlayfs'
+
+    def test_create_squashfs_accepts_manual_policy(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        sm.check_sessions_directory_status = lambda: {'writable': True}
+        sm._validate_target_mode = lambda mode, size=None: (True, None)
+        sm._get_current_union_fs = lambda: 'overlayfs'
+        with patch.object(sm, '_run_savechanges', side_effect=self._capture()):
+            success, _message = sm.create_session('squashfs', policy='manual')
+
+        assert success is True
+        with open(os.path.join(temp_sessions_dir, 'session.json')) as metadata_file:
+            session = json.load(metadata_file)['sessions']['1']
+        assert session['policy'] == 'manual'
+
+    def test_create_squashfs_stores_periodic_save_interval(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        sm.check_sessions_directory_status = lambda: {'writable': True}
+        sm._validate_target_mode = lambda mode, size=None: (True, None)
+        sm._get_current_union_fs = lambda: 'overlayfs'
+        with patch.object(sm, '_run_savechanges', side_effect=self._capture()):
+            success, _message = sm.create_session('squashfs', autosave=30)
+
+        assert success is True
+        with open(os.path.join(temp_sessions_dir, 'session.json')) as metadata_file:
+            session = json.load(metadata_file)['sessions']['1']
+        assert session['autosave'] == '30'
+
+    def test_create_squashfs_rejects_too_frequent_periodic_save(self,
+                                                                 temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        success, message = sm.create_session('squashfs', autosave=10)
+        assert success is False
+        assert 'interval' in message.lower()
+
     def test_runner_uses_fixed_exact_machine_contract(self, temp_sessions_dir):
         sm, session_path = self._manager(temp_sessions_dir)
         command = os.path.join(temp_sessions_dir, 'savechanges')
@@ -989,11 +1169,15 @@ class TestSquashfsSave:
         }
         stdout = ''.join(json.dumps(event) + '\n' for event in phases + [result])
         process = MagicMock(returncode=0)
-        process.communicate.return_value = (stdout, 'diagnostic')
+        process.stdout = io.StringIO(stdout)
 
+        seen_phases = []
         with patch('subprocess.Popen', return_value=process) as popen:
-            assert sm._run_savechanges(output_path, session_path) == result
+            assert sm._run_savechanges(
+                output_path, session_path,
+                progress_callback=seen_phases.append) == result
 
+        assert seen_phases == list(sm.SAVECHANGES_PHASES)
         assert popen.call_args[0][0] == [
             command, '--json', '--profile', 'exact', '--work-parent',
             session_path, output_path,
@@ -1003,279 +1187,6 @@ class TestSquashfsSave:
         assert kwargs['universal_newlines'] is True
         assert 'PKEXEC_UID' not in kwargs['env']
 
-    def test_save_rotates_generations_and_updates_equivalent_metadata(self,
-                                                                       temp_sessions_dir):
-        current_payload = b'hsqs-current'
-        old_payload = b'hsqs-old'
-        previous = {
-            'digest': hashlib.sha256(current_payload).hexdigest(),
-            'compressed': '12', 'uncompressed': '22',
-            'entries': '3', 'saved': '2026-08-01T00:00:00Z',
-            'generation': '7', 'old_digest': hashlib.sha256(old_payload).hexdigest(),
-            'footprint': json.dumps(
-                self._footprint(22, 3), sort_keys=True, separators=(',', ':')),
-        }
-        sm, session_path = self._manager(temp_sessions_dir, previous=previous)
-        with open(os.path.join(session_path, 'changes.sb'), 'wb') as current:
-            current.write(current_payload)
-        with open(os.path.join(session_path, 'changes.sb.old'), 'wb') as old:
-            old.write(old_payload)
-
-        with patch.object(sm, '_run_savechanges', side_effect=self._capture()):
-            success, message, result = sm.save_session('1')
-
-        assert success is True and 'saved successfully' in message
-        assert result['generation'] == 8
-        with open(os.path.join(session_path, 'changes.sb'), 'rb') as current:
-            assert current.read() == b'hsqs-new-snapshot'
-        with open(os.path.join(session_path, 'changes.sb.old'), 'rb') as old:
-            assert old.read() == b'hsqs-current'
-        assert sorted(name for name in os.listdir(session_path) if name.startswith('.')) == []
-        with open(os.path.join(temp_sessions_dir, 'session.json')) as metadata_file:
-            metadata = json.load(metadata_file)
-        session = metadata['sessions']['1']
-        assert session['digest'] == hashlib.sha256(b'hsqs-new-snapshot').hexdigest()
-        assert session['compressed'] == '17'
-        assert session['uncompressed'] == '2048'
-        assert session['entries'] == '12'
-        footprint = json.dumps(
-            self._footprint(), sort_keys=True, separators=(',', ':'))
-        assert session['footprint'] == footprint
-        assert session['generation'] == '8'
-        assert session['union'] == 'overlayfs'
-        assert session['old_digest'] == hashlib.sha256(current_payload).hexdigest()
-        assert session['old_compressed'] == '12'
-        assert session['old_uncompressed'] == '22'
-        assert session['old_entries'] == '3'
-        assert session['old_footprint'] == json.dumps(
-            self._footprint(22, 3), sort_keys=True, separators=(',', ':'))
-        assert session['old_generation'] == '7'
-        assert session['old_union'] == 'overlayfs'
-        with open(os.path.join(temp_sessions_dir, 'session.conf')) as metadata_file:
-            conf = metadata_file.read()
-        assert 'session_generation[1]=8' in conf
-        assert 'session_footprint[1]={}'.format(footprint) in conf
-        assert 'session_old_footprint[1]={}'.format(
-            session['old_footprint']) in conf
-        assert 'session_old_generation[1]=7' in conf
-
-    def test_save_requires_running_squashfs_before_capture(self, temp_sessions_dir):
-        sm, _session_path = self._manager(temp_sessions_dir, running=None)
-
-        with patch.object(sm, '_run_savechanges',
-                          side_effect=AssertionError('must not capture')):
-            success, message, result = sm.save_session('1')
-
-        assert success is False and 'running SquashFS' in message
-        assert result is None
-
-    def test_identity_mismatch_removes_new_capture_without_rotation(self,
-                                                                     temp_sessions_dir):
-        payload = b'hsqs-current'
-        sm, session_path = self._manager(
-            temp_sessions_dir,
-            previous={'digest': hashlib.sha256(payload).hexdigest()})
-        current_path = os.path.join(session_path, 'changes.sb')
-        with open(current_path, 'wb') as current:
-            current.write(payload)
-
-        capture = self._capture()
-
-        def mismatched(output_path, work_parent):
-            result = capture(output_path, work_parent)
-            result['output_identity']['inode'] += 1
-            return result
-
-        with patch.object(sm, '_run_savechanges', side_effect=mismatched):
-            success, _message, result = sm.save_session('1')
-
-        assert success is False and result is None
-        with open(current_path, 'rb') as current:
-            assert current.read() == b'hsqs-current'
-        assert os.listdir(session_path) == ['changes.sb']
-
-    def test_digest_mismatch_removes_new_capture_without_rotation(self,
-                                                                   temp_sessions_dir):
-        payload = b'hsqs-current'
-        sm, session_path = self._manager(
-            temp_sessions_dir,
-            previous={'digest': hashlib.sha256(payload).hexdigest()})
-        current_path = os.path.join(session_path, 'changes.sb')
-        with open(current_path, 'wb') as current:
-            current.write(payload)
-
-        with patch.object(sm, '_run_savechanges', side_effect=self._capture(
-                sha256='f' * 64)):
-            success, _message, result = sm.save_session('1')
-
-        assert success is False and result is None
-        with open(current_path, 'rb') as current:
-            assert current.read() == payload
-        assert os.listdir(session_path) == ['changes.sb']
-
-    def test_metadata_failure_restores_current_and_old_generations(self,
-                                                                    temp_sessions_dir):
-        current_payload = b'hsqs-current'
-        old_payload = b'hsqs-old'
-        sm, session_path = self._manager(temp_sessions_dir, previous={
-            'digest': hashlib.sha256(current_payload).hexdigest(),
-            'old_digest': hashlib.sha256(old_payload).hexdigest(),
-        })
-        current_path = os.path.join(session_path, 'changes.sb')
-        old_path = os.path.join(session_path, 'changes.sb.old')
-        with open(current_path, 'wb') as current:
-            current.write(current_payload)
-        with open(old_path, 'wb') as old:
-            old.write(old_payload)
-        with open(os.path.join(temp_sessions_dir, 'session.json')) as metadata_file:
-            original_metadata = json.load(metadata_file)
-
-        with patch.object(sm, '_run_savechanges', side_effect=self._capture()), \
-             patch.object(sm, '_write_sessions_metadata', return_value=False):
-            success, _message, result = sm.save_session('1')
-
-        assert success is False and result is None
-        with open(current_path, 'rb') as current:
-            assert current.read() == b'hsqs-current'
-        with open(old_path, 'rb') as old:
-            assert old.read() == b'hsqs-old'
-        with open(os.path.join(temp_sessions_dir, 'session.json')) as metadata_file:
-            assert json.load(metadata_file) == original_metadata
-        assert sorted(os.listdir(session_path)) == ['changes.sb', 'changes.sb.old']
-
-    def test_uncertain_metadata_commit_keeps_journal_for_restart_recovery(
-            self, temp_sessions_dir):
-        from minios_session import MetadataCommitUncertain
-
-        current_payload = b'hsqs-current'
-        old_payload = b'hsqs-old'
-        sm, session_path = self._manager(temp_sessions_dir, previous={
-            'digest': hashlib.sha256(current_payload).hexdigest(),
-            'old_digest': hashlib.sha256(old_payload).hexdigest(),
-        })
-        current_path = os.path.join(session_path, 'changes.sb')
-        old_path = os.path.join(session_path, 'changes.sb.old')
-        with open(current_path, 'wb') as current:
-            current.write(current_payload)
-        with open(old_path, 'wb') as old:
-            old.write(old_payload)
-
-        with patch.object(sm, '_run_savechanges', side_effect=self._capture()), \
-             patch.object(sm, '_write_sessions_metadata',
-                          side_effect=MetadataCommitUncertain('injected uncertainty')):
-            success, _message, result = sm.save_session('1')
-
-        assert success is False and result is None
-        names = os.listdir(session_path)
-        assert sm.SQUASHFS_TRANSACTION in names
-        assert any(name.startswith('.changes.sb.discard-') for name in names)
-        with open(current_path, 'rb') as current:
-            assert current.read() == b'hsqs-new-snapshot'
-        with open(old_path, 'rb') as old:
-            assert old.read() == current_payload
-
-        sm._validate_squashfs_runtime = lambda _session_id: (
-            False, 'injected inactive generation')
-        with patch.object(sm, '_run_savechanges',
-                          side_effect=AssertionError('must recover before capture')):
-            success, message, result = sm.save_session('1')
-
-        assert success is False and result is None
-        assert 'inactive generation' in message
-
-        with open(current_path, 'rb') as current:
-            assert current.read() == current_payload
-        with open(old_path, 'rb') as old:
-            assert old.read() == old_payload
-        assert sorted(os.listdir(session_path)) == ['changes.sb', 'changes.sb.old']
-
-    def test_publish_rename_failure_restores_both_generations(self,
-                                                               temp_sessions_dir):
-        current_payload = b'hsqs-current'
-        old_payload = b'hsqs-old'
-        sm, session_path = self._manager(temp_sessions_dir, previous={
-            'digest': hashlib.sha256(current_payload).hexdigest(),
-            'old_digest': hashlib.sha256(old_payload).hexdigest(),
-        })
-        current_path = os.path.join(session_path, 'changes.sb')
-        old_path = os.path.join(session_path, 'changes.sb.old')
-        with open(current_path, 'wb') as current:
-            current.write(current_payload)
-        with open(old_path, 'wb') as old:
-            old.write(old_payload)
-        real_rename = os.rename
-
-        def rename(source, target, *args, **kwargs):
-            if source.startswith('.changes.sb.new-') and target == 'changes.sb':
-                raise OSError('publish failed')
-            return real_rename(source, target, *args, **kwargs)
-
-        with patch.object(sm, '_run_savechanges', side_effect=self._capture()), \
-             patch('os.rename', side_effect=rename):
-            success, _message, result = sm.save_session('1')
-
-        assert success is False and result is None
-        with open(current_path, 'rb') as current:
-            assert current.read() == b'hsqs-current'
-        with open(old_path, 'rb') as old:
-            assert old.read() == b'hsqs-old'
-        assert sorted(os.listdir(session_path)) == ['changes.sb', 'changes.sb.old']
-
-    def test_signal_exception_during_metadata_commit_restores_generations(self,
-                                                                           temp_sessions_dir):
-        current_payload = b'hsqs-current'
-        old_payload = b'hsqs-old'
-        sm, session_path = self._manager(temp_sessions_dir, previous={
-            'digest': hashlib.sha256(current_payload).hexdigest(),
-            'old_digest': hashlib.sha256(old_payload).hexdigest(),
-        })
-        current_path = os.path.join(session_path, 'changes.sb')
-        old_path = os.path.join(session_path, 'changes.sb.old')
-        with open(current_path, 'wb') as current:
-            current.write(current_payload)
-        with open(old_path, 'wb') as old:
-            old.write(old_payload)
-
-        with patch.object(sm, '_run_savechanges', side_effect=self._capture()), \
-             patch.object(sm, '_write_sessions_metadata', side_effect=SystemExit(130)):
-            with pytest.raises(SystemExit) as cancelled:
-                sm.save_session('1')
-
-        assert cancelled.value.code == 130
-        with open(current_path, 'rb') as current:
-            assert current.read() == current_payload
-        with open(old_path, 'rb') as old:
-            assert old.read() == old_payload
-        assert sorted(os.listdir(session_path)) == ['changes.sb', 'changes.sb.old']
-
-    def test_generation_replacement_during_capture_aborts_before_rotation(self,
-                                                                           temp_sessions_dir):
-        current_payload = b'hsqs-current'
-        replacement = b'hsqs-replacement'
-        sm, session_path = self._manager(temp_sessions_dir, previous={
-            'digest': hashlib.sha256(current_payload).hexdigest(),
-        })
-        current_path = os.path.join(session_path, 'changes.sb')
-        with open(current_path, 'wb') as current:
-            current.write(current_payload)
-        capture = self._capture()
-
-        def replace_generation(output_path, work_parent):
-            result = capture(output_path, work_parent)
-            replacement_path = current_path + '.replacement'
-            with open(replacement_path, 'wb') as replacement_file:
-                replacement_file.write(replacement)
-            os.replace(replacement_path, current_path)
-            return result
-
-        with patch.object(sm, '_run_savechanges', side_effect=replace_generation):
-            success, message, result = sm.save_session('1')
-
-        assert success is False and 'changed during capture' in message
-        assert result is None
-        with open(current_path, 'rb') as current:
-            assert current.read() == replacement
-        assert os.listdir(session_path) == ['changes.sb']
 
     def test_save_fails_closed_without_runtime_authority(self, temp_sessions_dir):
         from minios_session import SessionManager
@@ -1385,116 +1296,7 @@ class TestSquashfsSave:
                 sm._run_savechanges(output_path, session_path)
 
 
-    def test_restart_recovery_rolls_back_pre_metadata_publication(self,
-                                                                   temp_sessions_dir):
-        previous_current = b'hsqs-previous-current'
-        previous_old = b'hsqs-previous-old'
-        # An unchanged capture has the same digest; generation, not digest,
-        # decides whether metadata publication committed.
-        new_payload = previous_current
-        previous_digest = hashlib.sha256(previous_current).hexdigest()
-        new_digest = hashlib.sha256(new_payload).hexdigest()
-        sm, session_path = self._manager(
-            temp_sessions_dir, previous={'digest': previous_digest})
-        current_path = os.path.join(session_path, 'changes.sb')
-        old_path = os.path.join(session_path, 'changes.sb.old')
-        discarded_name = '.changes.sb.discard-' + '1' * 32
-        discarded_path = os.path.join(session_path, discarded_name)
-        new_name = '.changes.sb.new-' + '2' * 32
-        with open(current_path, 'wb') as current:
-            current.write(new_payload)
-        with open(old_path, 'wb') as old:
-            old.write(previous_current)
-        with open(discarded_path, 'wb') as discarded:
-            discarded.write(previous_old)
-        current_identity = os.stat(old_path)
-        old_identity = os.stat(discarded_path)
-        new_identity = os.stat(current_path)
-        transaction = {
-            'product_kind': 'minios-squashfs-save-transaction',
-            'schema_version': 1, 'session_id': '1',
-            'new_name': new_name, 'discarded_name': discarded_name,
-            'had_current': True, 'had_old': True,
-            'current_identity': sm._identity_document(
-                (current_identity.st_dev, current_identity.st_ino)),
-            'old_identity': sm._identity_document(
-                (old_identity.st_dev, old_identity.st_ino)),
-            'new_identity': sm._identity_document(
-                (new_identity.st_dev, new_identity.st_ino)),
-            'previous_digest': previous_digest,
-            'old_digest': hashlib.sha256(previous_old).hexdigest(),
-            'new_digest': new_digest,
-            'current_size': len(previous_current), 'old_size': len(previous_old),
-            'new_size': len(new_payload), 'previous_generation': None,
-            'next_generation': '1',
-        }
-        directory_fd = os.open(session_path, os.O_RDONLY | os.O_DIRECTORY)
-        try:
-            sm._write_squashfs_transaction(directory_fd, transaction)
-            metadata = sm._normalize_metadata(sm._read_sessions_metadata())
-            sm._recover_squashfs_transaction(directory_fd, metadata, '1')
-        finally:
-            os.close(directory_fd)
 
-        with open(current_path, 'rb') as current:
-            assert current.read() == previous_current
-        with open(old_path, 'rb') as old:
-            assert old.read() == previous_old
-        assert sorted(os.listdir(session_path)) == ['changes.sb', 'changes.sb.old']
-
-    def test_restart_recovery_finishes_committed_metadata(self, temp_sessions_dir):
-        previous_current = b'hsqs-previous-current'
-        previous_old = b'hsqs-previous-old'
-        new_payload = previous_current
-        previous_digest = hashlib.sha256(previous_current).hexdigest()
-        new_digest = hashlib.sha256(new_payload).hexdigest()
-        sm, session_path = self._manager(
-            temp_sessions_dir, previous={'digest': new_digest, 'generation': '1'})
-        current_path = os.path.join(session_path, 'changes.sb')
-        old_path = os.path.join(session_path, 'changes.sb.old')
-        discarded_name = '.changes.sb.discard-' + '3' * 32
-        discarded_path = os.path.join(session_path, discarded_name)
-        new_name = '.changes.sb.new-' + '4' * 32
-        with open(current_path, 'wb') as current:
-            current.write(new_payload)
-        with open(old_path, 'wb') as old:
-            old.write(previous_current)
-        with open(discarded_path, 'wb') as discarded:
-            discarded.write(previous_old)
-        current_identity = os.stat(old_path)
-        old_identity = os.stat(discarded_path)
-        new_identity = os.stat(current_path)
-        transaction = {
-            'product_kind': 'minios-squashfs-save-transaction',
-            'schema_version': 1, 'session_id': '1',
-            'new_name': new_name, 'discarded_name': discarded_name,
-            'had_current': True, 'had_old': True,
-            'current_identity': sm._identity_document(
-                (current_identity.st_dev, current_identity.st_ino)),
-            'old_identity': sm._identity_document(
-                (old_identity.st_dev, old_identity.st_ino)),
-            'new_identity': sm._identity_document(
-                (new_identity.st_dev, new_identity.st_ino)),
-            'previous_digest': previous_digest,
-            'old_digest': hashlib.sha256(previous_old).hexdigest(),
-            'new_digest': new_digest,
-            'current_size': len(previous_current), 'old_size': len(previous_old),
-            'new_size': len(new_payload), 'previous_generation': None,
-            'next_generation': '1',
-        }
-        directory_fd = os.open(session_path, os.O_RDONLY | os.O_DIRECTORY)
-        try:
-            sm._write_squashfs_transaction(directory_fd, transaction)
-            metadata = sm._normalize_metadata(sm._read_sessions_metadata())
-            sm._recover_squashfs_transaction(directory_fd, metadata, '1')
-        finally:
-            os.close(directory_fd)
-
-        with open(current_path, 'rb') as current:
-            assert current.read() == new_payload
-        with open(old_path, 'rb') as old:
-            assert old.read() == previous_current
-        assert sorted(os.listdir(session_path)) == ['changes.sb', 'changes.sb.old']
 
     def test_runtime_authority_accepts_matching_durable_boot_state(self,
                                                                     temp_sessions_dir):
@@ -1531,69 +1333,6 @@ class TestSquashfsSave:
         assert valid is False
         assert 'cannot preserve exact capture metadata' in message
 
-    @pytest.mark.parametrize('rollback_state', (
-        'new-removed', 'current-restored', 'fully-restored'))
-    def test_restart_recovery_resumes_interrupted_rollback(
-            self, temp_sessions_dir, rollback_state):
-        previous_current = b'hsqs-previous-current'
-        previous_old = b'hsqs-previous-old'
-        new_payload = b'hsqs-new'
-        previous_digest = hashlib.sha256(previous_current).hexdigest()
-        old_digest = hashlib.sha256(previous_old).hexdigest()
-        new_digest = hashlib.sha256(new_payload).hexdigest()
-        sm, session_path = self._manager(
-            temp_sessions_dir, previous={'digest': previous_digest})
-        current_path = os.path.join(session_path, 'changes.sb')
-        old_path = os.path.join(session_path, 'changes.sb.old')
-        discarded_name = '.changes.sb.discard-' + '5' * 32
-        discarded_path = os.path.join(session_path, discarded_name)
-        new_name = '.changes.sb.new-' + '6' * 32
-
-        if rollback_state in ('current-restored', 'fully-restored'):
-            with open(current_path, 'wb') as current:
-                current.write(previous_current)
-        else:
-            with open(old_path, 'wb') as old:
-                old.write(previous_current)
-        if rollback_state == 'fully-restored':
-            with open(old_path, 'wb') as old:
-                old.write(previous_old)
-        else:
-            with open(discarded_path, 'wb') as discarded:
-                discarded.write(previous_old)
-
-        identity_source = os.stat(current_path if os.path.exists(current_path) else old_path)
-        old_identity_source = os.stat(
-            old_path if rollback_state == 'fully-restored' else discarded_path)
-        transaction = {
-            'product_kind': 'minios-squashfs-save-transaction',
-            'schema_version': 1, 'session_id': '1',
-            'new_name': new_name, 'discarded_name': discarded_name,
-            'had_current': True, 'had_old': True,
-            'current_identity': sm._identity_document(
-                (identity_source.st_dev, identity_source.st_ino)),
-            'old_identity': sm._identity_document(
-                (old_identity_source.st_dev, old_identity_source.st_ino)),
-            'new_identity': {'device': identity_source.st_dev, 'inode': 1},
-            'previous_digest': previous_digest, 'old_digest': old_digest,
-            'new_digest': new_digest,
-            'current_size': len(previous_current), 'old_size': len(previous_old),
-            'new_size': len(new_payload), 'previous_generation': None,
-            'next_generation': '1',
-        }
-        directory_fd = os.open(session_path, os.O_RDONLY | os.O_DIRECTORY)
-        try:
-            sm._write_squashfs_transaction(directory_fd, transaction)
-            metadata = sm._normalize_metadata(sm._read_sessions_metadata())
-            sm._recover_squashfs_transaction(directory_fd, metadata, '1')
-        finally:
-            os.close(directory_fd)
-
-        with open(current_path, 'rb') as current:
-            assert current.read() == previous_current
-        with open(old_path, 'rb') as old:
-            assert old.read() == previous_old
-        assert sorted(os.listdir(session_path)) == ['changes.sb', 'changes.sb.old']
 
 
 class TestLuksMode:
@@ -1671,3 +1410,204 @@ class TestLuksMode:
         assert message
         assert metadata['sessions']['1']['size'] == 6000
         assert not os.path.exists(journal_path)
+
+
+class TestSquashfsUserExperience:
+    @staticmethod
+    def _write_metadata(root, metadata):
+        with open(os.path.join(root, 'session.json'), 'w') as handle:
+            json.dump(metadata, handle)
+
+    def test_list_uses_logical_size_and_saved_timestamp(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        session_path = os.path.join(temp_sessions_dir, '1')
+        os.mkdir(session_path)
+        with open(os.path.join(session_path, 'changes.sb'), 'wb') as artifact:
+            artifact.write(b'hsqs-small')
+        self._write_metadata(temp_sessions_dir, {
+            'default': '1',
+            'sessions': {'1': {
+                'mode': 'squashfs', 'version': '20260816',
+                'edition': 'standard', 'union': 'overlayfs',
+                'uncompressed': 9048675, 'compressed': 10,
+                'saved': '2026-08-18T13:00:04Z',
+            }},
+        })
+        session = SessionManager(custom_sessions_dir=temp_sessions_dir).list_sessions()[0]
+        assert session['size'] == 9048675
+        assert session['size_display'] == '8.6MB'
+        assert session['modified'].isoformat() == '2026-08-18T13:00:04'
+
+    def test_save_settings_are_independent(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        session_path = os.path.join(temp_sessions_dir, '1')
+        os.mkdir(session_path)
+        self._write_metadata(temp_sessions_dir, {
+            'default': '1', 'running': '1',
+            'sessions': {'1': {'mode': 'squashfs', 'policy': 'shutdown'}},
+        })
+        manager = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        success, _message, settings = manager.set_squashfs_save_settings(
+            '1', shutdown=False, autosave=30)
+        assert success
+        assert settings == {'shutdown': False, 'autosave': 30}
+        with open(os.path.join(temp_sessions_dir, 'session.json')) as handle:
+            session = json.load(handle)['sessions']['1']
+        assert session['policy'] == 'manual'
+        assert session['autosave'] == '30'
+
+    def test_periodic_save_runs_only_when_due(self, temp_sessions_dir):
+        from datetime import datetime
+        from minios_session import SessionManager
+
+        session_path = os.path.join(temp_sessions_dir, '1')
+        os.mkdir(session_path)
+        self._write_metadata(temp_sessions_dir, {
+            'default': '1', 'running': '1',
+            'sessions': {'1': {'mode': 'squashfs', 'autosave': 30,
+                               'saved': '2026-08-18T11:00:00Z'}},
+        })
+        manager = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        original_open = open
+
+        def open_with_uptime(path, *args, **kwargs):
+            if path == '/proc/uptime':
+                return io.StringIO('3600.0 0.0\n')
+            return original_open(path, *args, **kwargs)
+
+        with patch('builtins.open', side_effect=open_with_uptime), \
+             patch.object(manager, 'save_session',
+                          return_value=(True, 'saved', {'generation': 2})) as save:
+            performed, success, _message, capture = manager.autosave_running_session(
+                now=datetime(2026, 8, 18, 12, 0, 0))
+        assert performed and success
+        assert capture == {'generation': 2}
+        save.assert_called_once_with('1')
+
+        self._write_metadata(temp_sessions_dir, {
+            'default': '1', 'running': '1',
+            'sessions': {'1': {'mode': 'squashfs', 'autosave': 30,
+                               'saved': '2026-08-18T11:45:00Z'}},
+        })
+        manager = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        with patch('builtins.open', side_effect=open_with_uptime), \
+             patch.object(manager, 'save_session') as save:
+            performed, success, _message, capture = manager.autosave_running_session(
+                now=datetime(2026, 8, 18, 12, 0, 0))
+        assert performed is False and success is True and capture is None
+        save.assert_not_called()
+
+    def test_running_squashfs_can_handoff_to_active_current_boot_snapshot(
+            self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        for session_id in ('1', '2'):
+            os.mkdir(os.path.join(temp_sessions_dir, session_id))
+        self._write_metadata(temp_sessions_dir, {
+            'default': '2', 'running': '1',
+            'sessions': {
+                '1': {'mode': 'squashfs', 'union': 'overlayfs'},
+                '2': {'mode': 'squashfs', 'union': 'overlayfs',
+                      'capture_boot_id': 'boot-1'},
+            },
+        })
+        manager = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        manager._current_boot_id = lambda: 'boot-1'
+        manager._validate_squashfs_activation = lambda *_args: (True, None)
+        manager._validate_squashfs_runtime = lambda *_args: (True, None)
+        replaced = []
+        manager._replace_boot_state_session = lambda old, new: replaced.append((old, new))
+
+        success, message = manager.delete_session('1', handoff=True)
+        assert success and message
+        assert replaced == [('1', '2')]
+        assert not os.path.exists(os.path.join(temp_sessions_dir, '1'))
+        with open(os.path.join(temp_sessions_dir, 'session.json')) as handle:
+            metadata = json.load(handle)
+        assert metadata['default'] == '2'
+        assert metadata['running'] == '2'
+        assert '1' not in metadata['sessions']
+
+    def test_running_squashfs_handoff_rejects_old_active_snapshot(
+            self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        for session_id in ('1', '2'):
+            os.mkdir(os.path.join(temp_sessions_dir, session_id))
+        self._write_metadata(temp_sessions_dir, {
+            'default': '2', 'running': '1',
+            'sessions': {
+                '1': {'mode': 'squashfs', 'union': 'overlayfs'},
+                '2': {'mode': 'squashfs', 'union': 'overlayfs',
+                      'capture_boot_id': 'older-boot'},
+            },
+        })
+        manager = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        manager._current_boot_id = lambda: 'boot-1'
+        manager._replace_boot_state_session = MagicMock()
+        success, message = manager.delete_session('1', handoff=True)
+        assert success is False
+        assert 'during this boot' in message.lower()
+        assert os.path.isdir(os.path.join(temp_sessions_dir, '1'))
+        manager._replace_boot_state_session.assert_not_called()
+
+
+class TestSquashfsSaveDelegation:
+    @staticmethod
+    def _manager(temp_sessions_dir, command):
+        from minios_session import SessionManager
+        manager = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        manager.custom_sessions_dir = None
+        manager.SQUASHFS_SAVE_COMMAND = command
+        return manager
+
+    @staticmethod
+    def _command(temp_sessions_dir):
+        command = os.path.join(temp_sessions_dir, 'minios-squashfs-save')
+        with open(command, 'w') as executable:
+            executable.write('#!/bin/sh\nexit 0\n')
+        os.chmod(command, 0o700)
+        return command
+
+    def test_save_delegates_progress_to_tools_backend(self, temp_sessions_dir):
+        command = self._command(temp_sessions_dir)
+        manager = self._manager(temp_sessions_dir, command)
+        output = ''.join([
+            '{"phase":"prepare","type":"phase"}\n',
+            '{"phase":"compress","type":"phase"}\n',
+            '{"capture":{"generation":8},"message":"Session 1 saved successfully","success":true}\n',
+        ])
+        process = MagicMock(returncode=0)
+        process.stdout = io.StringIO(output)
+        seen = []
+        with patch('subprocess.Popen', return_value=process) as popen:
+            success, message, capture = manager.save_session('1', progress_callback=seen.append)
+        assert success is True
+        assert message == 'Session 1 saved successfully'
+        assert capture == {'generation': 8}
+        assert seen == ['prepare', 'compress']
+        assert popen.call_args[0][0] == [command, '1', '--json', '--progress']
+
+    def test_shutdown_finalize_is_forwarded_to_tools_backend(self, temp_sessions_dir):
+        command = self._command(temp_sessions_dir)
+        manager = self._manager(temp_sessions_dir, command)
+        process = MagicMock(returncode=0)
+        process.stdout = io.StringIO(
+            '{"capture":{"shutdown_finalized":true},"message":"saved","success":true}\n')
+        with patch('subprocess.Popen', return_value=process) as popen:
+            success, _message, capture = manager.save_session('1', finalize_shutdown=True)
+        assert success is True
+        assert capture['shutdown_finalized'] is True
+        assert popen.call_args[0][0] == [
+            command, '1', '--json', '--shutdown-finalize']
+
+    def test_missing_tools_backend_fails_before_process_start(self, temp_sessions_dir):
+        manager = self._manager(
+            temp_sessions_dir, os.path.join(temp_sessions_dir, 'missing-backend'))
+        with patch('subprocess.Popen', side_effect=AssertionError('must not run')):
+            success, message, capture = manager.save_session('1')
+        assert success is False
+        assert 'backend is unavailable' in message
+        assert capture is None

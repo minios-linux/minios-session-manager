@@ -35,3 +35,17 @@ def test_active_session_status_has_precedence_over_running():
 
 def test_running_badge_remains_independently_warning_colored():
     assert "running_label.get_style_context().add_class('badge-warning')" in SOURCE
+
+
+def test_squashfs_create_policies_and_save_progress_are_exposed():
+    assert '_("SquashFS Mode")' in SOURCE
+    assert '_("Save automatically at shutdown (recommended)")' in SOURCE
+    assert '_("Periodic save:")' in SOURCE
+    assert '_("Every 30 minutes")' in SOURCE
+    assert 'Gtk.Button(label=_("Save Now"))' in SOURCE
+    assert "getattr(row, 'mode', 'unknown') == 'squashfs'" in SOURCE
+    assert "getattr(row, 'is_running', False)" in SOURCE
+    assert "self.sessions_writable and not active)" in SOURCE
+    assert "'save', session_id, '--json', '--progress'" in SOURCE
+    assert 'GLib.timeout_add(500, show_progress_if_needed)' in SOURCE
+    assert '_("Saving Session")' in SOURCE

@@ -21,7 +21,7 @@ import time
 import contextlib
 import signal
 import stat
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import gettext
 import getpass
@@ -69,7 +69,7 @@ class SessionManager:
     # admission requires only this floor instead of the full logical size.
     DYNFILEFS_INITIAL_MB = 64
     SAVECHANGES_COMMAND = '/usr/bin/savechanges'
-    SQUASHFS_TRANSACTION = '.changes.sb.transaction'
+    SQUASHFS_SAVE_COMMAND = '/usr/bin/minios-squashfs-save'
     BOOT_STATE_FILE = '/run/initramfs/minios-persistence/boot-state'
     BOOT_ID_FILE = '/proc/sys/kernel/random/boot_id'
     SESSION_PATHS = (
@@ -88,6 +88,7 @@ class SessionManager:
         'prepare', 'inventory', 'capture', 'compress', 'verify', 'publish',
         'complete',
     )
+    SQUASHFS_AUTOSAVE_INTERVALS = (0, 30, 60, 120, 240, 480)
 
     def __init__(self, custom_sessions_dir=None):
         self.sessions_file = None
@@ -99,7 +100,7 @@ class SessionManager:
         self._lock_fd = None
         self._lock_depth = 0
         
-        # Setup cache directory and file in /tmp (clears on reboot)
+        # Setup cache directory and file in /tmp (clears on reboot).
         self.cache_dir = f"/tmp/minios-session-manager-{os.getuid()}"
         self.cache_file = os.path.join(self.cache_dir, "session_sizes.json")
         self._ensure_cache_dir()
@@ -108,16 +109,22 @@ class SessionManager:
         self._detect_session_storage()
 
     def _ensure_cache_dir(self):
-        """Ensure cache directory exists"""
+        """Ensure the shared-/tmp cache path is a directory owned by this uid."""
         try:
             os.makedirs(self.cache_dir, mode=0o700, exist_ok=True)
-            cache_stat = os.stat(self.cache_dir)
-            if cache_stat.st_uid != os.getuid() or not stat.S_ISDIR(cache_stat.st_mode):
-                raise OSError("unsafe cache directory")
-            os.chmod(self.cache_dir, 0o700)
+            flags = os.O_RDONLY | os.O_DIRECTORY | getattr(os, 'O_NOFOLLOW', 0)
+            cache_fd = os.open(self.cache_dir, flags)
+            try:
+                cache_stat = os.fstat(cache_fd)
+                if cache_stat.st_uid != os.getuid() or not stat.S_ISDIR(cache_stat.st_mode):
+                    raise OSError("unsafe cache directory")
+                os.fchmod(cache_fd, 0o700)
+            finally:
+                os.close(cache_fd)
         except OSError:
-            # Never place a predictable cache file directly in shared /tmp.
-            self.cache_dir = tempfile.mkdtemp(prefix="minios-session-manager-", dir=tempfile.gettempdir())
+            # Fall back to an unpredictable private directory without following
+            # an existing attacker-controlled /tmp entry.
+            self.cache_dir = tempfile.mkdtemp(prefix="minios-session-manager-", dir="/tmp")
             self.cache_file = os.path.join(self.cache_dir, "session_sizes.json")
 
     def _load_size_cache(self):
@@ -225,6 +232,12 @@ class SessionManager:
         }
         self._save_size_cache(cache_data)
 
+    def _invalidate_size_cache(self, session_id):
+        cache_data = self._load_size_cache()
+        if session_id in cache_data:
+            del cache_data[session_id]
+            self._save_size_cache(cache_data)
+
 
     def _get_current_union_fs(self):
         """Get current union filesystem type"""
@@ -268,6 +281,16 @@ class SessionManager:
         except Exception:
             pass
         return "unknown"
+
+    def _current_boot_id(self):
+        try:
+            with open(self.BOOT_ID_FILE, 'r', encoding='ascii') as boot_id_file:
+                boot_id = boot_id_file.read().strip()
+            if re.fullmatch(r'[0-9a-fA-F-]+', boot_id or ''):
+                return boot_id
+        except OSError:
+            pass
+        return None
 
     def _check_free_space(self, path, required_mb):
         """Check if there is enough free space at the given path
@@ -583,6 +606,25 @@ class SessionManager:
             print(f"Error writing sessions metadata: {e}", file=sys.stderr)
             return False
 
+    def _session_modified(self, session_path, session_data):
+        """Return the timestamp that best represents the stored session state."""
+        if session_data.get('mode') == 'squashfs':
+            saved = session_data.get('saved')
+            if saved:
+                try:
+                    return datetime.strptime(saved, '%Y-%m-%dT%H:%M:%SZ')
+                except (TypeError, ValueError):
+                    pass
+            artifact = os.path.join(session_path, 'changes.sb')
+            try:
+                return datetime.fromtimestamp(os.path.getmtime(artifact))
+            except OSError:
+                return None
+        try:
+            return datetime.fromtimestamp(os.path.getmtime(session_path))
+        except OSError:
+            return None
+
     def list_sessions(self, include_running_check=True):
         """List all available sessions"""
         if not self.sessions_dir:
@@ -616,12 +658,15 @@ class SessionManager:
                     'mode': session_data.get('mode', 'unknown'),
                     'version': session_data.get('version', 'unknown'),
                     'edition': session_data.get('edition', 'unknown'),
-                    'union': session_data.get('union', 'unknown'), 
+                    'union': session_data.get('union', 'unknown'),
+                    'policy': session_data.get('policy'),
+                    'autosave': session_data.get('autosave'),
+                    'saved': session_data.get('saved'),
                     'size': size_info['used_size'],
                     'size_display': size_info['display'],
                     'total_size': size_info.get('total_size'),
                     'total_size_mb': session_data.get('size'),  # Size from metadata in MB
-                    'modified': datetime.fromtimestamp(stat.st_mtime),
+                    'modified': self._session_modified(path, session_data),
                     'is_default': metadata.get('default') == session_id,
                     'is_running': session_id == running_id
                 })
@@ -755,6 +800,8 @@ class SessionManager:
         # Native mode: requires POSIX-compatible filesystem (ext2/3/4, btrfs, xfs, etc.)
         if is_posix:
             compatible_modes.append('native')
+        if fs_type in self.EXACT_STAGING_FILESYSTEMS:
+            compatible_modes.append('squashfs')
         
         # DynFileFS mode: works on all writable filesystems.
         compatible_modes.append('dynfilefs')
@@ -797,7 +844,7 @@ class SessionManager:
 
     def _validate_target_mode(self, mode, size_mb=None):
         """Validate a requested storage mode against the actual target filesystem."""
-        if mode not in ('native', 'dynfilefs', 'raw', 'luks'):
+        if mode not in ('native', 'squashfs', 'dynfilefs', 'raw', 'luks'):
             return False, _("Invalid session mode")
         fs_info, error = self._detect_filesystem_type()
         if error or not fs_info:
@@ -808,6 +855,8 @@ class SessionManager:
             return False, _("Session mode '{}' is not compatible with {} filesystem").format(mode, fs_info['type'])
         if size_mb is not None and size_mb <= 0:
             return False, _("Session size must be greater than zero")
+        if mode == 'squashfs' and size_mb is not None:
+            return False, _("SquashFS sessions do not use a fixed container size")
         if mode == 'dynfilefs' and not self._check_dynfilefs_available():
             return False, _("DynFileFS is not available on this system. Please install dynfilefs package.")
         max_size = self._get_filesystem_limitations(fs_info).get('max_file_size')
@@ -1266,6 +1315,23 @@ class SessionManager:
             except (ValueError, TypeError):
                 stored_size = None
 
+        if session_mode == 'squashfs':
+            try:
+                logical_size = int(session_data.get('uncompressed', ''))
+            except (TypeError, ValueError):
+                logical_size = None
+            if logical_size is not None and logical_size >= 0:
+                return {
+                    'used_size': logical_size,
+                    'display': self._format_size(logical_size)
+                }
+            artifact = os.path.join(session_path, 'changes.sb')
+            try:
+                size = os.path.getsize(artifact)
+            except OSError:
+                size = 0
+            return {'used_size': size, 'display': self._format_size(size)}
+
         if session_mode == 'dynfilefs':
             # For dynfilefs, show used/total format
             used_size = self._get_dynfilefs_size(session_path)
@@ -1410,6 +1476,44 @@ class SessionManager:
                 'status': 'running_missing'
             }
 
+    def _validate_squashfs_activation(self, session_id, session_data):
+        """Reject a SquashFS session that initramfs cannot restore safely."""
+        if session_data.get('policy', 'manual') not in ('manual', 'shutdown'):
+            return False, _("SquashFS session has an invalid save policy")
+        if session_data.get('union') != self._get_current_union_fs():
+            return False, _("SquashFS session union filesystem does not match this system")
+        digest = session_data.get('digest', '')
+        if not re.fullmatch(r'[0-9a-f]{64}', digest):
+            return False, _("SquashFS session metadata has an invalid digest")
+        try:
+            compressed = int(session_data.get('compressed', ''))
+            uncompressed = int(session_data.get('uncompressed', ''))
+            entries = int(session_data.get('entries', ''))
+        except (TypeError, ValueError):
+            return False, _("SquashFS session metadata is incomplete")
+        if compressed < 1 or uncompressed < 0 or entries < 0:
+            return False, _("SquashFS session metadata is incomplete")
+        try:
+            session_path = self._session_path(session_id, require_exists=True)
+            artifact_path = os.path.join(session_path, 'changes.sb')
+            artifact = os.stat(artifact_path, follow_symlinks=False)
+            if (not stat.S_ISREG(artifact.st_mode) or artifact.st_nlink != 1 or
+                    artifact.st_uid != os.geteuid() or artifact.st_size != compressed):
+                return False, _("SquashFS session artifact does not match its metadata")
+            with open(artifact_path, 'rb') as artifact_file:
+                if artifact_file.read(4) != b'hsqs':
+                    return False, _("SquashFS session artifact is invalid")
+            directory_fd = os.open(session_path, os.O_RDONLY | os.O_DIRECTORY |
+                                   getattr(os, 'O_NOFOLLOW', 0))
+            try:
+                if self._artifact_digest(directory_fd, 'changes.sb') != digest:
+                    return False, _("SquashFS session artifact does not match its metadata")
+            finally:
+                os.close(directory_fd)
+        except OSError as error:
+            return False, _("SquashFS session artifact is unavailable: {}").format(error)
+        return True, None
+
     def activate_session(self, session_id):
         """Activate a session (set as default)"""
         if not self.sessions_dir:
@@ -1423,10 +1527,15 @@ class SessionManager:
         try:
             # Update metadata to set new default
             with self._mutation_lock():
-                metadata = self._read_sessions_metadata()
-                mode = metadata.get("sessions", {}).get(session_id, {}).get("mode")
-                if mode == "squashfs":
-                    return False, _("SquashFS activation is unavailable until save support is complete")
+                metadata = self._normalize_metadata(self._read_sessions_metadata())
+                session_data = metadata.get("sessions", {}).get(session_id)
+                if session_data is None:
+                    return False, _("Session {} does not exist").format(session_id)
+                if session_data.get("mode") == "squashfs":
+                    valid, error = self._validate_squashfs_activation(
+                        session_id, session_data)
+                    if not valid:
+                        return False, error
                 old_default = metadata.get("default")
                 metadata["default"] = session_id
                 updated = self._write_sessions_metadata(metadata)
@@ -1439,6 +1548,160 @@ class SessionManager:
                 return False, _("Failed to update session metadata")
         except Exception as e:
             return False, _("Error activating session: {}").format(str(e))
+
+    def set_squashfs_save_settings(self, session_id, shutdown=None, autosave=None):
+        """Update shutdown and periodic-save settings for a SquashFS session."""
+        try:
+            session_id = self._validate_session_id(session_id)
+        except ValueError as error:
+            return False, str(error), None
+        if autosave is not None:
+            try:
+                autosave = int(autosave)
+            except (TypeError, ValueError):
+                return False, _("Invalid SquashFS automatic save interval"), None
+            if autosave not in self.SQUASHFS_AUTOSAVE_INTERVALS:
+                return False, _("Invalid SquashFS automatic save interval"), None
+        with self._mutation_lock():
+            metadata = self._normalize_metadata(self._read_sessions_metadata())
+            session_data = metadata.get('sessions', {}).get(session_id)
+            if session_data is None:
+                return False, _("Session {} does not exist").format(session_id), None
+            if session_data.get('mode') != 'squashfs':
+                return False, _("Session {} is not a SquashFS session").format(session_id), None
+            changed = shutdown is not None or autosave is not None
+            if shutdown is not None:
+                session_data['policy'] = 'shutdown' if shutdown else 'manual'
+            if autosave is not None:
+                if autosave:
+                    session_data['autosave'] = autosave
+                else:
+                    session_data.pop('autosave', None)
+            if changed and not self._write_sessions_metadata(metadata):
+                return False, _("Failed to update session save settings"), None
+            settings = {
+                'shutdown': session_data.get('policy', 'manual') == 'shutdown',
+                'autosave': int(session_data.get('autosave', '0') or 0),
+            }
+            return True, _("Session save settings updated"), settings
+
+    def autosave_running_session(self, now=None):
+        """Save the running SquashFS session when its configured interval is due."""
+        metadata = self._normalize_metadata(self._read_sessions_metadata())
+        session_id = metadata.get('running')
+        session_data = metadata.get('sessions', {}).get(session_id or '', {})
+        if not session_id or session_data.get('mode') != 'squashfs':
+            return False, True, _("No running SquashFS session requires periodic saving"), None
+        try:
+            interval = int(session_data.get('autosave', '0') or 0)
+        except (TypeError, ValueError):
+            return False, False, _("Invalid SquashFS automatic save interval"), None
+        if interval == 0:
+            return False, True, _("Periodic session saving is disabled"), None
+        if interval not in self.SQUASHFS_AUTOSAVE_INTERVALS:
+            return False, False, _("Invalid SquashFS automatic save interval"), None
+
+        now = now or datetime.now(timezone.utc).replace(tzinfo=None)
+        baseline = None
+        saved = session_data.get('saved')
+        if saved:
+            try:
+                baseline = datetime.strptime(saved, '%Y-%m-%dT%H:%M:%SZ')
+            except (TypeError, ValueError):
+                baseline = None
+        try:
+            with open('/proc/uptime', 'r', encoding='ascii') as uptime_file:
+                uptime = float(uptime_file.read().split()[0])
+            boot_started = now - timedelta(seconds=max(0.0, uptime))
+            if baseline is None or baseline < boot_started:
+                baseline = boot_started
+        except (OSError, ValueError, IndexError):
+            pass
+        if baseline is not None and now < baseline + timedelta(minutes=interval):
+            return False, True, _("Periodic session save is not due yet"), None
+        success, message, capture = self.save_session(session_id)
+        return True, success, message, capture
+
+    def _replace_boot_state_session(self, expected_session, new_session):
+        """Atomically retarget this boot's volatile SquashFS runtime authority."""
+        path = self.BOOT_STATE_FILE
+        directory = os.path.dirname(path)
+        state_stat = os.stat(path, follow_symlinks=False)
+        if (not stat.S_ISREG(state_stat.st_mode) or state_stat.st_uid != os.geteuid() or
+                state_stat.st_nlink != 1 or stat.S_IMODE(state_stat.st_mode) & 0o022):
+            raise OSError(_("Persistence runtime state is not trusted"))
+        lines = []
+        replaced = 0
+        with open(path, 'r', encoding='utf-8') as state_file:
+            for raw_line in state_file:
+                line = raw_line.rstrip('\n')
+                if line.startswith('session='):
+                    if line != 'session={}'.format(expected_session):
+                        raise OSError(_("Persistence runtime session changed"))
+                    line = 'session={}'.format(new_session)
+                    replaced += 1
+                lines.append(line)
+        if replaced != 1:
+            raise OSError(_("Persistence runtime state is malformed"))
+        fd, temporary = tempfile.mkstemp(prefix='.boot-state-', dir=directory)
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as output:
+                output.write('\n'.join(lines) + '\n')
+                output.flush()
+                os.fsync(output.fileno())
+            os.chmod(temporary, 0o600)
+            os.replace(temporary, path)
+            temporary = None
+            directory_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        finally:
+            if temporary and os.path.exists(temporary):
+                os.unlink(temporary)
+
+    def handoff_running_squashfs(self, running_id, target_id):
+        """Move this boot's save target to a SquashFS snapshot captured this boot."""
+        try:
+            running_id = self._validate_session_id(running_id)
+            target_id = self._validate_session_id(target_id)
+        except ValueError as error:
+            return False, str(error)
+        if running_id == target_id:
+            return False, _("The running and target sessions are the same")
+        with self._mutation_lock():
+            metadata = self._normalize_metadata(self._read_sessions_metadata())
+            if metadata.get('running') != running_id or metadata.get('default') != target_id:
+                return False, _("The active SquashFS session is not available for handoff")
+            running_data = metadata.get('sessions', {}).get(running_id)
+            target_data = metadata.get('sessions', {}).get(target_id)
+            if (not running_data or running_data.get('mode') != 'squashfs' or
+                    not target_data or target_data.get('mode') != 'squashfs'):
+                return False, _("SquashFS handoff requires running and active SquashFS sessions")
+            boot_id = self._current_boot_id()
+            if not boot_id or target_data.get('capture_boot_id') != boot_id:
+                return False, _("The active SquashFS session was not captured during this boot")
+            valid, message = self._validate_squashfs_activation(target_id, target_data)
+            if not valid:
+                return False, message
+            valid, message = self._validate_squashfs_runtime(running_id)
+            if not valid:
+                return False, message
+
+            self._replace_boot_state_session(running_id, target_id)
+            metadata['running'] = target_id
+            target_data['state'] = 'dirty'
+            try:
+                if not self._write_sessions_metadata(metadata):
+                    raise OSError(_("Failed to update session metadata"))
+            except BaseException:
+                try:
+                    self._replace_boot_state_session(target_id, running_id)
+                except OSError:
+                    pass
+                raise
+        return True, _("Running session moved to session {}").format(target_id)
 
     def _sync_session_directory(self, directory_fd):
         """Synchronize a numbered session directory where the filesystem permits it."""
@@ -1495,7 +1758,7 @@ class SessionManager:
     def _reject_json_constant(value):
         raise ValueError("invalid JSON constant: {}".format(value))
 
-    def _run_savechanges(self, output_path, work_parent):
+    def _run_savechanges(self, output_path, work_parent, progress_callback=None):
         """Run exact capture and return its validated machine result."""
         command = self.SAVECHANGES_COMMAND
         try:
@@ -1517,30 +1780,36 @@ class SessionManager:
             'LC_ALL': 'C.UTF-8',
             'LANG': 'C.UTF-8',
         }
-        process = subprocess.Popen(
-            argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            universal_newlines=True, start_new_session=True, env=environment)
-        try:
-            stdout, _stderr = process.communicate()
-        except BaseException:
-            self._stop_capture_process(process)
-            raise
-        if process.returncode == 130:
-            raise OSError(_("Session save was cancelled"))
-        if process.returncode != 0:
-            raise OSError(_("savechanges failed with status {}").format(
-                process.returncode))
-
         events = []
-        for line in stdout.splitlines():
-            if not line.strip():
-                raise ValueError("savechanges emitted an empty machine-output line")
-            event = json.loads(
-                line, object_pairs_hook=self._strict_json_object,
-                parse_constant=self._reject_json_constant)
-            if not isinstance(event, dict):
-                raise ValueError("savechanges emitted an invalid event")
-            events.append(event)
+        with tempfile.TemporaryFile() as error_file:
+            process = subprocess.Popen(
+                argv, stdout=subprocess.PIPE, stderr=error_file,
+                universal_newlines=True, start_new_session=True, env=environment)
+            try:
+                for line in process.stdout:
+                    if not line.strip():
+                        raise ValueError("savechanges emitted an empty machine-output line")
+                    event = json.loads(
+                        line, object_pairs_hook=self._strict_json_object,
+                        parse_constant=self._reject_json_constant)
+                    if not isinstance(event, dict):
+                        raise ValueError("savechanges emitted an invalid event")
+                    events.append(event)
+                    if event.get('type') == 'phase' and progress_callback is not None:
+                        progress_callback(event.get('phase'))
+                process.wait()
+            except BaseException:
+                self._stop_capture_process(process)
+                raise
+            if process.returncode == 130:
+                raise OSError(_("Session save was cancelled"))
+            if process.returncode != 0:
+                error_file.seek(0)
+                detail = error_file.read(65536).decode('utf-8', 'replace').strip()
+                message = _("savechanges failed with status {}").format(process.returncode)
+                if detail:
+                    message = "{}: {}".format(message, detail.splitlines()[-1])
+                raise OSError(message)
         if len(events) != len(self.SAVECHANGES_PHASES) + 1:
             raise ValueError("savechanges emitted an incomplete result")
         phases = events[:-1]
@@ -1697,266 +1966,29 @@ class SessionManager:
             os.close(artifact_fd)
         return digest.hexdigest()
 
-    @staticmethod
-    def _identity_document(identity):
-        if identity is None:
-            return None
-        return {'device': identity[0], 'inode': identity[1]}
-
-    @staticmethod
-    def _document_identity(value):
-        if value is None:
-            return None
-        if (not isinstance(value, dict) or set(value) != {'device', 'inode'} or
-                type(value.get('device')) is not int or value['device'] < 0 or
-                type(value.get('inode')) is not int or value['inode'] < 1):
-            raise ValueError("invalid SquashFS transaction identity")
-        return value['device'], value['inode']
-
-    def _write_squashfs_transaction(self, directory_fd, document):
-        """Durably publish the recovery record before generation rotation."""
-        temporary = '.changes.sb.transaction.tmp-{}'.format(os.urandom(16).hex())
-        descriptor = -1
+    def _validate_squashfs_capture(self, directory_fd, name, result):
+        """Verify the exact-capture artifact before publishing it."""
+        captured = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+        result_identity = (
+            result['output_identity']['device'],
+            result['output_identity']['inode'],
+        )
+        if (not stat.S_ISREG(captured.st_mode) or captured.st_nlink != 1 or
+                captured.st_uid != os.geteuid() or
+                (captured.st_dev, captured.st_ino) != result_identity or
+                captured.st_size != result['compressed_size']):
+            raise OSError(_("Captured SquashFS identity or size changed"))
+        module_fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW,
+                            dir_fd=directory_fd)
         try:
-            descriptor = os.open(
-                temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-                0o600, dir_fd=directory_fd)
-            data = (json.dumps(document, sort_keys=True, separators=(',', ':')) +
-                    '\n').encode('utf-8')
-            offset = 0
-            while offset < len(data):
-                offset += os.write(descriptor, data[offset:])
-            os.fsync(descriptor)
-            os.close(descriptor)
-            descriptor = -1
-            os.rename(temporary, self.SQUASHFS_TRANSACTION,
-                      src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
-            self._sync_session_directory(directory_fd)
-        except BaseException:
-            if descriptor >= 0:
-                os.close(descriptor)
-            try:
-                os.unlink(temporary, dir_fd=directory_fd)
-            except OSError:
-                pass
-            raise
-
-    def _remove_squashfs_transaction(self, directory_fd):
-        try:
-            os.unlink(self.SQUASHFS_TRANSACTION, dir_fd=directory_fd)
-        except FileNotFoundError:
-            return
-        self._sync_session_directory(directory_fd)
-
-    def _read_squashfs_transaction(self, directory_fd):
-        try:
-            descriptor = os.open(
-                self.SQUASHFS_TRANSACTION, os.O_RDONLY | os.O_NOFOLLOW,
-                dir_fd=directory_fd)
-        except FileNotFoundError:
-            return None
-        try:
-            metadata = os.fstat(descriptor)
-            if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.geteuid() or
-                    metadata.st_nlink != 1 or stat.S_IMODE(metadata.st_mode) & 0o077):
-                raise OSError("unsafe SquashFS transaction record")
-            chunks = []
-            while True:
-                block = os.read(descriptor, 65536)
-                if not block:
-                    break
-                chunks.append(block)
-                if sum(len(chunk) for chunk in chunks) > 65536:
-                    raise ValueError("oversized SquashFS transaction record")
+            if os.read(module_fd, 4) != b'hsqs':
+                raise OSError(_("Captured file is not a SquashFS image"))
+            os.fsync(module_fd)
         finally:
-            os.close(descriptor)
-        document = json.loads(
-            b''.join(chunks).decode('utf-8'),
-            object_pairs_hook=self._strict_json_object,
-            parse_constant=self._reject_json_constant)
-        required = {
-            'product_kind', 'schema_version', 'session_id', 'new_name',
-            'discarded_name', 'had_current', 'had_old', 'current_identity',
-            'old_identity', 'new_identity', 'previous_digest', 'old_digest',
-            'new_digest', 'current_size', 'old_size', 'new_size',
-            'previous_generation', 'next_generation',
-        }
-        if not isinstance(document, dict) or set(document) != required:
-            raise ValueError("invalid SquashFS transaction record")
-        if (document['product_kind'] != 'minios-squashfs-save-transaction' or
-                document['schema_version'] != 1 or
-                type(document['had_current']) is not bool or
-                type(document['had_old']) is not bool or
-                not re.fullmatch(r'[0-9]+', document['session_id']) or
-                not re.fullmatch(r'\.changes\.sb\.new-[0-9a-f]{32}', document['new_name']) or
-                not re.fullmatch(r'\.changes\.sb\.discard-[0-9a-f]{32}',
-                                 document['discarded_name'])):
-            raise ValueError("invalid SquashFS transaction record")
-        for field in ('previous_digest', 'old_digest', 'new_digest'):
-            value = document[field]
-            if value is not None and (not isinstance(value, str) or
-                                      not re.fullmatch(r'[0-9a-f]{64}', value)):
-                raise ValueError("invalid SquashFS transaction digest")
-        for field in ('current_size', 'old_size', 'new_size'):
-            value = document[field]
-            if value is not None and (type(value) is not int or value < 1):
-                raise ValueError("invalid SquashFS transaction size")
-        previous_generation = document['previous_generation']
-        if (previous_generation is not None and
-                (not isinstance(previous_generation, str) or
-                 not re.fullmatch(r'[0-9]+', previous_generation))):
-            raise ValueError("invalid SquashFS transaction generation")
-        if (not isinstance(document['next_generation'], str) or
-                not re.fullmatch(r'[0-9]+', document['next_generation'])):
-            raise ValueError("invalid SquashFS transaction generation")
-        document['current_identity'] = self._document_identity(
-            document['current_identity'])
-        document['old_identity'] = self._document_identity(document['old_identity'])
-        document['new_identity'] = self._document_identity(document['new_identity'])
-        return document
-
-    def _recovery_artifact_matches(self, directory_fd, name, size, digest):
-        try:
-            metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
-        except FileNotFoundError:
-            return False
-        if (not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or
-                metadata.st_uid != os.geteuid() or metadata.st_size != size):
-            return False
-        return self._artifact_digest(directory_fd, name) == digest
-
-    def _recover_squashfs_transaction(self, directory_fd, metadata, session_id):
-        """Finish or roll back an interrupted save from identity-bound state."""
-        transaction = self._read_squashfs_transaction(directory_fd)
-        if transaction is None:
-            return
-        if transaction['session_id'] != session_id:
-            raise OSError(_("SquashFS transaction belongs to another session"))
-        session_data = metadata.get('sessions', {}).get(session_id, {})
-        metadata_generation = session_data.get('generation')
-        names = {
-            'current': 'changes.sb',
-            'old': 'changes.sb.old',
-            'new': transaction['new_name'],
-            'discarded': transaction['discarded_name'],
-        }
-        present = {}
-        for role, name in names.items():
-            try:
-                os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
-                present[role] = True
-            except FileNotFoundError:
-                present[role] = False
-
-        artifacts = {
-            'current_generation': (transaction['current_size'],
-                                   transaction['previous_digest']),
-            'old_generation': (transaction['old_size'], transaction['old_digest']),
-            'new_generation': (transaction['new_size'], transaction['new_digest']),
-        }
-
-        def layout_matches(layout):
-            for role, generation_role in layout.items():
-                if generation_role is None:
-                    if present[role]:
-                        return False
-                    continue
-                if not present[role]:
-                    return False
-                size, digest = artifacts[generation_role]
-                if size is None or digest is None or not self._recovery_artifact_matches(
-                        directory_fd, names[role], size, digest):
-                    return False
-            return True
-
-        initial = {
-            'current': 'current_generation' if transaction['had_current'] else None,
-            'old': 'old_generation' if transaction['had_old'] else None,
-            'new': 'new_generation', 'discarded': None,
-        }
-        displaced = {
-            'current': 'current_generation', 'old': None,
-            'new': 'new_generation', 'discarded': 'old_generation',
-        }
-        moved = {
-            'current': None,
-            'old': 'current_generation' if transaction['had_current'] else
-                   ('old_generation' if transaction['had_old'] else None),
-            'new': 'new_generation',
-            'discarded': 'old_generation' if (
-                transaction['had_current'] and transaction['had_old']) else None,
-        }
-        published = {
-            'current': 'new_generation',
-            'old': 'current_generation' if transaction['had_current'] else
-                   ('old_generation' if transaction['had_old'] else None),
-            'new': None,
-            'discarded': 'old_generation' if (
-                transaction['had_current'] and transaction['had_old']) else None,
-        }
-        committed_clean = dict(published)
-        committed_clean['discarded'] = None
-        rollback_new_removed = dict(published)
-        rollback_new_removed['current'] = None
-        rollback_current_restored = {
-            'current': 'current_generation' if transaction['had_current'] else None,
-            'old': None,
-            'new': None,
-            'discarded': 'old_generation' if (
-                transaction['had_current'] and transaction['had_old']) else None,
-        }
-        rollback_restored = dict(initial)
-        rollback_restored['new'] = None
-
-        if metadata_generation == transaction['next_generation']:
-            if not (layout_matches(published) or layout_matches(committed_clean)):
-                raise OSError(_("Committed SquashFS transaction has an unexpected layout"))
-            if present['discarded']:
-                os.unlink(names['discarded'], dir_fd=directory_fd)
-                self._sync_session_directory(directory_fd)
-            self._remove_squashfs_transaction(directory_fd)
-            return
-
-        if metadata_generation != transaction['previous_generation']:
-            raise OSError(_("SquashFS metadata does not match its recovery transaction"))
-
-        if layout_matches(initial):
-            recovery_state = 'initial'
-        elif (transaction['had_current'] and transaction['had_old'] and
-              layout_matches(displaced)):
-            recovery_state = 'displaced'
-        elif transaction['had_current'] and layout_matches(moved):
-            recovery_state = 'moved'
-        elif layout_matches(published):
-            recovery_state = 'published'
-        elif layout_matches(rollback_new_removed):
-            recovery_state = 'rollback_new_removed'
-        elif transaction['had_current'] and layout_matches(rollback_current_restored):
-            recovery_state = 'rollback_current_restored'
-        elif layout_matches(rollback_restored):
-            recovery_state = 'rollback_restored'
-        else:
-            raise OSError(_("Previous SquashFS generations cannot be proven recoverable"))
-
-        if recovery_state == 'rollback_restored':
-            self._remove_squashfs_transaction(directory_fd)
-            return
-        if recovery_state == 'published':
-            os.unlink(names['current'], dir_fd=directory_fd)
-        elif recovery_state not in ('rollback_new_removed',
-                                    'rollback_current_restored'):
-            os.unlink(names['new'], dir_fd=directory_fd)
-        if recovery_state in ('moved', 'published', 'rollback_new_removed') and \
-                transaction['had_current']:
-            os.rename(names['old'], names['current'],
-                      src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
-        if (recovery_state in ('displaced', 'moved', 'published',
-                               'rollback_new_removed', 'rollback_current_restored') and
-                transaction['had_current'] and transaction['had_old']):
-            os.rename(names['discarded'], names['old'],
-                      src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
-        self._sync_session_directory(directory_fd)
-        self._remove_squashfs_transaction(directory_fd)
+            os.close(module_fd)
+        if self._artifact_digest(directory_fd, name) != result['sha256']:
+            raise OSError(_("Captured SquashFS digest does not match its result"))
+        return result_identity
 
     def _remove_captured_file(self, directory_fd, name, identity=None):
         """Remove only the expected private capture output."""
@@ -1972,248 +2004,88 @@ class SessionManager:
         os.unlink(name, dir_fd=directory_fd)
         self._sync_session_directory(directory_fd)
 
-    def save_session(self, session_id):
-        """Capture and atomically rotate the running SquashFS session."""
-        if not self.sessions_dir:
-            return False, _("Sessions directory not found"), None
+    def save_session(self, session_id, finalize_shutdown=False, progress_callback=None):
+        """Save the running SquashFS session through the MiniOS Tools backend."""
+        if self.custom_sessions_dir is not None:
+            return False, _("SquashFS saving is unavailable for a custom sessions directory"), None
         try:
             session_id = self._validate_session_id(session_id)
-            session_path = self._session_path(session_id, require_exists=True)
         except ValueError as error:
             return False, str(error), None
 
-        new_name = '.changes.sb.new-{}'.format(os.urandom(16).hex())
-        current_name = 'changes.sb'
-        old_name = 'changes.sb.old'
-        discarded_name = '.changes.sb.discard-{}'.format(os.urandom(16).hex())
-        result = None
-        capture_validated = False
-        directory_fd = -1
+        command = self.SQUASHFS_SAVE_COMMAND
         try:
-            with self._mutation_lock():
-                metadata = self._normalize_metadata(self._read_sessions_metadata())
-                session_data = metadata.get('sessions', {}).get(session_id)
-                if session_data is None:
-                    return False, _("Session {} does not exist").format(session_id), None
-                if session_data.get('mode') != 'squashfs':
-                    return False, _("Session {} is not a SquashFS session").format(session_id), None
+            command_stat = os.stat(command, follow_symlinks=False)
+        except OSError as error:
+            return False, _("SquashFS save backend is unavailable: {}").format(error), None
+        if (not stat.S_ISREG(command_stat.st_mode) or
+                command_stat.st_uid != os.geteuid() or
+                stat.S_IMODE(command_stat.st_mode) & 0o022 or
+                not os.access(command, os.X_OK)):
+            return False, _("SquashFS save backend is unavailable"), None
 
-                directory_fd = os.open(
-                    session_path, os.O_RDONLY | os.O_DIRECTORY |
-                    getattr(os, 'O_NOFOLLOW', 0))
-                directory_stat = os.fstat(directory_fd)
-                if (not stat.S_ISDIR(directory_stat.st_mode) or
-                        directory_stat.st_uid != os.geteuid() or
-                        stat.S_IMODE(directory_stat.st_mode) & 0o022):
-                    raise OSError(_("Unsafe SquashFS session directory"))
-
-                self._recover_squashfs_transaction(
-                    directory_fd, metadata, session_id)
-                if metadata.get('running') != session_id:
-                    return False, _("Only the running SquashFS session can be saved"), None
-                runtime_valid, runtime_error = self._validate_squashfs_runtime(session_id)
-                if not runtime_valid:
-                    return False, runtime_error, None
-
-                existing = {}
-                existing_sizes = {}
-                for name in (current_name, old_name):
-                    try:
-                        artifact = os.stat(name, dir_fd=directory_fd,
-                                           follow_symlinks=False)
-                    except FileNotFoundError:
+        argv = [command, session_id, '--json']
+        if progress_callback is not None:
+            argv.append('--progress')
+        if finalize_shutdown:
+            argv.append('--shutdown-finalize')
+        environment = {
+            'PATH': '/usr/sbin:/usr/bin:/sbin:/bin',
+            'LC_ALL': 'C.UTF-8',
+            'LANG': 'C.UTF-8',
+        }
+        final_result = None
+        with tempfile.TemporaryFile() as error_file:
+            process = subprocess.Popen(
+                argv, stdout=subprocess.PIPE, stderr=error_file,
+                universal_newlines=True, start_new_session=True, env=environment)
+            try:
+                for line in process.stdout:
+                    if not line.strip():
                         continue
-                    if (not stat.S_ISREG(artifact.st_mode) or
-                            artifact.st_uid != os.geteuid() or artifact.st_nlink != 1):
-                        raise OSError(_("Unsafe SquashFS session artifact"))
-                    existing[name] = (artifact.st_dev, artifact.st_ino)
-                    existing_sizes[name] = artifact.st_size
-
-                new_path = os.path.join(session_path, new_name)
-                result = self._run_savechanges(new_path, session_path)
-                captured = os.stat(new_name, dir_fd=directory_fd,
-                                   follow_symlinks=False)
-                result_identity = (
-                    result['output_identity']['device'],
-                    result['output_identity']['inode'],
-                )
-                if (not stat.S_ISREG(captured.st_mode) or captured.st_nlink != 1 or
-                        captured.st_uid != os.geteuid() or
-                        (captured.st_dev, captured.st_ino) != result_identity or
-                        captured.st_size != result['compressed_size']):
-                    raise OSError(_("Captured SquashFS identity or size changed"))
-                capture_validated = True
-                module_fd = os.open(new_name, os.O_RDONLY | os.O_NOFOLLOW,
-                                    dir_fd=directory_fd)
-                try:
-                    if os.read(module_fd, 4) != b'hsqs':
-                        raise OSError(_("Captured file is not a SquashFS image"))
-                    os.fsync(module_fd)
-                finally:
-                    os.close(module_fd)
-                if self._artifact_digest(directory_fd, new_name) != result['sha256']:
-                    raise OSError(_("Captured SquashFS digest does not match its result"))
-                self._sync_session_directory(directory_fd)
-
-                # Capture can be long. Recheck every preflight identity and the
-                # generation digests immediately before any rename.
-                for name in (current_name, old_name):
-                    expected = existing.get(name)
-                    try:
-                        artifact = os.stat(name, dir_fd=directory_fd,
-                                           follow_symlinks=False)
-                        observed = (artifact.st_dev, artifact.st_ino)
-                    except FileNotFoundError:
-                        observed = None
-                    if observed != expected:
-                        raise OSError(_("SquashFS generation changed during capture"))
-                    if expected is not None:
-                        digest_field = 'digest' if name == current_name else 'old_digest'
-                        expected_digest = session_data.get(digest_field)
-                        if (not isinstance(expected_digest, str) or
-                                not re.fullmatch(r'[0-9a-f]{64}', expected_digest) or
-                                self._artifact_digest(directory_fd, name) != expected_digest):
-                            raise OSError(_("SquashFS generation metadata does not match its artifact"))
-
-                had_current = current_name in existing
-                had_old = old_name in existing
-                previous_generation = session_data.get('generation')
-                generation_text = previous_generation if previous_generation is not None else '0'
-                if not re.fullmatch(r'[0-9]+', generation_text):
-                    raise ValueError(_("Invalid SquashFS generation metadata"))
-                generation = int(generation_text) + 1
-                current_moved = False
-                old_discarded = False
-                new_published = False
-                previous_signal_handlers = {}
-                for signum in (signal.SIGINT, signal.SIGTERM):
-                    previous_signal_handlers[signum] = signal.signal(signum, signal.SIG_IGN)
-                try:
-                    transaction = {
-                        'product_kind': 'minios-squashfs-save-transaction',
-                        'schema_version': 1,
-                        'session_id': session_id,
-                        'new_name': new_name,
-                        'discarded_name': discarded_name,
-                        'had_current': had_current,
-                        'had_old': had_old,
-                        'current_identity': self._identity_document(
-                            existing.get(current_name)),
-                        'old_identity': self._identity_document(existing.get(old_name)),
-                        'new_identity': self._identity_document(result_identity),
-                        'previous_digest': session_data.get('digest'),
-                        'old_digest': session_data.get('old_digest'),
-                        'new_digest': result['sha256'],
-                        'current_size': existing_sizes.get(current_name),
-                        'old_size': existing_sizes.get(old_name),
-                        'new_size': result['compressed_size'],
-                        'previous_generation': previous_generation,
-                        'next_generation': str(generation),
-                    }
-                    self._write_squashfs_transaction(directory_fd, transaction)
-                    if had_current and had_old:
-                        os.rename(old_name, discarded_name,
-                                  src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
-                        old_discarded = True
-                        self._sync_session_directory(directory_fd)
-                    if had_current:
-                        os.rename(current_name, old_name,
-                                  src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
-                        current_moved = True
-                        self._sync_session_directory(directory_fd)
-                    os.rename(new_name, current_name,
-                              src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
-                    new_published = True
-                    self._sync_session_directory(directory_fd)
-
-                    previous = dict(session_data)
-                    if had_current:
-                        for field in ('digest', 'compressed', 'uncompressed',
-                                      'entries', 'footprint', 'saved', 'generation',
-                                      'union'):
-                            old_field = 'old_{}'.format(field)
-                            if field in previous:
-                                session_data[old_field] = previous[field]
-                            else:
-                                session_data.pop(old_field, None)
-                    session_data.update({
-                        'policy': previous.get('policy', 'shutdown'),
-                        'saved': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
-                        'digest': result['sha256'],
-                        'compressed': result['compressed_size'],
-                        'uncompressed': result['uncompressed_size'],
-                        'entries': result['entry_count'],
-                        'footprint': json.dumps(
-                            result['extraction_footprint'], sort_keys=True,
-                            separators=(',', ':')),
-                        'generation': generation,
-                        'union': result['union_backend'],
-                    })
-                    if not self._write_sessions_metadata(metadata):
-                        raise OSError(_("Failed to update session metadata"))
-                except MetadataCommitUncertain:
-                    # Leave the journal and rotated artifacts for restart
-                    # recovery to resolve whichever metadata generation survived.
-                    raise
-                except BaseException:
-                    if new_published:
-                        self._remove_captured_file(
-                            directory_fd, current_name, result_identity)
-                    if current_moved:
-                        os.rename(old_name, current_name,
-                                  src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
-                    if old_discarded:
-                        os.rename(discarded_name, old_name,
-                                  src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
-                    self._sync_session_directory(directory_fd)
-                    self._remove_squashfs_transaction(directory_fd)
-                    raise
-                finally:
-                    for signum, handler in previous_signal_handlers.items():
-                        signal.signal(signum, handler)
-
-                if old_discarded:
-                    try:
-                        os.unlink(discarded_name, dir_fd=directory_fd)
-                        self._sync_session_directory(directory_fd)
-                    except OSError as error:
-                        print("Warning removing superseded SquashFS generation: {}".format(
-                            error), file=sys.stderr)
+                    event = json.loads(line)
+                    if event.get('type') == 'phase':
+                        if progress_callback is not None:
+                            progress_callback(event.get('phase'))
                     else:
-                        self._remove_squashfs_transaction(directory_fd)
-                else:
-                    self._remove_squashfs_transaction(directory_fd)
-                result = dict(result)
-                result['session_id'] = session_id
-                result['generation'] = generation
-                result['saved'] = session_data['saved']
-                return True, _("Session {} saved successfully").format(session_id), result
-        except BaseException as error:
-            if directory_fd >= 0:
-                identity = None
-                if result is not None and capture_validated:
-                    identity = (result['output_identity']['device'],
-                                result['output_identity']['inode'])
-                try:
-                    self._remove_captured_file(directory_fd, new_name, identity)
-                except OSError:
-                    pass
-            if isinstance(error, (KeyboardInterrupt, SystemExit)):
+                        final_result = event
+                process.wait()
+            except BaseException:
+                self._stop_capture_process(process)
                 raise
-            return False, _("Failed to save session: {}").format(str(error)), None
-        finally:
-            if directory_fd >= 0:
-                os.close(directory_fd)
+            error_file.seek(0)
+            stderr = error_file.read(65536).decode('utf-8', 'replace').strip()
 
-    def create_session(self, session_mode="native", size_mb=None, password=None):
-        """Create a new session"""
+        if not isinstance(final_result, dict):
+            return False, stderr or _("SquashFS save backend returned no result"), None
+        success = bool(final_result.get('success')) and process.returncode == 0
+        message = final_result.get('message') or stderr or (
+            _("Session {} saved successfully").format(session_id) if success else
+            _("Failed to save session {} ").format(session_id).strip())
+        capture = final_result.get('capture') if success else None
+        return success, str(message), capture
+
+    def create_session(self, session_mode="native", size_mb=None, password=None,
+                       policy=None, autosave=0):
+        """Create a new session."""
         if not self.sessions_dir:
             return False, _("Sessions directory not found")
         
         # Validate session mode
-        valid_modes = ["native", "dynfilefs", "raw", "luks"]
+        valid_modes = ["native", "squashfs", "dynfilefs", "raw", "luks"]
         if session_mode not in valid_modes:
             return False, _("Invalid session mode. Must be one of: {}").format(", ".join(valid_modes))
+        squashfs_policy = policy or 'shutdown'
+        if session_mode == 'squashfs' and squashfs_policy not in ('manual', 'shutdown'):
+            return False, _("SquashFS save policy must be manual or shutdown")
+        try:
+            autosave = int(autosave or 0)
+        except (TypeError, ValueError):
+            return False, _("Invalid SquashFS automatic save interval")
+        if session_mode == 'squashfs' and autosave not in self.SQUASHFS_AUTOSAVE_INTERVALS:
+            return False, _("Invalid SquashFS automatic save interval")
+        if session_mode != 'squashfs' and (policy is not None or autosave):
+            return False, _("Save policy is available only for SquashFS sessions")
         
         # Check if sessions directory is writable
         dir_status = self.check_sessions_directory_status()
@@ -2229,23 +2101,41 @@ class SessionManager:
         if session_mode == "dynfilefs" and not self._check_dynfilefs_available():
             return False, _("DynFileFS is not available on this system. Please install dynfilefs package.")
 
-        # Check free disk space. DynFileFS is thin-provisioned, so a large
-        # logical size must not be rejected on a small device; require only an
-        # initial footprint and rely on the runtime guard for growth. Raw,
-        # native and LUKS consume their full size up front.
-        required_mb = size_mb if size_mb else self.DEFAULT_CONTAINER_SIZE_MB
-        if session_mode == "dynfilefs":
-            required_mb = min(required_mb, self.DYNFILEFS_INITIAL_MB)
-        has_space, space_error = self._check_free_space(self.sessions_dir, required_mb)
-        if not has_space:
-            return False, space_error
+        # Check fixed/admitted sizes here. SquashFS capture performs its own
+        # exact free-space admission in savechanges, so do not impose the
+        # unrelated 4000 MB container default on snapshot creation.
+        if session_mode != "squashfs":
+            required_mb = size_mb if size_mb else self.DEFAULT_CONTAINER_SIZE_MB
+            if session_mode == "dynfilefs":
+                required_mb = min(required_mb, self.DYNFILEFS_INITIAL_MB)
+            has_space, space_error = self._check_free_space(self.sessions_dir, required_mb)
+            if not has_space:
+                return False, space_error
 
         session_path = None
+        squashfs_result = None
         try:
             new_id, session_path = self._reserve_session()
             
             # Initialize session based on mode
-            if session_mode == "dynfilefs":
+            if session_mode == "squashfs":
+                new_name = '.changes.sb.new-{}'.format(os.urandom(16).hex())
+                directory_fd = os.open(
+                    session_path, os.O_RDONLY | os.O_DIRECTORY |
+                    getattr(os, 'O_NOFOLLOW', 0))
+                try:
+                    new_path = os.path.join(session_path, new_name)
+                    squashfs_result = self._run_savechanges(new_path, session_path)
+                    self._validate_squashfs_capture(
+                        directory_fd, new_name, squashfs_result)
+                    self._sync_session_directory(directory_fd)
+                    os.replace(new_name, 'changes.sb',
+                               src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
+                    self._sync_session_directory(directory_fd)
+                finally:
+                    os.close(directory_fd)
+
+            elif session_mode == "dynfilefs":
                 # Set default size if not specified
                 if size_mb is None:
                     size_mb = self.DEFAULT_CONTAINER_SIZE_MB
@@ -2326,14 +2216,35 @@ class SessionManager:
             with self._mutation_lock():
                 metadata = self._read_sessions_metadata()
                 metadata.setdefault("sessions", {})
-                metadata["sessions"][new_id] = {
+                session_record = {
                     "mode": session_mode, "version": version, "edition": edition,
                     "union": union
                 }
-                if session_mode in ["dynfilefs", "raw", "luks"] and size_mb:
-                    metadata["sessions"][new_id]["size"] = size_mb
+                if session_mode == "squashfs":
+                    session_record.update({
+                        "policy": squashfs_policy,
+                        "saved": datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                        "digest": squashfs_result['sha256'],
+                        "compressed": squashfs_result['compressed_size'],
+                        "uncompressed": squashfs_result['uncompressed_size'],
+                        "entries": squashfs_result['entry_count'],
+                        "footprint": json.dumps(
+                            squashfs_result['extraction_footprint'], sort_keys=True,
+                            separators=(',', ':')),
+                        "generation": 1,
+                        "union": squashfs_result['union_backend'],
+                    })
+                    if autosave:
+                        session_record['autosave'] = autosave
+                    boot_id = self._current_boot_id()
+                    if boot_id:
+                        session_record['capture_boot_id'] = boot_id
+                elif session_mode in ["dynfilefs", "raw", "luks"] and size_mb:
+                    session_record["size"] = size_mb
+                metadata["sessions"][new_id] = session_record
                 metadata_updated = self._write_sessions_metadata(metadata)
             if metadata_updated:
+                self._invalidate_size_cache(new_id)
                 # Use safer string formatting to avoid potential translation issues
                 try:
                     if session_mode == "dynfilefs":
@@ -2362,8 +2273,8 @@ class SessionManager:
                 shutil.rmtree(session_path, ignore_errors=True)
             return False, _("Error creating session: {}").format(str(e))
 
-    def delete_session(self, session_id):
-        """Delete a session"""
+    def delete_session(self, session_id, handoff=False):
+        """Delete a session, optionally handing a RAM-backed SquashFS boot to its active snapshot."""
         if not self.sessions_dir:
             return False, _("Sessions directory not found")
             
@@ -2377,10 +2288,20 @@ class SessionManager:
         if current and current['id'] == session_id:
             return False, _("Cannot delete currently active session")
         
-        # Check if it's the running session
+        # A running unpacked SquashFS session can hand its save target to a
+        # current-boot SquashFS snapshot that is already active for next boot.
         running = self.get_running_session()
         if running and running['id'] == session_id:
-            return False, _("Cannot delete currently running session")
+            if not handoff:
+                return False, _("Cannot delete currently running session without SquashFS handoff")
+            if not current or current['id'] == session_id:
+                return False, _("Activate another SquashFS session before deleting the running session")
+            try:
+                success, message = self.handoff_running_squashfs(session_id, current['id'])
+            except Exception as error:
+                return False, _("Failed to hand off the running SquashFS session: {}").format(error)
+            if not success:
+                return False, message
         
         try:
             with self._mutation_lock():
@@ -2901,9 +2822,7 @@ class SessionManager:
             try:
                 result = subprocess.run(rsync_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
 
-                # rsync may return 23 (partial transfer) if some special files couldn't be copied
-                # This is acceptable (e.g., char devices, sockets)
-                if result.returncode not in [0, 23, 24]:
+                if result.returncode != 0:
                     stderr_text = result.stderr.decode() if result.stderr else ""
                     raise Exception(f"rsync failed with code {result.returncode}: {stderr_text}")
 
@@ -3366,9 +3285,7 @@ class SessionManager:
                 
                 result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 
-                # rsync may return 23 (partial transfer) if some special files couldn't be copied
-                # This is acceptable (e.g., char devices, sockets)
-                if result.returncode not in [0, 23, 24]:
+                if result.returncode != 0:
                     print(f"DEBUG: rsync failed: {result.stderr.decode()}")
                     return False
                 
@@ -3422,7 +3339,7 @@ class SessionManager:
                     ]
                     
                     result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                    if result.returncode not in [0, 23, 24]:
+                    if result.returncode != 0:
                         raise Exception(f"Rsync failed: {result.stderr.decode()}")
             
             return True
@@ -3606,6 +3523,9 @@ def format_sessions_json(sessions):
             'version': session['version'],
             'edition': session['edition'],
             'union': session['union'],
+            'policy': session.get('policy'),
+            'autosave': int(session.get('autosave') or 0),
+            'saved': session.get('saved'),
             'size': session['size'],
             'size_formatted': SessionManager()._format_size(session['size'])
         }
@@ -3650,6 +3570,9 @@ def format_session_json(session):
         'version': session['version'],
         'edition': session['edition'],
         'union': session['union'],
+        'policy': session.get('policy'),
+        'autosave': int(session.get('autosave') or 0),
+        'saved': session.get('saved'),
         'size': session['size'],
         'size_formatted': SessionManager()._format_size(session['size'])
     }
@@ -3739,7 +3662,7 @@ def main():
         sys.exit(1)
 
     luks_available = luks_runtime_available()
-    session_modes = ['native', 'dynfilefs', 'raw']
+    session_modes = ['native', 'squashfs', 'dynfilefs', 'raw']
     if luks_available:
         session_modes.append('luks')
 
@@ -3759,6 +3682,8 @@ COMMANDS:
   activate SESSION_ID       Activate specified session
   save SESSION_ID           Save the running SquashFS session
   create [MODE] [SIZE]      Create new session using positional arguments
+                              SquashFS: --policy manual|shutdown, --autosave MINUTES
+  settings SESSION_ID       Configure SquashFS shutdown and periodic saving
   delete SESSION_ID         Delete specified session
   cleanup [--days N]        Delete old sessions (default: 30 days)
   status                    Check sessions directory status and permissions
@@ -3770,15 +3695,18 @@ COMMANDS:
 
 SESSION MODES:
   native                    Direct filesystem changes (requires POSIX-compatible filesystem)
+  squashfs                  Compressed snapshot of the current live changes
   dynfilefs                 Dynamic file system overlay (works on any filesystem)
   raw                       Raw disk image (works on any filesystem, 4000MB default)
 
 COMMAND BEHAVIOR:
   • create without MODE: Uses native mode (may fail on FAT32/NTFS/exFAT)
-  • create without SIZE: Uses 4000MB for container modes
+  • create without SIZE: Uses 4000MB for fixed/container modes; SquashFS has no fixed size
+  • SquashFS periodic saves accept 30, 60, 120, 240, or 480 minutes; 0 disables them
   • convert replaces the source by default; --new-session preserves it
   • cleanup without --days: Uses 30-day threshold for deletion
   • cleanup protects both active and running sessions from deletion
+  • explicit delete can hand off a running RAM-backed SquashFS session to a current-boot active snapshot
 
 EXAMPLES:
 
@@ -3790,13 +3718,16 @@ EXAMPLES:
 
   Session Management:
     minios-session activate 2                     Set session #2 as default for next boot
+    minios-session settings 2 --shutdown on --autosave 60  Configure SquashFS automatic saves
     minios-session delete 3                       Delete session #3 permanently
+    minios-session delete 1 --handoff             Hand off running SquashFS to active snapshot and delete #1
     minios-session cleanup --days 30              Delete sessions older than 30 days
     minios-session cleanup                        Delete sessions older than 30 days (default)
 
   Creating Sessions:
     minios-session create                         Create native session (filesystem changes)
     minios-session create native                  Create native session explicitly
+    minios-session create squashfs                Snapshot current live changes into a SquashFS session
     minios-session create dynfilefs               Create 4000MB dynfilefs session (default size)
     minios-session create dynfilefs 8000          Create 8000MB dynfilefs session
     minios-session create raw 2000                Create 2000MB raw disk image
@@ -3860,6 +3791,10 @@ EXAMPLES:
     # Save command
     save_parser = subparsers.add_parser('save', help=_('Save a SquashFS session'), parents=[parent_parser])
     save_parser.add_argument('session_id', help=_('Running SquashFS session ID to save'))
+    save_parser.add_argument('--progress', action='store_true',
+                             help=_('Stream save progress events with JSON output'))
+    save_parser.add_argument('--shutdown-finalize', action='store_true',
+                             help=argparse.SUPPRESS)
 
     # Create command
     create_parser = subparsers.add_parser('create', help=_('Create a new session'), parents=[parent_parser])
@@ -3867,10 +3802,32 @@ EXAMPLES:
                               default='native', help=_('Session mode (default: native)'))
     create_parser.add_argument('size', nargs='?', type=parse_perch_size, metavar='SIZE',
                               help=_('Size in MB, GB, or TB for container modes (default: 4000MB)'))
+    create_parser.add_argument('--policy', choices=('manual', 'shutdown'),
+                              help=_('SquashFS shutdown save policy (default: shutdown)'))
+    create_parser.add_argument('--autosave', type=int,
+                              choices=SessionManager.SQUASHFS_AUTOSAVE_INTERVALS,
+                              default=0,
+                              help=_('Periodic SquashFS save interval in minutes (0 disables it)'))
+
+    # Save settings
+    settings_parser = subparsers.add_parser(
+        'settings', help=_('Configure SquashFS automatic saving'), parents=[parent_parser])
+    settings_parser.add_argument('session_id', help=_('SquashFS session ID'))
+    settings_parser.add_argument('--shutdown', choices=('on', 'off'),
+                                 help=_('Save automatically at shutdown'))
+    settings_parser.add_argument('--autosave', type=int,
+                                 choices=SessionManager.SQUASHFS_AUTOSAVE_INTERVALS,
+                                 help=_('Periodic save interval in minutes (0 disables it)'))
+
+    # Systemd periodic-save worker
+    autosave_parser = subparsers.add_parser(
+        'autosave', help=argparse.SUPPRESS, parents=[parent_parser])
 
     # Delete command
     delete_parser = subparsers.add_parser('delete', help=_('Delete a session'), parents=[parent_parser])
     delete_parser.add_argument('session_id', help=_('Session ID to delete'))
+    delete_parser.add_argument('--handoff', action='store_true',
+                               help=_('Move a running RAM-backed SquashFS session to the active snapshot before deletion'))
 
     # Cleanup command
     cleanup_parser = subparsers.add_parser('cleanup', help=_('Clean up old sessions'), parents=[parent_parser])
@@ -3953,6 +3910,8 @@ EXAMPLES:
     manager = SessionManager(custom_sessions_dir=custom_dir)
 
     if not manager.sessions_dir:
+        if args.command == 'autosave':
+            sys.exit(0)
         if args.json:
             error_data = {
                 "success": False,
@@ -4067,7 +4026,9 @@ EXAMPLES:
         except ValueError as error:
             success, message = False, str(error)
         else:
-            success, message = manager.create_session(args.mode, args.size, password=password)
+            success, message = manager.create_session(
+                args.mode, args.size, password=password, policy=args.policy,
+                autosave=args.autosave)
         if args.json:
             result = {"success": success, "message": message}
             print(json.dumps(result))
@@ -4075,19 +4036,58 @@ EXAMPLES:
             print(message)
         sys.exit(0 if success else 1)
 
+    elif args.command == 'settings':
+        shutdown = None if args.shutdown is None else args.shutdown == 'on'
+        success, message, settings = manager.set_squashfs_save_settings(
+            args.session_id, shutdown=shutdown, autosave=args.autosave)
+        if args.json:
+            result = {"success": success, "message": message}
+            if settings is not None:
+                result["settings"] = settings
+            print(json.dumps(result))
+        else:
+            print(message)
+            if success and settings is not None:
+                print(_("Save at shutdown: {}").format(
+                    _("Yes") if settings['shutdown'] else _("No")))
+                print(_("Periodic save: {} minutes").format(settings['autosave'])
+                      if settings['autosave'] else _("Periodic save: Off"))
+        sys.exit(0 if success else 1)
+
+    elif args.command == 'autosave':
+        performed, success, message, capture = manager.autosave_running_session()
+        if args.json:
+            result = {"success": success, "performed": performed, "message": message}
+            if capture is not None:
+                result["capture"] = capture
+            print(json.dumps(result))
+        elif performed or not success:
+            print(message)
+        sys.exit(0 if success else 1)
+
     elif args.command == 'save':
-        success, message, capture = manager.save_session(args.session_id)
+        if args.progress and not args.json:
+            print(_("--progress requires --json"), file=sys.stderr)
+            sys.exit(1)
+
+        def emit_progress(phase):
+            if args.progress:
+                print(json.dumps({"type": "phase", "phase": phase}), flush=True)
+
+        success, message, capture = manager.save_session(
+            args.session_id, finalize_shutdown=args.shutdown_finalize,
+            progress_callback=emit_progress if args.progress else None)
         if args.json:
             result = {"success": success, "message": message}
             if capture is not None:
                 result["capture"] = capture
-            print(json.dumps(result))
+            print(json.dumps(result), flush=True)
         else:
             print(message)
         sys.exit(0 if success else 1)
 
     elif args.command == 'delete':
-        success, message = manager.delete_session(args.session_id)
+        success, message = manager.delete_session(args.session_id, handoff=args.handoff)
         if args.json:
             result = {"success": success, "message": message}
             print(json.dumps(result))

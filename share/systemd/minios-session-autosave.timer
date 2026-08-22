@@ -1,0 +1,11 @@
+[Unit]
+Description=Check MiniOS SquashFS periodic save schedule
+
+[Timer]
+OnBootSec=30min
+OnUnitActiveSec=30min
+AccuracySec=1min
+Unit=minios-session-autosave.service
+
+[Install]
+WantedBy=timers.target

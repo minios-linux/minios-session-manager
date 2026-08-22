@@ -2,8 +2,8 @@ EXECUTABLES = bin/minios-session bin/minios-session-manager bin/minios-persisten
 LIBRARIES = lib/*.py
 APPLICATIONS = share/applications/minios-session-manager.desktop
 AUTOSTART = share/autostart/minios-persistence-alert.desktop
-SYSTEMDUNIT = share/systemd/minios-persistence-guard.service
-INITSCRIPT = share/init.d/minios-persistence-guard
+SYSTEMDUNITS = share/systemd/minios-persistence-guard.service share/systemd/minios-session-autosave.service share/systemd/minios-session-autosave.timer
+INITSCRIPTS = share/init.d/minios-persistence-guard share/init.d/minios-session-autosave
 POLICIES = share/polkit/dev.minios.session-manager.policy
 STYLES = share/styles/style.css
 COMPLETIONS = completion/minios-session
@@ -58,8 +58,8 @@ install: build
 	chmod +x $(DESTDIR)/$(LIBDIR)/minios_persistence_alert.py
 	cp $(APPLICATIONS) $(DESTDIR)/$(APPLICATIONSDIR)
 	install -Dm644 $(AUTOSTART) $(DESTDIR)/$(AUTOSTARTDIR)/minios-persistence-alert.desktop
-	install -Dm644 $(SYSTEMDUNIT) $(DESTDIR)/$(SYSTEMDUNITDIR)/minios-persistence-guard.service
-	install -Dm755 $(INITSCRIPT) $(DESTDIR)/$(INITSCRIPTDIR)/minios-persistence-guard
+	cp $(SYSTEMDUNITS) $(DESTDIR)/$(SYSTEMDUNITDIR)/
+	install -m755 $(INITSCRIPTS) $(DESTDIR)/$(INITSCRIPTDIR)/
 	cp $(POLICIES) $(DESTDIR)/$(POLKITACTIONSDIR)
 	cp $(STYLES) $(DESTDIR)/$(SHAREDIR)
 	cp $(COMPLETIONS) $(DESTDIR)/$(COMPLETIONDIR)/
@@ -82,7 +82,10 @@ uninstall:
 	# Remove service and autostart integration
 	rm -f $(DESTDIR)/$(AUTOSTARTDIR)/minios-persistence-alert.desktop
 	rm -f $(DESTDIR)/$(SYSTEMDUNITDIR)/minios-persistence-guard.service
+	rm -f $(DESTDIR)/$(SYSTEMDUNITDIR)/minios-session-autosave.service
+	rm -f $(DESTDIR)/$(SYSTEMDUNITDIR)/minios-session-autosave.timer
 	rm -f $(DESTDIR)/$(INITSCRIPTDIR)/minios-persistence-guard
+	rm -f $(DESTDIR)/$(INITSCRIPTDIR)/minios-session-autosave
 	
 	# Remove library directory
 	rm -rf $(DESTDIR)/$(LIBDIR)
