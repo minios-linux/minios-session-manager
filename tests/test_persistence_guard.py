@@ -166,6 +166,42 @@ class TestSampleIntegration:
         assert state["level"] in ("critical", "emergency")
         assert state["mode"] == "dynfilefs"
 
+    def test_no_runtime_authority_skips_space_monitoring(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(guard, "BOOT_STATE_FILE", str(tmp_path / "missing-boot-state"))
+        monkeypatch.setattr(guard, "BOOT_WARNINGS_FILE", str(tmp_path / "boot-warnings"))
+        sessions = tmp_path / "changes"
+        sessions.mkdir()
+
+        def unexpected_space_read(_path):
+            raise AssertionError("space must not be measured without runtime authority")
+
+        monkeypatch.setattr(guard, "read_space", unexpected_space_read)
+        g = guard.PersistenceGuard(sessions_dir=str(sessions))
+        state = g.sample(now=1000)
+
+        assert state["level"] == "ok"
+        assert state["degraded"] == 0
+        assert "free_outer_bytes" not in state
+        assert "free_inner_bytes" not in state
+
+    def test_active_writable_persistence_still_monitors_space(self, tmp_path, monkeypatch):
+        boot_state = tmp_path / "boot-state"
+        boot_state.write_text(
+            "boot_level=ok\nwritable=1\nmode=raw\nsession=1\n")
+        monkeypatch.setattr(guard, "BOOT_STATE_FILE", str(boot_state))
+        monkeypatch.setattr(guard, "BOOT_WARNINGS_FILE", str(tmp_path / "boot-warnings"))
+        sessions = tmp_path / "changes"
+        sessions.mkdir()
+        monkeypatch.setattr(
+            guard, "read_space", lambda _path: (0, 100 * guard.GiB, 1000))
+
+        g = guard.PersistenceGuard(sessions_dir=str(sessions))
+        g.backing_and_inner = lambda: (str(sessions), None)
+        state = g.sample(now=1000)
+
+        assert state["level"] == "emergency"
+        assert state["free_outer_bytes"] == 0
+
 
 def test_systemd_unit_creates_runtime_directory_before_sandboxing():
     unit = (Path(__file__).resolve().parent.parent /

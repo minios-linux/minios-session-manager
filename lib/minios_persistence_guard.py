@@ -299,7 +299,7 @@ class PersistenceGuard:
     def sample(self, now=None, boot_warnings=None):
         """Take one measurement and return the state dict."""
         now = now if now is not None else time.time()
-        backing, inner = self.backing_and_inner()
+        boot = read_boot_state(BOOT_STATE_FILE)
 
         state = {
             "level": "ok",
@@ -307,33 +307,46 @@ class PersistenceGuard:
             "updated": int(now),
         }
 
-        free_outer = total_outer = None
-        if backing and os.path.exists(backing):
-            try:
-                free_outer, total_outer, free_outer_inodes = read_space(backing)
-                state["free_outer_bytes"] = free_outer
-                state["free_outer_inodes"] = free_outer_inodes
-            except OSError:
-                pass
+        # The initramfs boot-state is the runtime authority. A changes directory
+        # can exist on an ISO/read-only medium even when persistence is not in
+        # use, so never infer active persistence from the path alone.
+        persistence_active = (
+            boot.get("boot_level") == "ok" and boot.get("writable") == "1")
 
-        if inner:
-            try:
-                free_inner, _total_inner, free_inner_inodes = read_space(inner)
-                state["free_inner_bytes"] = free_inner
-                state["free_inner_inodes"] = free_inner_inodes
-            except OSError:
-                pass
+        if persistence_active:
+            backing, inner = self.backing_and_inner()
+            free_outer = total_outer = None
+            if backing and os.path.exists(backing):
+                try:
+                    free_outer, total_outer, free_outer_inodes = read_space(backing)
+                    state["free_outer_bytes"] = free_outer
+                    state["free_outer_inodes"] = free_outer_inodes
+                except OSError:
+                    pass
 
-        eta = None
-        if free_outer is not None and total_outer:
-            self.history.append((now, free_outer))
-            self.history = [(t, f) for (t, f) in self.history if now - t <= HISTORY_SECONDS]
-            eta = estimate_eta_seconds(self.history)
-            if eta is not None:
-                state["eta_seconds"] = int(eta)
-            state["level"] = compute_level(free_outer, total_outer, eta)
+            if inner:
+                try:
+                    free_inner, _total_inner, free_inner_inodes = read_space(inner)
+                    state["free_inner_bytes"] = free_inner
+                    state["free_inner_inodes"] = free_inner_inodes
+                except OSError:
+                    pass
 
-        boot = read_boot_state(BOOT_STATE_FILE)
+            eta = None
+            if free_outer is not None and total_outer:
+                self.history.append((now, free_outer))
+                self.history = [
+                    (t, f) for (t, f) in self.history
+                    if now - t <= HISTORY_SECONDS]
+                eta = estimate_eta_seconds(self.history)
+                if eta is not None:
+                    state["eta_seconds"] = int(eta)
+                state["level"] = compute_level(free_outer, total_outer, eta)
+        else:
+            # Do not carry a consumption forecast across boots/modes where no
+            # writable persistence backend is authoritative.
+            self.history = []
+
         if boot.get("boot_level") == "failed":
             state["degraded"] = 1
             state["level"] = worse_level(state["level"], "critical")
