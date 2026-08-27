@@ -1,3 +1,10 @@
+minios-session-manager (1.2.3) unstable; urgency=medium
+
+  * Exclude VCS metadata and generated build/test artifacts
+  * Install systemd units in the canonical /usr/lib/systemd/system directory
+
+ -- crims0n <crims0n@minios.dev>  Thu, 27 Aug 2026 12:50:34 +0300
+
 minios-session-manager (1.2.2) unstable; urgency=medium
 
   * Only monitor persistence space when initramfs confirms an active writable

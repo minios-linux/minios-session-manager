@@ -2,10 +2,12 @@
 *.mo
 
 # Debian package build files
-debian/.debhelper
+debian/.debhelper/
 debian/debhelper-build-stamp
 debian/files
 debian/*.substvars
+debian/*.debhelper
+debian/*.log
 debian/minios-session-manager/
 debian/tmp/
 
@@ -13,3 +15,17 @@ debian/tmp/
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Test cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Debian package artifacts
+/*.deb
+/*.udeb
+/*.build
+/*.buildinfo
+/*.changes
+/*.dsc
+/*.tar.*
