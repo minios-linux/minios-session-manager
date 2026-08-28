@@ -136,6 +136,24 @@ class SessionManagerGUI:
         except Exception as e:
             return False, "", str(e)
 
+    @staticmethod
+    def _cli_error_text(error):
+        """Decode structured CLI errors before presenting them in the GUI."""
+        text = (error or '').strip()
+        if not text:
+            return 'Unknown error'
+        try:
+            payload = json.loads(text)
+        except (TypeError, ValueError):
+            return text
+        if not isinstance(payload, dict):
+            return text
+        message = payload.get('error') or payload.get('message')
+        details = payload.get('details')
+        if message and details:
+            return '{}\n\n{}'.format(message, details)
+        return str(message or details or text)
+
     def _run_cli_streaming_save(self, session_id, phase_callback):
         """Run Save Now and surface validated phase events while it is active."""
         try:
@@ -237,7 +255,7 @@ class SessionManagerGUI:
                     'success': False,
                     'found': False,
                     'writable': False,
-                    'error': error or 'Unknown error'
+                    'error': self._cli_error_text(error)
                 }
         except json.JSONDecodeError as e:
             return {
@@ -259,12 +277,15 @@ class SessionManagerGUI:
         if self.sessions_status.get('found', False) and self.sessions_writable:
             intent = 'success'
             status_text = _("Sessions directory is writable")
-        else:
+        elif self.sessions_status.get('found', False):
             intent = 'error'
-            status_text = (
-                _("Sessions directory is read-only")
-                if self.sessions_status.get('found', False)
-                else _("Sessions directory not found"))
+            status_text = _("Sessions directory is read-only")
+        else:
+            # A RAM-only boot without ``perch`` intentionally has no persistent
+            # changes directory. Keep the manager usable without presenting this
+            # expected state as an application failure.
+            intent = 'warning'
+            status_text = _("Sessions directory not found")
         banner = StatusBanner(status_text, intent=intent)
         banner.label.set_markup(
             '<b>{}</b>'.format(GLib.markup_escape_text(status_text)))
@@ -476,6 +497,14 @@ class SessionManagerGUI:
         """Refresh the session list from CLI"""
         self._refresh_generation += 1
         generation = self._refresh_generation
+        if not self.sessions_status.get('found', False):
+            # No persistence directory is expected for RAM-only boots without
+            # ``perch``. Render the normal empty state instead of invoking list,
+            # active, and running commands that necessarily fail.
+            self._process_session_data(
+                generation, True, '[]', '', None, None)
+            return
+
         def fetch_data():
             """Fetch data in background thread"""
             try:
@@ -527,7 +556,8 @@ class SessionManagerGUI:
             
             # Check for list errors
             if not list_success:
-                self._show_error(_("Failed to get session list: {}").format(list_error))
+                self._show_error(_("Failed to get session list: {}").format(
+                    self._cli_error_text(list_error)))
                 return
             
             # Parse JSON output

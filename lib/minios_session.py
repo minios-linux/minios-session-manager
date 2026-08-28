@@ -3912,17 +3912,21 @@ EXAMPLES:
     if not manager.sessions_dir:
         if args.command == 'autosave':
             sys.exit(0)
-        if args.json:
-            error_data = {
-                "success": False,
-                "error": _("Could not find sessions directory."),
-                "details": _("This tool must be run from within a MiniOS live system with persistent sessions enabled.")
-            }
-            print(json.dumps(error_data), file=sys.stderr)
-        else:
-            print(_("Error: Could not find sessions directory."), file=sys.stderr)
-            print(_("This tool must be run from within a MiniOS live system with persistent sessions enabled."), file=sys.stderr)
-        sys.exit(1)
+        # ``status`` must be able to report an unavailable persistence store.
+        # RAM-only boots intentionally have no changes directory when persistence
+        # was not requested, so absence is a valid status rather than a CLI error.
+        if args.command != 'status':
+            if args.json:
+                error_data = {
+                    "success": False,
+                    "error": _("Could not find sessions directory."),
+                    "details": _("This tool must be run from within a MiniOS live system with persistent sessions enabled.")
+                }
+                print(json.dumps(error_data), file=sys.stderr)
+            else:
+                print(_("Error: Could not find sessions directory."), file=sys.stderr)
+                print(_("This tool must be run from within a MiniOS live system with persistent sessions enabled."), file=sys.stderr)
+            sys.exit(1)
 
     # Handle commands
     if args.command == 'list':

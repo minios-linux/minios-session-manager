@@ -506,6 +506,51 @@ class TestAuditRegressions:
         assert 'text' not in kwargs
         process.communicate.assert_called_once_with(input='input')
 
+    def test_status_reports_missing_sessions_directory(self, tmp_path, capsys):
+        import minios_session
+
+        missing = str(tmp_path / 'missing-sessions')
+        argv = ['minios-session', '--json', '--sessions-dir', missing, 'status']
+        with patch('os.geteuid', return_value=0), patch.object(sys, 'argv', argv):
+            minios_session.main()
+
+        captured = capsys.readouterr()
+        status = json.loads(captured.out)
+        assert captured.err == ''
+        assert status['found'] is False
+        assert status['writable'] is False
+        assert status['sessions_dir'] is None
+
+    def test_gui_ram_only_refresh_does_not_query_missing_sessions(self):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        gui._refresh_generation = 0
+        gui.sessions_status = {'found': False, 'writable': False}
+        gui._run_cli_command = MagicMock()
+        gui._process_session_data = MagicMock()
+
+        gui.refresh_session_list()
+
+        gui._run_cli_command.assert_not_called()
+        gui._process_session_data.assert_called_once_with(
+            1, True, '[]', '', None, None)
+
+    def test_gui_decodes_structured_cli_errors(self):
+        from minios_session_manager import SessionManagerGUI
+
+        error = json.dumps({
+            'success': False,
+            'error': 'Не удалось найти каталог сессий.',
+            'details': 'Сохранение сессий не включено.',
+        })
+        message = SessionManagerGUI._cli_error_text(error)
+
+        assert message == (
+            'Не удалось найти каталог сессий.\n\n'
+            'Сохранение сессий не включено.')
+        assert '\\u' not in message
+
     def test_session_id_cannot_escape_custom_sessions_dir(self, temp_sessions_dir):
         from minios_session import SessionManager
 
