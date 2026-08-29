@@ -1129,8 +1129,13 @@ class TestSquashfsSave:
         sm._check_free_space = lambda *_args: (_ for _ in ()).throw(
             AssertionError('fixed-size admission must not run for squashfs'))
         sm._get_current_union_fs = lambda: 'overlayfs'
+        capture = self._capture()
 
-        with patch.object(sm, '_run_savechanges', side_effect=self._capture()):
+        def locked_capture(output_path, work_parent):
+            assert sm._lock_depth > 0
+            return capture(output_path, work_parent)
+
+        with patch.object(sm, '_run_savechanges', side_effect=locked_capture):
             success, message = sm.create_session('squashfs')
 
         assert success is True and 'squashfs' in message
@@ -1164,6 +1169,30 @@ class TestSquashfsSave:
         with open(os.path.join(temp_sessions_dir, 'session.json')) as metadata_file:
             session = json.load(metadata_file)['sessions']['1']
         assert session['policy'] == 'manual'
+
+    def test_create_preserves_session_after_uncertain_metadata_commit(self,
+                                                                      temp_sessions_dir):
+        from minios_session import MetadataCommitUncertain, SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        sm.check_sessions_directory_status = lambda: {'writable': True}
+        sm._validate_target_mode = lambda mode, size=None: (True, None)
+        sm._get_current_union_fs = lambda: 'overlayfs'
+
+        def uncertain_commit(metadata):
+            with open(os.path.join(temp_sessions_dir, 'session.json'), 'w') as metadata_file:
+                json.dump(metadata, metadata_file)
+            raise MetadataCommitUncertain('injected directory fsync failure')
+
+        sm._write_sessions_metadata = uncertain_commit
+        with patch.object(sm, '_run_savechanges', side_effect=self._capture()):
+            success, message = sm.create_session('squashfs')
+
+        assert success is False
+        assert 'preserved' in message
+        assert os.path.isfile(os.path.join(temp_sessions_dir, '1', 'changes.sb'))
+        with open(os.path.join(temp_sessions_dir, 'session.json')) as metadata_file:
+            assert '1' in json.load(metadata_file)['sessions']
 
     def test_create_squashfs_stores_periodic_save_interval(self, temp_sessions_dir):
         from minios_session import SessionManager
@@ -1268,7 +1297,7 @@ class TestSquashfsSave:
                 '{"type":"result","type":"result"}\n',
                 '{"type":"result","extra":NaN}\n'):
             process = MagicMock(returncode=0)
-            process.communicate.return_value = (valid_phases + malformed, '')
+            process.stdout = io.StringIO(valid_phases + malformed)
             with patch('subprocess.Popen', return_value=process), \
                  pytest.raises(ValueError):
                 sm._run_savechanges(output_path, session_path)
@@ -1335,7 +1364,7 @@ class TestSquashfsSave:
             stdout = ''.join(
                 json.dumps(event) + '\n' for event in phases + [result])
             process = MagicMock(returncode=0)
-            process.communicate.return_value = (stdout, '')
+            process.stdout = io.StringIO(stdout)
             with patch('subprocess.Popen', return_value=process), \
                  pytest.raises(ValueError):
                 sm._run_savechanges(output_path, session_path)
@@ -1619,11 +1648,11 @@ class TestSquashfsSaveDelegation:
     def test_save_delegates_progress_to_tools_backend(self, temp_sessions_dir):
         command = self._command(temp_sessions_dir)
         manager = self._manager(temp_sessions_dir, command)
-        output = ''.join([
-            '{"phase":"prepare","type":"phase"}\n',
-            '{"phase":"compress","type":"phase"}\n',
-            '{"capture":{"generation":8},"message":"Session 1 saved successfully","success":true}\n',
-        ])
+        output = ''.join(
+            json.dumps({'phase': phase, 'type': 'phase'}) + '\n'
+            for phase in manager.SAVECHANGES_PHASES)
+        output += ('{"capture":{"generation":8},"message":'
+                   '"Session 1 saved successfully","success":true}\n')
         process = MagicMock(returncode=0)
         process.stdout = io.StringIO(output)
         seen = []
@@ -1632,7 +1661,7 @@ class TestSquashfsSaveDelegation:
         assert success is True
         assert message == 'Session 1 saved successfully'
         assert capture == {'generation': 8}
-        assert seen == ['prepare', 'compress']
+        assert seen == list(manager.SAVECHANGES_PHASES)
         assert popen.call_args[0][0] == [command, '1', '--json', '--progress']
 
     def test_shutdown_finalize_is_forwarded_to_tools_backend(self, temp_sessions_dir):
@@ -1655,4 +1684,22 @@ class TestSquashfsSaveDelegation:
             success, message, capture = manager.save_session('1')
         assert success is False
         assert 'backend is unavailable' in message
+        assert capture is None
+
+    @pytest.mark.parametrize('result', [
+        '{"capture":{},"message":"saved","success":"false"}\n',
+        '{"capture":{},"message":"saved","message":"again","success":true}\n',
+        '{"capture":{},"message":"saved","success":NaN}\n',
+        '[]\n',
+    ])
+    def test_delegated_save_rejects_malformed_results(self, temp_sessions_dir, result):
+        command = self._command(temp_sessions_dir)
+        manager = self._manager(temp_sessions_dir, command)
+        process = MagicMock(returncode=0)
+        process.stdout = io.StringIO(result)
+
+        with patch('subprocess.Popen', return_value=process):
+            success, _message, capture = manager.save_session('1')
+
+        assert success is False
         assert capture is None

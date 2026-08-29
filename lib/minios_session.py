@@ -1715,8 +1715,12 @@ class SessionManager:
 
     def _stop_capture_process(self, process):
         """Terminate and reap the complete savechanges process group."""
+        process_id = process.pid
+        if type(process_id) is not int or process_id <= 1:
+            process.wait()
+            return
         try:
-            os.killpg(process.pid, signal.SIGTERM)
+            os.killpg(process_id, signal.SIGTERM)
         except ProcessLookupError:
             pass
         deadline = time.monotonic() + 12.0
@@ -1724,7 +1728,7 @@ class SessionManager:
         while time.monotonic() < deadline:
             process.poll()
             try:
-                os.killpg(process.pid, 0)
+                os.killpg(process_id, 0)
             except ProcessLookupError:
                 group_alive = False
             if process.poll() is not None and not group_alive:
@@ -1732,13 +1736,13 @@ class SessionManager:
             time.sleep(0.05)
         if group_alive:
             try:
-                os.killpg(process.pid, signal.SIGKILL)
+                os.killpg(process_id, signal.SIGKILL)
             except ProcessLookupError:
                 group_alive = False
         kill_deadline = time.monotonic() + 2.0
         while group_alive and time.monotonic() < kill_deadline:
             try:
-                os.killpg(process.pid, 0)
+                os.killpg(process_id, 0)
             except ProcessLookupError:
                 group_alive = False
                 break
@@ -2034,7 +2038,7 @@ class SessionManager:
             'LC_ALL': 'C.UTF-8',
             'LANG': 'C.UTF-8',
         }
-        final_result = None
+        events = []
         with tempfile.TemporaryFile() as error_file:
             process = subprocess.Popen(
                 argv, stdout=subprocess.PIPE, stderr=error_file,
@@ -2042,23 +2046,45 @@ class SessionManager:
             try:
                 for line in process.stdout:
                     if not line.strip():
-                        continue
-                    event = json.loads(line)
-                    if event.get('type') == 'phase':
-                        if progress_callback is not None:
-                            progress_callback(event.get('phase'))
-                    else:
-                        final_result = event
+                        raise ValueError("SquashFS save backend emitted an empty output line")
+                    event = json.loads(
+                        line, object_pairs_hook=self._strict_json_object,
+                        parse_constant=self._reject_json_constant)
+                    if not isinstance(event, dict):
+                        raise ValueError("SquashFS save backend emitted an invalid event")
+                    events.append(event)
+                    if event.get('type') == 'phase' and progress_callback is not None:
+                        progress_callback(event.get('phase'))
                 process.wait()
-            except BaseException:
+            except BaseException as error:
                 self._stop_capture_process(process)
+                if isinstance(error, (TypeError, ValueError)):
+                    return False, _("SquashFS save backend returned invalid machine output"), None
                 raise
             error_file.seek(0)
             stderr = error_file.read(65536).decode('utf-8', 'replace').strip()
 
-        if not isinstance(final_result, dict):
+        expected_phases = self.SAVECHANGES_PHASES if progress_callback is not None else ()
+        if len(events) != len(expected_phases) + 1:
             return False, stderr or _("SquashFS save backend returned no result"), None
-        success = bool(final_result.get('success')) and process.returncode == 0
+        phases = events[:-1]
+        if ([event.get('phase') for event in phases] != list(expected_phases) or
+                any(event.get('type') != 'phase' for event in phases)):
+            return False, _("SquashFS save backend returned an invalid phase sequence"), None
+        final_result = events[-1]
+        success_value = final_result.get('success')
+        message_value = final_result.get('message')
+        if type(success_value) is not bool or not isinstance(message_value, str):
+            return False, _("SquashFS save backend returned an invalid result"), None
+        allowed_fields = {'success', 'message', 'capture'} if success_value else {'success', 'message'}
+        if set(final_result) != allowed_fields:
+            return False, _("SquashFS save backend returned an invalid result"), None
+        capture_value = final_result.get('capture')
+        if success_value and not isinstance(capture_value, dict):
+            return False, _("SquashFS save backend returned an invalid result"), None
+        if success_value != (process.returncode == 0):
+            return False, stderr or _("SquashFS save backend returned an inconsistent result"), None
+        success = success_value
         message = final_result.get('message') or stderr or (
             _("Session {} saved successfully").format(session_id) if success else
             _("Failed to save session {} ").format(session_id).strip())
@@ -2067,6 +2093,17 @@ class SessionManager:
 
     def create_session(self, session_mode="native", size_mb=None, password=None,
                        policy=None, autosave=0):
+        """Create a session while serializing its tree and metadata publication."""
+        try:
+            with self._mutation_lock():
+                return self._create_session_locked(
+                    session_mode=session_mode, size_mb=size_mb, password=password,
+                    policy=policy, autosave=autosave)
+        except Exception as error:
+            return False, _("Error creating session: {}").format(str(error))
+
+    def _create_session_locked(self, session_mode="native", size_mb=None, password=None,
+                               policy=None, autosave=0):
         """Create a new session."""
         if not self.sessions_dir:
             return False, _("Sessions directory not found")
@@ -2268,6 +2305,10 @@ class SessionManager:
                     pass
                 return False, _("Failed to update session metadata")
                 
+        except MetadataCommitUncertain as e:
+            return False, _(
+                "Session metadata publication is uncertain; session data was preserved: {}"
+            ).format(str(e))
         except Exception as e:
             if session_path and os.path.exists(session_path):
                 shutil.rmtree(session_path, ignore_errors=True)

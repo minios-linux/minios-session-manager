@@ -3,8 +3,12 @@ minios-session-manager (1.2.4) unstable; urgency=medium
   * Handle RAM-only boots without persistence as an expected empty-
     session state, and decode structured CLI errors before displaying
     them in the GUI.
+  * Require aufs-ng-capable MiniOS Tools, serialize SquashFS creation, and
+    validate delegated save events strictly.
+  * Reject invalid process identifiers before signalling capture groups.
+  * Run the Python regression suite during package builds.
 
- -- crims0n <crims0n@minios.dev>  Fri, 28 Aug 2026 15:53:46 +0300
+ -- crims0n <crims0n@minios.dev>  Sun, 30 Aug 2026 00:18:37 +0300
 
 minios-session-manager (1.2.3) unstable; urgency=medium
 

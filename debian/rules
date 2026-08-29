@@ -6,3 +6,6 @@
 override_dh_installinit:
 	dh_installinit --name=minios-persistence-guard --only-scripts
 	dh_installinit --name=minios-session-autosave --only-scripts
+
+override_dh_auto_test:
+	python3 -m pytest -q
