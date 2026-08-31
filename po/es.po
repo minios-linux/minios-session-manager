@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: minios-session-manager 1.1.0\n"
 "Report-Msgid-Bugs-To: support@minios.dev\n"
-"POT-Creation-Date: 2026-08-30 23:36+0300\n"
-"PO-Revision-Date: 2026-08-30 20:01+0000\n"
+"POT-Creation-Date: 2026-09-01 01:24+0300\n"
+"PO-Revision-Date: 2026-08-31 21:58+0000\n"
 "Last-Translator: crims0n <crims0n@minios.dev>\n"
 "Language-Team: none\n"
 "Language: es\n"
@@ -932,7 +932,7 @@ msgstr "Esta herramienta requiere privilegios de root. Por favor, ejecute con su
 
 #: lib/minios_session.py:3711
 msgid "MiniOS Session Manager - Command line tool for managing persistent sessions"
-msgstr "MiniOS Session Manager - Herramienta de línea de comandos para gestionar sesiones persistentes"
+msgstr "Gestor de sesiones de MiniOS - Herramienta de línea de comandos para gestionar sesiones persistentes"
 
 #: lib/minios_session.py:3713
 msgid ""

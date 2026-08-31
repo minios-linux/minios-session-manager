@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: minios-session-manager 1.1.0\n"
 "Report-Msgid-Bugs-To: support@minios.dev\n"
-"POT-Creation-Date: 2026-08-30 23:36+0300\n"
-"PO-Revision-Date: 2026-08-30 20:01+0000\n"
+"POT-Creation-Date: 2026-09-01 01:24+0300\n"
+"PO-Revision-Date: 2026-08-31 22:24+0000\n"
 "Last-Translator: crims0n <crims0n@minios.dev>\n"
 "Language-Team: none\n"
 "Language: it\n"
@@ -134,7 +134,7 @@ msgstr "Questi avvisi sono comparsi durante l'avvio:"
 #: lib/minios_session_manager.py:373
 #: share/applications/minios-session-manager.desktop:4
 msgid "MiniOS Session Manager"
-msgstr "Gestore di sessioni MiniOS"
+msgstr "Gestore sessioni MiniOS"
 
 #: lib/minios_persistence_alert.py:348
 msgid "MiniOS SquashFS Session"
@@ -932,7 +932,7 @@ msgstr "Questo strumento richiede privilegi di root. Esegui con sudo o tramite p
 
 #: lib/minios_session.py:3711
 msgid "MiniOS Session Manager - Command line tool for managing persistent sessions"
-msgstr "MiniOS Session Manager - Strumento da riga di comando per la gestione delle sessioni persistenti"
+msgstr "Gestore sessioni MiniOS - Strumento da riga di comando per la gestione delle sessioni persistenti"
 
 #: lib/minios_session.py:3713
 msgid ""

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: minios-session-manager 1.1.0\n"
 "Report-Msgid-Bugs-To: support@minios.dev\n"
-"POT-Creation-Date: 2026-08-30 23:36+0300\n"
-"PO-Revision-Date: 2026-08-30 20:01+0000\n"
+"POT-Creation-Date: 2026-09-01 01:24+0300\n"
+"PO-Revision-Date: 2026-08-31 22:24+0000\n"
 "Last-Translator: crims0n <crims0n@minios.dev>\n"
 "Language-Team: none\n"
 "Language: id\n"
@@ -133,7 +133,7 @@ msgstr "Peringatan berikut muncul saat startup:"
 #: lib/minios_session_manager.py:373
 #: share/applications/minios-session-manager.desktop:4
 msgid "MiniOS Session Manager"
-msgstr "Pengelola Sesi MiniOS"
+msgstr "Manajer Sesi MiniOS"
 
 #: lib/minios_persistence_alert.py:348
 msgid "MiniOS SquashFS Session"
@@ -931,7 +931,7 @@ msgstr "Alat ini memerlukan hak istimewa root. Harap jalankan dengan sudo atau m
 
 #: lib/minios_session.py:3711
 msgid "MiniOS Session Manager - Command line tool for managing persistent sessions"
-msgstr "MiniOS Session Manager - Alat baris perintah untuk mengelola sesi persisten"
+msgstr "Manajer Sesi MiniOS - Alat baris perintah untuk mengelola sesi persisten"
 
 #: lib/minios_session.py:3713
 msgid ""
