@@ -45,7 +45,7 @@ def _send_desktop_notification(summary, body):
         connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
         parameters = GLib.Variant(
             '(susssasa{sv}i)',
-            ('MiniOS Session Manager', 0, 'document-save', summary, body, [], {}, 4000))
+            (_('MiniOS Session Manager'), 0, 'document-save', summary, body, [], {}, 4000))
         connection.call_sync(
             'org.freedesktop.Notifications', '/org/freedesktop/Notifications',
             'org.freedesktop.Notifications', 'Notify', parameters,

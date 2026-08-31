@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: minios-session-manager 1.1.0\n"
 "Report-Msgid-Bugs-To: support@minios.dev\n"
-"POT-Creation-Date: 2026-08-05 01:37+0300\n"
-"PO-Revision-Date: 2026-08-04 22:37+0000\n"
+"POT-Creation-Date: 2026-08-30 23:36+0300\n"
+"PO-Revision-Date: 2026-08-30 20:01+0000\n"
 "Last-Translator: crims0n <crims0n@minios.dev>\n"
 "Language-Team: none\n"
 "Language: it\n"
@@ -17,549 +17,924 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: lib/minios_persistence_alert.py:32
+#: lib/minios_persistence_alert.py:45
 msgid "Persistence"
 msgstr "Persistenza"
 
-#: lib/minios_persistence_alert.py:33
+#: lib/minios_persistence_alert.py:46
 msgid "Storage mode"
 msgstr "Modalità di archiviazione"
 
-#: lib/minios_persistence_alert.py:34
+#: lib/minios_persistence_alert.py:47
 msgid "Disk space"
 msgstr "Spazio su disco"
 
-#: lib/minios_persistence_alert.py:35
+#: lib/minios_persistence_alert.py:48
 msgid "Filesystem check"
 msgstr "Controllo filesystem"
 
-#: lib/minios_persistence_alert.py:36
+#: lib/minios_persistence_alert.py:49
 msgid "Other"
 msgstr "Altro"
 
-#: lib/minios_persistence_alert.py:134
+#: lib/minios_persistence_alert.py:172
 msgid "Persistence is out of space"
 msgstr "Spazio esaurito sulla persistenza"
 
-#: lib/minios_persistence_alert.py:135
+#: lib/minios_persistence_alert.py:173
 msgid "The persistence device is full. New changes may not be saved. Free up space or save your work and restart."
 msgstr "Il dispositivo di persistenza è pieno. Le nuove modifiche potrebbero non essere salvate. Libera spazio oppure salva il tuo lavoro e riavvia."
 
-#: lib/minios_persistence_alert.py:139
+#: lib/minios_persistence_alert.py:177
 msgid "Persistence device almost full"
 msgstr "Dispositivo di persistenza quasi pieno"
 
-#: lib/minios_persistence_alert.py:140
+#: lib/minios_persistence_alert.py:178
 msgid "Very little space remains for saved changes. Free up space or remove old sessions soon."
 msgstr "Rimane pochissimo spazio per salvare le modifiche. Libera spazio o elimina presto le sessioni vecchie."
 
-#: lib/minios_persistence_alert.py:144 lib/minios_session_manager.py:254
+#: lib/minios_persistence_alert.py:182 lib/minios_session_manager.py:328
 msgid "Low space on persistence device"
 msgstr "Spazio insufficiente sul dispositivo di persistenza"
 
-#: lib/minios_persistence_alert.py:145
+#: lib/minios_persistence_alert.py:183
 msgid "Space for saved changes is running low."
 msgstr "Lo spazio per salvare le modifiche sta per esaurirsi."
 
-#: lib/minios_persistence_alert.py:177
-msgid "Open Session Manager"
-msgstr "Apri Gestore Sessioni"
+#: lib/minios_persistence_alert.py:223 lib/minios_session_manager.py:60
+msgid "Preparing session..."
+msgstr "Preparazione della sessione..."
 
-#: lib/minios_persistence_alert.py:178
+#: lib/minios_persistence_alert.py:224 lib/minios_session_manager.py:61
+msgid "Scanning session changes..."
+msgstr "Analisi delle modifiche della sessione..."
+
+#: lib/minios_persistence_alert.py:225 lib/minios_session_manager.py:62
+msgid "Collecting session changes..."
+msgstr "Raccolta delle modifiche della sessione..."
+
+#: lib/minios_persistence_alert.py:226 lib/minios_session_manager.py:63
+msgid "Compressing session..."
+msgstr "Compressione della sessione..."
+
+#: lib/minios_persistence_alert.py:227 lib/minios_session_manager.py:64
+msgid "Verifying session..."
+msgstr "Verifica della sessione..."
+
+#: lib/minios_persistence_alert.py:228 lib/minios_persistence_alert.py:229
+#: lib/minios_session_manager.py:65 lib/minios_session_manager.py:66
+msgid "Finishing session save..."
+msgstr "Completamento salvataggio della sessione..."
+
+#: lib/minios_persistence_alert.py:230 lib/minios_session_manager.py:67
+msgid "Saving session..."
+msgstr "Salvataggio della sessione..."
+
+#: lib/minios_persistence_alert.py:245
+msgid "Automatic save at shutdown"
+msgstr "Salvataggio automatico allo spegnimento"
+
+#: lib/minios_persistence_alert.py:246
+msgid "Manual saves only"
+msgstr "Solo salvataggi manuali"
+
+#: lib/minios_persistence_alert.py:247
+msgid "SquashFS session #{} · {}"
+msgstr "Sessione SquashFS #{} · {}"
+
+#: lib/minios_persistence_alert.py:250
+msgid " · Last saved {}"
+msgstr " · Ultimo salvataggio {}"
+
+#: lib/minios_persistence_alert.py:267
+msgid "Session saved successfully"
+msgstr "Sessione salvata con successo"
+
+#: lib/minios_persistence_alert.py:268
+msgid "The session could not be saved"
+msgstr "Impossibile salvare la sessione"
+
+#: lib/minios_persistence_alert.py:299
 msgid "Dismiss"
 msgstr "Ignora"
 
-#: lib/minios_persistence_alert.py:190
+#: lib/minios_persistence_alert.py:300 lib/minios_persistence_alert.py:378
+msgid "Open Session Manager"
+msgstr "Apri Gestore Sessioni"
+
+#: lib/minios_persistence_alert.py:314
 msgid "Some startup warnings need your attention"
 msgstr "Alcuni avvisi di avvio richiedono la tua attenzione"
 
-#: lib/minios_persistence_alert.py:191
+#: lib/minios_persistence_alert.py:315
 msgid "These warnings appeared during startup:"
 msgstr "Questi avvisi sono comparsi durante l'avvio:"
 
-#: lib/minios_session.py:138
+#: lib/minios_persistence_alert.py:325 lib/minios_session_manager.py:48
+#: lib/minios_session_manager.py:373
+#: share/applications/minios-session-manager.desktop:4
+msgid "MiniOS Session Manager"
+msgstr "Gestore di sessioni MiniOS"
+
+#: lib/minios_persistence_alert.py:348
+msgid "MiniOS SquashFS Session"
+msgstr "Sessione SquashFS di MiniOS"
+
+#: lib/minios_persistence_alert.py:352 lib/minios_session_manager.py:463
+msgid "Save Now"
+msgstr "Salva ora"
+
+#: lib/minios_persistence_alert.py:356 lib/minios_session.py:3858
+msgid "Save automatically at shutdown"
+msgstr "Salva automaticamente allo spegnimento"
+
+#: lib/minios_persistence_alert.py:359
+msgid "Periodic save"
+msgstr "Salvataggio periodico"
+
+#: lib/minios_persistence_alert.py:364 lib/minios_session_manager.py:1103
+#: lib/minios_session_manager.py:1585
+msgid "Off"
+msgstr "Disattivato"
+
+#: lib/minios_persistence_alert.py:364 lib/minios_session_manager.py:1103
+#: lib/minios_session_manager.py:1585
+msgid "Every 30 minutes"
+msgstr "Ogni 30 minuti"
+
+#: lib/minios_persistence_alert.py:365 lib/minios_session_manager.py:1104
+#: lib/minios_session_manager.py:1586
+msgid "Every 1 hour"
+msgstr "Ogni 1 ora"
+
+#: lib/minios_persistence_alert.py:365 lib/minios_session_manager.py:1104
+#: lib/minios_session_manager.py:1586
+msgid "Every 2 hours"
+msgstr "Ogni 2 ore"
+
+#: lib/minios_persistence_alert.py:366 lib/minios_session_manager.py:1105
+#: lib/minios_session_manager.py:1587
+msgid "Every 4 hours"
+msgstr "Ogni 4 ore"
+
+#: lib/minios_persistence_alert.py:366 lib/minios_session_manager.py:1105
+#: lib/minios_session_manager.py:1587
+msgid "Every 8 hours"
+msgstr "Ogni 8 ore"
+
+#: lib/minios_persistence_alert.py:410 lib/minios_session_manager.py:1250
+msgid "Saving Session"
+msgstr "Salvataggio della sessione"
+
+#: lib/minios_persistence_alert.py:462 lib/minios_session_manager.py:1271
+msgid "Session saved"
+msgstr "Sessione salvata"
+
+#: lib/minios_persistence_alert.py:463 lib/minios_session_manager.py:1272
+msgid "SquashFS session #{} was saved successfully."
+msgstr "La sessione SquashFS #{} è stata salvata con successo."
+
+#: lib/minios_persistence_alert.py:465 lib/minios_session_manager.py:1274
+msgid "Failed to save session"
+msgstr "Salvataggio della sessione non riuscito"
+
+#: lib/minios_persistence_alert.py:522 lib/minios_session_manager.py:1632
+msgid "Failed to update save settings"
+msgstr "Impossibile aggiornare le impostazioni di salvataggio"
+
+#: lib/minios_persistence_alert.py:565
+msgid "Enable periodic session saving?"
+msgstr "Abilitare il salvataggio periodico della sessione?"
+
+#: lib/minios_persistence_alert.py:567
+msgid "Periodic saving increases CPU usage and writes to storage. With the current SquashFS mode each save rebuilds the snapshot. An interval of 1 hour or longer is recommended."
+msgstr "Il salvataggio periodico aumenta l'utilizzo della CPU e le scritture su disco. Con l'attuale modalità SquashFS, ogni salvataggio ricostruisce lo snapshot. Si consiglia un intervallo di almeno 1 ora."
+
+#: lib/minios_persistence_alert.py:570
+msgid "Cancel"
+msgstr "Annulla"
+
+#: lib/minios_persistence_alert.py:571
+msgid "Enable Periodic Save"
+msgstr "Abilita salvataggio periodico"
+
+#: lib/minios_persistence_alert.py:630
+msgid "Your session is stored as a compressed snapshot. Use the save icon at any time. MiniOS will also save it automatically when shutting down."
+msgstr "La tua sessione viene archiviata come snapshot compresso. Puoi utilizzare l'icona di salvataggio in qualsiasi momento. MiniOS la salverà automaticamente anche allo spegnimento."
+
+#: lib/minios_persistence_alert.py:634
+msgid "Your session is stored as a compressed snapshot. Use the save icon at any time. Automatic saving can be configured from the tray menu."
+msgstr "La tua sessione viene archiviata come snapshot compresso. Puoi utilizzare l'icona di salvataggio in qualsiasi momento. Il salvataggio automatico può essere configurato dal menu della tray."
+
+#: lib/minios_persistence_alert.py:636
+msgid "SquashFS session is active"
+msgstr "Sessione SquashFS attiva"
+
+#: lib/minios_session.py:173
 msgid "Invalid session ID"
 msgstr "ID sessione non valido"
 
-#: lib/minios_session.py:145 lib/minios_session.py:338
-#: lib/minios_session.py:627 lib/minios_session.py:1330
-#: lib/minios_session.py:1357 lib/minios_session.py:1511
-#: lib/minios_session.py:1604 lib/minios_session_manager.py:206
+#: lib/minios_session.py:180 lib/minios_session.py:382
+#: lib/minios_session.py:758 lib/minios_session.py:1520
+#: lib/minios_session.py:2109 lib/minios_session.py:2320
+#: lib/minios_session.py:2423 lib/minios_session_manager.py:288
 msgid "Sessions directory not found"
 msgstr "Directory delle sessioni non trovata"
 
-#: lib/minios_session.py:149
+#: lib/minios_session.py:184
 msgid "Invalid session path"
 msgstr "Percorso sessione non valido"
 
-#: lib/minios_session.py:151
+#: lib/minios_session.py:186 lib/minios_session.py:1533
+#: lib/minios_session.py:1569
 msgid "Session {} does not exist"
 msgstr "La sessione {} non esiste"
 
-#: lib/minios_session.py:277
+#: lib/minios_session.py:323
 msgid "Insufficient disk space: {} MB required, {} MB available"
 msgstr "Spazio su disco insufficiente: {} MB richiesti, {} MB disponibili"
 
-#: lib/minios_session.py:283
+#: lib/minios_session.py:329
 msgid "Unable to check free disk space: {}"
 msgstr "Impossibile verificare lo spazio libero su disco: {}"
 
-#: lib/minios_session.py:348
+#: lib/minios_session.py:392
 msgid "Sessions directory does not exist"
 msgstr "La directory delle sessioni non esiste"
 
-#: lib/minios_session.py:365
+#: lib/minios_session.py:409
 msgid "Sessions directory is on a read-only filesystem"
 msgstr "La directory delle sessioni si trova su un filesystem di sola lettura"
 
-#: lib/minios_session.py:375
+#: lib/minios_session.py:419
 msgid "Permission denied: {}"
 msgstr "Permesso negato: {}"
 
-#: lib/minios_session.py:378
+#: lib/minios_session.py:422
 msgid "Error checking directory: {}"
 msgstr "Errore durante il controllo della directory: {}"
 
-#: lib/minios_session.py:619
+#: lib/minios_session.py:750
 msgid "LUKS mode requires cryptsetup and util-linux."
 msgstr "La modalità LUKS richiede cryptsetup e util-linux."
 
-#: lib/minios_session.py:622
+#: lib/minios_session.py:753
 msgid "This MiniOS initrd does not support perchmode=luks. Boot an image with the LUKS persistence hook before creating or activating LUKS sessions."
 msgstr "Questa initrd MiniOS non supporta perchmode=luks. Avvia un'immagine con il supporto alla persistenza LUKS prima di creare o attivare sessioni LUKS."
 
-#: lib/minios_session.py:641 lib/minios_session.py:718
+#: lib/minios_session.py:772 lib/minios_session.py:851
 msgid "Failed to determine filesystem information"
 msgstr "Impossibile determinare le informazioni sul filesystem"
 
-#: lib/minios_session.py:656
+#: lib/minios_session.py:787
 msgid "Error detecting filesystem: {}"
 msgstr "Errore durante il rilevamento del filesystem: {}"
 
-#: lib/minios_session.py:715
+#: lib/minios_session.py:848
 msgid "Invalid session mode"
 msgstr "Modalità sessione non valida"
 
-#: lib/minios_session.py:720 lib/minios_session_manager.py:204
+#: lib/minios_session.py:853 lib/minios_session_manager.py:282
 msgid "Sessions directory is read-only"
 msgstr "La directory delle sessioni è di sola lettura"
 
-#: lib/minios_session.py:722
+#: lib/minios_session.py:855
 msgid "Session mode '{}' is not compatible with {} filesystem"
 msgstr "La modalità sessione '{}' non è compatibile con il filesystem {}"
 
-#: lib/minios_session.py:724 lib/minios_session.py:1611
+#: lib/minios_session.py:857 lib/minios_session.py:2430
 msgid "Session size must be greater than zero"
 msgstr "La dimensione della sessione deve essere maggiore di zero"
 
-#: lib/minios_session.py:726 lib/minios_session.py:1376
+#: lib/minios_session.py:859
+msgid "SquashFS sessions do not use a fixed container size"
+msgstr "Le sessioni SquashFS non utilizzano una dimensione fissa del contenitore"
+
+#: lib/minios_session.py:861 lib/minios_session.py:2139
 msgid "DynFileFS is not available on this system. Please install dynfilefs package."
 msgstr "DynFileFS non è disponibile su questo sistema. Si prega di installare il pacchetto dynfilefs."
 
-#: lib/minios_session.py:733
+#: lib/minios_session.py:868
 msgid "Container size {}MB exceeds FAT32 file size limit ({}MB)."
 msgstr "La dimensione del container {}MB supera il limite di dimensione file FAT32 ({}MB)."
 
-#: lib/minios_session.py:735
+#: lib/minios_session.py:870
 msgid "Container size exceeds the 1TB limit."
 msgstr "La dimensione del container supera il limite di 1TB."
 
-#: lib/minios_session.py:752
+#: lib/minios_session.py:887
 msgid "A LUKS passphrase is required."
 msgstr "È richiesta una passphrase LUKS."
 
-#: lib/minios_session.py:961
+#: lib/minios_session.py:1096
 msgid "DynFileFS container not found"
 msgstr "File changes.dat di DynFileFS non trovato"
 
-#: lib/minios_session.py:972
+#: lib/minios_session.py:1107
 msgid "Failed to mount dynfilefs (timeout)"
 msgstr "Impossibile montare dynfilefs (timeout)"
 
-#: lib/minios_session.py:988
+#: lib/minios_session.py:1123
 msgid "Raw image not found"
 msgstr "File immagine raw non trovato"
 
-#: lib/minios_session.py:1002 lib/minios_session.py:1771
+#: lib/minios_session.py:1137 lib/minios_session.py:2590
 msgid "LUKS container not found"
 msgstr "Container LUKS non trovato"
 
-#: lib/minios_session.py:1008 lib/minios_session.py:2065
+#: lib/minios_session.py:1143 lib/minios_session.py:2884
 msgid "Unknown session mode: {}"
 msgstr "Modalità sessione sconosciuta: {}"
 
-#: lib/minios_session.py:1055
+#: lib/minios_session.py:1190
 msgid "Failed to create dynfilefs (timeout)"
 msgstr "Impossibile creare dynfilefs (timeout)"
 
-#: lib/minios_session.py:1133
+#: lib/minios_session.py:1268
 msgid "Failed to create dynfilefs virtual file (timeout)"
 msgstr "Impossibile creare il file virtuale dynfilefs (timeout)"
 
-#: lib/minios_session.py:1138
+#: lib/minios_session.py:1273
 msgid "Failed to format dynfilefs virtual file: {}"
 msgstr "Impossibile formattare il file virtuale dynfilefs: {}"
 
-#: lib/minios_session.py:1140
+#: lib/minios_session.py:1275
 msgid "DynFileFS session created successfully"
 msgstr "Sessione DynFileFS creata con successo"
 
-#: lib/minios_session.py:1142
+#: lib/minios_session.py:1277
 msgid "Error creating dynfilefs session: {}"
 msgstr "Errore durante la creazione della sessione dynfilefs: {}"
 
-#: lib/minios_session.py:1346
+#: lib/minios_session.py:1482
+msgid "SquashFS session has an invalid save policy"
+msgstr "La sessione SquashFS ha una policy di salvataggio non valida"
+
+#: lib/minios_session.py:1484
+msgid "SquashFS session union filesystem does not match this system"
+msgstr "Il filesystem union della sessione SquashFS non corrisponde a questo sistema"
+
+#: lib/minios_session.py:1487
+msgid "SquashFS session metadata has an invalid digest"
+msgstr "I metadati della sessione SquashFS hanno un digest non valido"
+
+#: lib/minios_session.py:1493 lib/minios_session.py:1495
+msgid "SquashFS session metadata is incomplete"
+msgstr "I metadati della sessione SquashFS sono incompleti"
+
+#: lib/minios_session.py:1502 lib/minios_session.py:1510
+msgid "SquashFS session artifact does not match its metadata"
+msgstr "L'artifact della sessione SquashFS non corrisponde ai suoi metadati"
+
+#: lib/minios_session.py:1505
+msgid "SquashFS session artifact is invalid"
+msgstr "L'artifact della sessione SquashFS non è valido"
+
+#: lib/minios_session.py:1514
+msgid "SquashFS session artifact is unavailable: {}"
+msgstr "L'artifact della sessione SquashFS non è disponibile: {}"
+
+#: lib/minios_session.py:1544
 msgid "Session {} activated (was session {})"
 msgstr "Sessione {} attivata (era sessione {})"
 
-#: lib/minios_session.py:1348
+#: lib/minios_session.py:1546
 msgid "Session {} activated"
 msgstr "Sessione {} attivata"
 
-#: lib/minios_session.py:1350 lib/minios_session.py:1503
-#: lib/minios_session.py:1706 lib/minios_session.py:1759
-#: lib/minios_session.py:1821 lib/minios_session.py:2237
-#: lib/minios_session.py:2453 lib/minios_session.py:2664
+#: lib/minios_session.py:1548 lib/minios_session.py:1697
+#: lib/minios_session.py:2306 lib/minios_session.py:2525
+#: lib/minios_session.py:2578 lib/minios_session.py:2640
+#: lib/minios_session.py:3056 lib/minios_session.py:3274
+#: lib/minios_session.py:3485
 msgid "Failed to update session metadata"
 msgstr "Impossibile aggiornare i metadati della sessione"
 
-#: lib/minios_session.py:1352
+#: lib/minios_session.py:1550
 msgid "Error activating session: {}"
 msgstr "Errore durante l'attivazione della sessione: {}"
 
-#: lib/minios_session.py:1362
-msgid "Invalid session mode. Must be one of: {}"
-msgstr "Modalità sessione non valida. Deve essere una tra: {}"
+#: lib/minios_session.py:1562 lib/minios_session.py:1564
+#: lib/minios_session.py:1598 lib/minios_session.py:1602
+#: lib/minios_session.py:2121 lib/minios_session.py:2123
+msgid "Invalid SquashFS automatic save interval"
+msgstr "Intervallo di salvataggio automatico SquashFS non valido"
 
-#: lib/minios_session.py:1367
-msgid "Sessions directory is not writable"
-msgstr "La directory delle sessioni non è scrivibile"
+#: lib/minios_session.py:1571
+msgid "Session {} is not a SquashFS session"
+msgstr "La sessione {} non è una sessione SquashFS"
 
-#: lib/minios_session.py:1431
-msgid "Failed to format raw image file: {}"
-msgstr "Impossibile formattare il file immagine raw: {}"
+#: lib/minios_session.py:1581
+msgid "Failed to update session save settings"
+msgstr "Impossibile aggiornare le impostazioni di salvataggio della sessione"
 
-#: lib/minios_session.py:1435
-msgid "Failed to create raw image file: {}"
-msgstr "Impossibile creare il file immagine raw: {}"
+#: lib/minios_session.py:1586
+msgid "Session save settings updated"
+msgstr "Impostazioni di salvataggio della sessione aggiornate"
 
-#: lib/minios_session.py:1485 lib/minios_session.py:1487
-msgid "Session {} created successfully (mode: {}, size: {}MB)"
-msgstr "Sessione {} creata con successo (modalità: {}, dimensione: {}MB)"
+#: lib/minios_session.py:1594
+msgid "No running SquashFS session requires periodic saving"
+msgstr "Nessuna sessione SquashFS in esecuzione richiede il salvataggio periodico"
 
-#: lib/minios_session.py:1489
-msgid "Session {} created successfully (mode: {})"
-msgstr "Sessione {} creata con successo (modalità: {})"
+#: lib/minios_session.py:1600
+msgid "Periodic session saving is disabled"
+msgstr "Il salvataggio periodico della sessione è disabilitato"
 
-#: lib/minios_session.py:1506
+#: lib/minios_session.py:1621
+msgid "Periodic session save is not due yet"
+msgstr "Non è ancora il momento di eseguire il salvataggio periodico della sessione"
+
+#: lib/minios_session.py:1632 lib/minios_session.py:1908
+msgid "Persistence runtime state is not trusted"
+msgstr "Lo stato runtime della persistenza non è considerato affidabile"
+
+#: lib/minios_session.py:1640
+msgid "Persistence runtime session changed"
+msgstr "La sessione runtime della persistenza è cambiata"
+
+#: lib/minios_session.py:1645 lib/minios_session.py:1914
+#: lib/minios_session.py:1920
+msgid "Persistence runtime state is malformed"
+msgstr "Lo stato runtime della persistenza è malformato"
+
+#: lib/minios_session.py:1672
+msgid "The running and target sessions are the same"
+msgstr "La sessione in esecuzione e quella di destinazione sono le stesse"
+
+#: lib/minios_session.py:1676
+msgid "The active SquashFS session is not available for handoff"
+msgstr "La sessione SquashFS attiva non è disponibile per il passaggio"
+
+#: lib/minios_session.py:1681
+msgid "SquashFS handoff requires running and active SquashFS sessions"
+msgstr "Il passaggio SquashFS richiede sessioni SquashFS attive e in esecuzione"
+
+#: lib/minios_session.py:1684
+msgid "The active SquashFS session was not captured during this boot"
+msgstr "La sessione SquashFS attiva non è stata acquisita durante questo avvio"
+
+#: lib/minios_session.py:1704
+msgid "Running session moved to session {}"
+msgstr "La sessione in esecuzione è stata spostata nella sessione {}"
+
+#: lib/minios_session.py:1771
+msgid "Trusted savechanges command is unavailable: {}"
+msgstr "Il comando trusted savechanges non è disponibile: {}"
+
+#: lib/minios_session.py:1776
+msgid "Trusted savechanges command is unavailable"
+msgstr "Il comando trusted savechanges non è disponibile"
+
+#: lib/minios_session.py:1809
+msgid "Session save was cancelled"
+msgstr "Il salvataggio della sessione è stato annullato"
+
+#: lib/minios_session.py:1813
+msgid "savechanges failed with status {}"
+msgstr "savechanges non riuscito con stato {}"
+
+#: lib/minios_session.py:1902 lib/minios_session.py:2014
+msgid "SquashFS saving is unavailable for a custom sessions directory"
+msgstr "Il salvataggio SquashFS non è disponibile per una directory sessioni personalizzata"
+
+#: lib/minios_session.py:1930
+msgid "The requested SquashFS session is not active in this boot"
+msgstr "La sessione SquashFS richiesta non è attiva in questo avvio"
+
+#: lib/minios_session.py:1943
+msgid "Selected persistence storage is ambiguous"
+msgstr "L'unità di persistenza selezionata è ambigua"
+
+#: lib/minios_session.py:1946
+msgid "Selected persistence storage changed after activation"
+msgstr "L'unità di persistenza selezionata è cambiata dopo l'attivazione"
+
+#: lib/minios_session.py:1951
+msgid "Selected persistence storage is not durably writable"
+msgstr "L'unità di persistenza selezionata non è scrivibile in modo affidabile"
+
+#: lib/minios_session.py:1954
+msgid "Selected persistence storage cannot preserve exact capture metadata"
+msgstr "L'unità di persistenza selezionata non può conservare esattamente i metadati di acquisizione"
+
+#: lib/minios_session.py:1957
+msgid "Persistence runtime state is unavailable: {}"
+msgstr "Lo stato runtime della persistenza non è disponibile: {}"
+
+#: lib/minios_session.py:1984
+msgid "Captured SquashFS identity or size changed"
+msgstr "Identità o dimensione di SquashFS acquisita è cambiata"
+
+#: lib/minios_session.py:1989
+msgid "Captured file is not a SquashFS image"
+msgstr "Il file acquisito non è un'immagine SquashFS"
+
+#: lib/minios_session.py:1994
+msgid "Captured SquashFS digest does not match its result"
+msgstr "Il digest SquashFS acquisito non corrisponde al risultato"
+
+#: lib/minios_session.py:2024
+msgid "SquashFS save backend is unavailable: {}"
+msgstr "Backend di salvataggio SquashFS non disponibile: {}"
+
+#: lib/minios_session.py:2029
+msgid "SquashFS save backend is unavailable"
+msgstr "Backend di salvataggio SquashFS non disponibile"
+
+#: lib/minios_session.py:2062
+msgid "SquashFS save backend returned invalid machine output"
+msgstr "Il backend di salvataggio SquashFS ha restituito un output macchina non valido"
+
+#: lib/minios_session.py:2069
+msgid "SquashFS save backend returned no result"
+msgstr "Il backend di salvataggio SquashFS non ha restituito alcun risultato"
+
+#: lib/minios_session.py:2073
+msgid "SquashFS save backend returned an invalid phase sequence"
+msgstr "Il backend di salvataggio SquashFS ha restituito una sequenza di fasi non valida"
+
+#: lib/minios_session.py:2078 lib/minios_session.py:2081
+#: lib/minios_session.py:2084
+msgid "SquashFS save backend returned an invalid result"
+msgstr "Il backend di salvataggio SquashFS ha restituito un risultato non valido"
+
+#: lib/minios_session.py:2086
+msgid "SquashFS save backend returned an inconsistent result"
+msgstr "Il backend di salvataggio SquashFS ha restituito un risultato incoerente"
+
+#: lib/minios_session.py:2089
+msgid "Session {} saved successfully"
+msgstr "Sessione {} salvata con successo"
+
+#: lib/minios_session.py:2090
+msgid "Failed to save session {} "
+msgstr "Impossibile salvare la sessione {} "
+
+#: lib/minios_session.py:2103 lib/minios_session.py:2315
 msgid "Error creating session: {}"
 msgstr "Errore durante la creazione della sessione: {}"
 
-#: lib/minios_session.py:1521
+#: lib/minios_session.py:2114
+msgid "Invalid session mode. Must be one of: {}"
+msgstr "Modalità sessione non valida. Deve essere una tra: {}"
+
+#: lib/minios_session.py:2117
+msgid "SquashFS save policy must be manual or shutdown"
+msgstr "La policy di salvataggio SquashFS deve essere manuale o all'arresto"
+
+#: lib/minios_session.py:2125
+msgid "Save policy is available only for SquashFS sessions"
+msgstr "La policy di salvataggio è disponibile solo per le sessioni SquashFS"
+
+#: lib/minios_session.py:2130
+msgid "Sessions directory is not writable"
+msgstr "La directory delle sessioni non è scrivibile"
+
+#: lib/minios_session.py:2213
+msgid "Failed to format raw image file: {}"
+msgstr "Impossibile formattare il file immagine raw: {}"
+
+#: lib/minios_session.py:2217
+msgid "Failed to create raw image file: {}"
+msgstr "Impossibile creare il file immagine raw: {}"
+
+#: lib/minios_session.py:2288 lib/minios_session.py:2290
+msgid "Session {} created successfully (mode: {}, size: {}MB)"
+msgstr "Sessione {} creata con successo (modalità: {}, dimensione: {}MB)"
+
+#: lib/minios_session.py:2292
+msgid "Session {} created successfully (mode: {})"
+msgstr "Sessione {} creata con successo (modalità: {})"
+
+#: lib/minios_session.py:2310
+msgid "Session metadata publication is uncertain; session data was preserved: {}"
+msgstr "La pubblicazione dei metadati della sessione è incerta; i dati della sessione sono stati preservati: {}"
+
+#: lib/minios_session.py:2330
 msgid "Cannot delete currently active session"
 msgstr "Impossibile eliminare la sessione attualmente attiva"
 
-#: lib/minios_session.py:1526
-msgid "Cannot delete currently running session"
-msgstr "Impossibile eliminare la sessione attualmente in esecuzione"
+#: lib/minios_session.py:2337
+msgid "Cannot delete currently running session without SquashFS handoff"
+msgstr "Impossibile eliminare la sessione in esecuzione senza il passaggio di SquashFS"
 
-#: lib/minios_session.py:1535
+#: lib/minios_session.py:2339
+msgid "Activate another SquashFS session before deleting the running session"
+msgstr "Attiva un'altra sessione SquashFS prima di eliminare quella in esecuzione"
+
+#: lib/minios_session.py:2343
+msgid "Failed to hand off the running SquashFS session: {}"
+msgstr "Impossibile trasferire la sessione SquashFS in esecuzione: {}"
+
+#: lib/minios_session.py:2354
 msgid "Session deleted but failed to update session metadata"
 msgstr "Sessione eliminata ma aggiornamento dei metadati della sessione non riuscito"
 
-#: lib/minios_session.py:1537
+#: lib/minios_session.py:2356
 msgid "Session {} deleted successfully"
 msgstr "Sessione {} eliminata con successo"
 
-#: lib/minios_session.py:1539
+#: lib/minios_session.py:2358
 msgid "Error deleting session: {}"
 msgstr "Errore durante l'eliminazione della sessione: {}"
 
-#: lib/minios_session.py:1569 lib/minios_session.py:3221
+#: lib/minios_session.py:2388 lib/minios_session.py:4145
 msgid "Days threshold must be greater than zero"
 msgstr "La soglia dei giorni deve essere maggiore di zero"
 
-#: lib/minios_session.py:1620 lib/minios_session_manager.py:1309
+#: lib/minios_session.py:2439 lib/minios_session_manager.py:1660
 msgid "Resize is only supported for dynfilefs, raw, and LUKS mode sessions"
 msgstr "La ridimensionamento è supportato solo per sessioni in modalità dynfilefs, raw e LUKS"
 
-#: lib/minios_session.py:1626
+#: lib/minios_session.py:2445
 msgid "Cannot resize currently running session"
 msgstr "Impossibile ridimensionare la sessione attualmente in esecuzione"
 
-#: lib/minios_session.py:1634
+#: lib/minios_session.py:2453
 msgid "Error resizing session: {}"
 msgstr "Errore durante il ridimensionamento della sessione: {}"
 
-#: lib/minios_session.py:1640
+#: lib/minios_session.py:2459
 msgid "DynFileFS changes.dat file not found"
 msgstr "File changes.dat di DynFileFS non trovato"
 
-#: lib/minios_session.py:1654
+#: lib/minios_session.py:2473
 msgid "New size must be larger than current total size ({}MB)"
 msgstr "La nuova dimensione deve essere maggiore della dimensione totale attuale ({}MB)"
 
-#: lib/minios_session.py:1657
+#: lib/minios_session.py:2476
 msgid "New size must be larger than used size ({}MB)"
 msgstr "La nuova dimensione deve essere maggiore della dimensione attualmente utilizzata ({}MB)"
 
-#: lib/minios_session.py:1680
+#: lib/minios_session.py:2499
 msgid "Failed to create/resize virtual.dat file (timeout)"
 msgstr "Impossibile creare/ridimensionare il file virtual.dat (timeout)"
 
-#: lib/minios_session.py:1689 lib/minios_session.py:1754
+#: lib/minios_session.py:2508 lib/minios_session.py:2573
 msgid "Failed to resize filesystem: {}"
 msgstr "Impossibile ridimensionare il filesystem: {}"
 
-#: lib/minios_session.py:1708 lib/minios_session.py:1761
-#: lib/minios_session.py:1826
+#: lib/minios_session.py:2527 lib/minios_session.py:2580
+#: lib/minios_session.py:2645
 msgid "Session {} resized to {}MB successfully"
 msgstr "Sessione {} ridimensionata con successo a {}MB"
 
-#: lib/minios_session.py:1711
+#: lib/minios_session.py:2530
 msgid "Failed to resize dynfilefs session: {}"
 msgstr "Impossibile ridimensionare la sessione dynfilefs: {}"
 
-#: lib/minios_session.py:1717
+#: lib/minios_session.py:2536
 msgid "Raw image file not found"
 msgstr "File immagine raw non trovato"
 
-#: lib/minios_session.py:1731 lib/minios_session.py:1789
-#: lib/minios_session.py:1794
+#: lib/minios_session.py:2550 lib/minios_session.py:2608
+#: lib/minios_session.py:2613
 msgid "Session {} resize metadata recovered"
 msgstr "Metadati di ridimensionamento della sessione {} recuperati"
 
-#: lib/minios_session.py:1732 lib/minios_session.py:1790
-#: lib/minios_session.py:1795
+#: lib/minios_session.py:2551 lib/minios_session.py:2609
+#: lib/minios_session.py:2614
 msgid "Failed to recover resize metadata"
 msgstr "Recupero dei metadati di ridimensionamento non riuscito"
 
-#: lib/minios_session.py:1734 lib/minios_session.py:1797
+#: lib/minios_session.py:2553 lib/minios_session.py:2616
 msgid "New size must be larger than current size ({}MB)"
 msgstr "La nuova dimensione deve essere maggiore della dimensione corrente ({}MB)"
 
-#: lib/minios_session.py:1764
+#: lib/minios_session.py:2583
 msgid "Failed to resize raw session: {}"
 msgstr "Impossibile ridimensionare la sessione raw: {}"
 
-#: lib/minios_session.py:1838
+#: lib/minios_session.py:2657
 msgid "Failed to resize LUKS session: {}"
 msgstr "Impossibile ridimensionare la sessione LUKS: {}"
 
-#: lib/minios_session.py:1858
+#: lib/minios_session.py:2677
 msgid "Session #{} not found"
 msgstr "Sessione #{} non trovata"
 
-#: lib/minios_session.py:1868
+#: lib/minios_session.py:2679
+msgid "SquashFS export is unavailable until save support is complete"
+msgstr "L'esportazione SquashFS non è disponibile finché il supporto al salvataggio non è completo"
+
+#: lib/minios_session.py:2689
 msgid "Cannot export currently running session"
 msgstr "Impossibile esportare la sessione attualmente in esecuzione"
 
-#: lib/minios_session.py:1885
+#: lib/minios_session.py:2706
 msgid "Export output must be a regular file"
 msgstr "Il file di output dell'esportazione deve essere un file regolare"
 
-#: lib/minios_session.py:1941
+#: lib/minios_session.py:2762
 msgid "Export verification failed"
 msgstr "Verifica esportazione fallita"
 
-#: lib/minios_session.py:1951
+#: lib/minios_session.py:2772
 msgid "Session exported successfully to {} ({})"
 msgstr "Sessione esportata con successo in {} ({})"
 
-#: lib/minios_session.py:1956
+#: lib/minios_session.py:2777
 msgid "Export failed: {}"
 msgstr "Esportazione fallita: {}"
 
-#: lib/minios_session.py:2097 lib/minios_session.py:2127
+#: lib/minios_session.py:2916 lib/minios_session.py:2946
 msgid "Invalid or unreadable archive"
 msgstr "Archivio non valido o illeggibile"
 
-#: lib/minios_session.py:2104
+#: lib/minios_session.py:2923
 msgid "Archive contains an unsupported member type"
 msgstr "L'archivio contiene un tipo di membro non supportato"
 
-#: lib/minios_session.py:2108
+#: lib/minios_session.py:2927
 msgid "Archive contains invalid member metadata"
 msgstr "L'archivio contiene metadati di membro non validi"
 
-#: lib/minios_session.py:2111
+#: lib/minios_session.py:2930
 msgid "Archive expands beyond the allowed size"
 msgstr "L'archivio supera la dimensione consentita"
 
-#: lib/minios_session.py:2116
+#: lib/minios_session.py:2935
 msgid "Archive contains an unsafe member path"
 msgstr "L'archivio contiene un percorso membro non sicuro"
 
-#: lib/minios_session.py:2118
+#: lib/minios_session.py:2937
 msgid "Archive contains files outside its data directory"
 msgstr "L'archivio contiene file al di fuori della propria directory dati"
 
-#: lib/minios_session.py:2124
+#: lib/minios_session.py:2943
 msgid "Archive contains an unsafe link target"
 msgstr "L'archivio contiene un collegamento simbolico non sicuro"
 
-#: lib/minios_session.py:2153
+#: lib/minios_session.py:2972
 msgid "Archive file not found"
 msgstr "File di archivio non trovato"
 
-#: lib/minios_session.py:2157
+#: lib/minios_session.py:2976
 msgid "Invalid archive format. Only .tar.zst files are supported."
 msgstr "Formato archivio non valido. Sono supportati solo i file .tar.zst."
 
-#: lib/minios_session.py:2166
+#: lib/minios_session.py:2985
 msgid "Invalid session archive: missing or corrupted metadata"
 msgstr "Archivio sessione non valido: metadati mancanti o corrotti"
 
-#: lib/minios_session.py:2173
+#: lib/minios_session.py:2992
 msgid "Incompatible session: {}"
 msgstr "Sessione incompatibile: {}"
 
-#: lib/minios_session.py:2226
+#: lib/minios_session.py:3045
 msgid "Failed to import session data: {}"
 msgstr "Impossibile importare i dati della sessione: {}"
 
-#: lib/minios_session.py:2233
+#: lib/minios_session.py:3052
 msgid "Imported session failed verification"
 msgstr "La sessione importata ha fallito la verifica"
 
-#: lib/minios_session.py:2239
+#: lib/minios_session.py:3058
 msgid "Session imported successfully as #{}"
 msgstr "Sessione importata con successo come #{}"
 
-#: lib/minios_session.py:2242
+#: lib/minios_session.py:3061
 msgid "Import failed: {}"
 msgstr "Importazione fallita: {}"
 
-#: lib/minios_session.py:2294
+#: lib/minios_session.py:3113
 msgid "Version mismatch: {} → {}"
 msgstr "Discrepanza versione: {} → {}"
 
-#: lib/minios_session.py:2299
+#: lib/minios_session.py:3118
 msgid "Edition mismatch: {} → {}"
 msgstr "Discrepanza edizione: {} → {}"
 
-#: lib/minios_session.py:2304
+#: lib/minios_session.py:3123
 msgid "Union FS mismatch: {} → {}"
 msgstr "Discrepanza Union FS: {} → {}"
 
-#: lib/minios_session.py:2396
+#: lib/minios_session.py:3215
 msgid "Source session not found"
 msgstr "Sessione di origine non trovata"
 
-#: lib/minios_session.py:2415
+#: lib/minios_session.py:3223
+msgid "SquashFS copy is unavailable until save support is complete"
+msgstr "La copia SquashFS non è disponibile finché il supporto al salvataggio non è completo"
+
+#: lib/minios_session.py:3236
 msgid "Cannot copy currently running session"
 msgstr "Impossibile copiare la sessione attualmente in esecuzione"
 
-#: lib/minios_session.py:2438 lib/minios_session.py:2643
+#: lib/minios_session.py:3259 lib/minios_session.py:3464
 msgid "Failed to copy session data"
 msgstr "Impossibile copiare i dati della sessione"
 
-#: lib/minios_session.py:2455
+#: lib/minios_session.py:3276
 msgid "Session copied successfully to #{}"
 msgstr "Sessione copiata con successo in #{}"
 
-#: lib/minios_session.py:2460
+#: lib/minios_session.py:3281
 msgid "Copy failed: {}"
 msgstr "Copia fallita: {}"
 
-#: lib/minios_session.py:2601 lib/minios_session_manager.py:1304
-#: lib/minios_session_manager.py:1782
+#: lib/minios_session.py:3420 lib/minios_session_manager.py:1555
+#: lib/minios_session_manager.py:1655 lib/minios_session_manager.py:2133
 msgid "Session not found"
 msgstr "Sessione non trovata"
 
-#: lib/minios_session.py:2607
+#: lib/minios_session.py:3424
+msgid "SquashFS conversion is unavailable until save support is complete"
+msgstr "La conversione SquashFS non è disponibile finché il supporto al salvataggio non è completo"
+
+#: lib/minios_session.py:3428
 msgid "Session is already in {} mode"
 msgstr "La sessione è già in modalità {}"
 
-#: lib/minios_session.py:2612
+#: lib/minios_session.py:3433
 msgid "Cannot convert currently running session"
 msgstr "Impossibile convertire la sessione attualmente in esecuzione"
 
-#: lib/minios_session.py:2617
+#: lib/minios_session.py:3438
 msgid "Cannot convert currently active session. Please activate another session first."
 msgstr "Impossibile convertire la sessione attualmente attiva. Si prega di attivare un'altra sessione prima."
 
-#: lib/minios_session.py:2655
+#: lib/minios_session.py:3476
 msgid "Session metadata is missing"
 msgstr "Metadati della sessione mancanti"
 
-#: lib/minios_session.py:2667
+#: lib/minios_session.py:3488
 msgid "Session converted successfully from {} to {}"
 msgstr "Sessione convertita con successo da {} a {}"
 
-#: lib/minios_session.py:2673
+#: lib/minios_session.py:3494
 msgid "Conversion failed: {}"
 msgstr "Conversione fallita: {}"
 
-#: lib/minios_session.py:2695 lib/minios_session_manager.py:582
+#: lib/minios_session.py:3516 lib/minios_session_manager.py:659
 msgid "No sessions found"
 msgstr "Nessuna sessione trovata"
 
-#: lib/minios_session.py:2702 lib/minios_session_manager.py:680
+#: lib/minios_session.py:3523 lib/minios_session_manager.py:759
 msgid "ACTIVE"
 msgstr "ATTIVA"
 
-#: lib/minios_session.py:2704 lib/minios_session_manager.py:692
+#: lib/minios_session.py:3525 lib/minios_session_manager.py:771
 msgid "RUNNING"
 msgstr "IN ESECUZIONE"
 
-#: lib/minios_session.py:2710 lib/minios_session_manager.py:617
+#: lib/minios_session.py:3531 lib/minios_session_manager.py:696
 msgid "Session"
 msgstr "Sessione"
 
-#: lib/minios_session.py:2711 lib/minios_session_manager.py:631
+#: lib/minios_session.py:3532 lib/minios_session_manager.py:710
 msgid "Mode:"
 msgstr "Modalità:"
 
-#: lib/minios_session.py:2712 lib/minios_session_manager.py:637
+#: lib/minios_session.py:3533 lib/minios_session_manager.py:716
 msgid "Version:"
 msgstr "Versione:"
 
-#: lib/minios_session.py:2713 lib/minios_session_manager.py:644
+#: lib/minios_session.py:3534 lib/minios_session_manager.py:723
 msgid "Edition:"
 msgstr "Edizione:"
 
-#: lib/minios_session.py:2714 lib/minios_session_manager.py:650
+#: lib/minios_session.py:3535 lib/minios_session_manager.py:729
 msgid "Union FS:"
 msgstr "Sistema Union:"
 
-#: lib/minios_session.py:2715 lib/minios_session_manager.py:657
+#: lib/minios_session.py:3536 lib/minios_session_manager.py:736
 msgid "Size:"
 msgstr "Dimensione:"
 
-#: lib/minios_session.py:2729
+#: lib/minios_session.py:3550
 msgid "Total Size:"
 msgstr "Dimensione totale:"
 
-#: lib/minios_session.py:2731
+#: lib/minios_session.py:3552
 msgid "Last Modified:"
 msgstr "Ultima modifica:"
 
-#: lib/minios_session.py:2847 lib/minios_session.py:2852
+#: lib/minios_session.py:3674 lib/minios_session.py:3679
 msgid "LUKS passphrases do not match."
 msgstr "Le passphrase LUKS non corrispondono."
 
-#: lib/minios_session.py:2849
+#: lib/minios_session.py:3676
 msgid "LUKS passphrase: "
 msgstr "Passphrase LUKS: "
 
-#: lib/minios_session.py:2850
+#: lib/minios_session.py:3677
 msgid "Confirm LUKS passphrase: "
 msgstr "Conferma passphrase LUKS: "
 
-#: lib/minios_session.py:2856
+#: lib/minios_session.py:3683
 msgid "LUKS passphrase must not be empty."
 msgstr "La passphrase LUKS non può essere vuota."
 
-#: lib/minios_session.py:2871
+#: lib/minios_session.py:3698
 msgid "This tool requires root privileges. Please run with sudo or through pkexec."
 msgstr "Questo strumento richiede privilegi di root. Esegui con sudo o tramite pkexec."
 
-#: lib/minios_session.py:2884
+#: lib/minios_session.py:3711
 msgid "MiniOS Session Manager - Command line tool for managing persistent sessions"
 msgstr "MiniOS Session Manager - Strumento da riga di comando per la gestione delle sessioni persistenti"
 
-#: lib/minios_session.py:2886
+#: lib/minios_session.py:3713
 msgid ""
 "\n"
 "GLOBAL OPTIONS:\n"
@@ -572,7 +947,10 @@ msgid ""
 "  running                   Show currently running session (current boot)\n"
 "  info                      Show filesystem type and compatible session modes\n"
 "  activate SESSION_ID       Activate specified session\n"
+"  save SESSION_ID           Save the running SquashFS session\n"
 "  create [MODE] [SIZE]      Create new session using positional arguments\n"
+"                              SquashFS: --policy manual|shutdown, --autosave MINUTES\n"
+"  settings SESSION_ID       Configure SquashFS shutdown and periodic saving\n"
 "  delete SESSION_ID         Delete specified session\n"
 "  cleanup [--days N]        Delete old sessions (default: 30 days)\n"
 "  status                    Check sessions directory status and permissions\n"
@@ -584,15 +962,18 @@ msgid ""
 "\n"
 "SESSION MODES:\n"
 "  native                    Direct filesystem changes (requires POSIX-compatible filesystem)\n"
+"  squashfs                  Compressed snapshot of the current live changes\n"
 "  dynfilefs                 Dynamic file system overlay (works on any filesystem)\n"
 "  raw                       Raw disk image (works on any filesystem, 4000MB default)\n"
 "\n"
 "COMMAND BEHAVIOR:\n"
 "  • create without MODE: Uses native mode (may fail on FAT32/NTFS/exFAT)\n"
-"  • create without SIZE: Uses 4000MB for container modes\n"
+"  • create without SIZE: Uses 4000MB for fixed/container modes; SquashFS has no fixed size\n"
+"  • SquashFS periodic saves accept 30, 60, 120, 240, or 480 minutes; 0 disables them\n"
 "  • convert replaces the source by default; --new-session preserves it\n"
 "  • cleanup without --days: Uses 30-day threshold for deletion\n"
 "  • cleanup protects both active and running sessions from deletion\n"
+"  • explicit delete can hand off a running RAM-backed SquashFS session to a current-boot active snapshot\n"
 "\n"
 "EXAMPLES:\n"
 "\n"
@@ -604,13 +985,16 @@ msgid ""
 "\n"
 "  Session Management:\n"
 "    minios-session activate 2                     Set session #2 as default for next boot\n"
+"    minios-session settings 2 --shutdown on --autosave 60  Configure SquashFS automatic saves\n"
 "    minios-session delete 3                       Delete session #3 permanently\n"
+"    minios-session delete 1 --handoff             Hand off running SquashFS to active snapshot and delete #1\n"
 "    minios-session cleanup --days 30              Delete sessions older than 30 days\n"
 "    minios-session cleanup                        Delete sessions older than 30 days (default)\n"
 "\n"
 "  Creating Sessions:\n"
 "    minios-session create                         Create native session (filesystem changes)\n"
 "    minios-session create native                  Create native session explicitly\n"
+"    minios-session create squashfs                Snapshot current live changes into a SquashFS session\n"
 "    minios-session create dynfilefs               Create 4000MB dynfilefs session (default size)\n"
 "    minios-session create dynfilefs 8000          Create 8000MB dynfilefs session\n"
 "    minios-session create raw 2000                Create 2000MB raw disk image\n"
@@ -641,7 +1025,7 @@ msgstr ""
 "\n"
 "OPZIONI GLOBALI:\n"
 "  --json                    Mostra i risultati in formato JSON (utilizzabile con qualsiasi comando)\n"
-"  --sessions-dir PERCORSO  Usa una directory delle sessioni personalizzata invece di quella predefinita\n"
+"  --sessions-dir PATH       Usa una directory delle sessioni personalizzata invece di quella predefinita\n"
 "\n"
 "COMANDI:\n"
 "  list                      Elenca tutte le sessioni disponibili con informazioni dettagliate\n"
@@ -649,65 +1033,74 @@ msgstr ""
 "  running                   Mostra la sessione attualmente in esecuzione (boot corrente)\n"
 "  info                      Mostra il tipo di filesystem e le modalità sessione compatibili\n"
 "  activate SESSION_ID       Attiva la sessione specificata\n"
+"  save SESSION_ID           Salva la sessione SquashFS in esecuzione\n"
 "  create [MODE] [SIZE]      Crea una nuova sessione usando argomenti posizionali\n"
+"                              SquashFS: --policy manual|shutdown, --autosave MINUTI\n"
+"  settings SESSION_ID       Configura salvataggio SquashFS all'arresto e salvataggi periodici\n"
 "  delete SESSION_ID         Elimina la sessione specificata\n"
-"  cleanup [--days N]        Elimina le sessioni vecchie (default: 30 giorni)\n"
-"  status                    Verifica lo stato e i permessi della directory delle sessioni\n"
+"  cleanup [--days N]        Elimina sessioni vecchie (default: 30 giorni)\n"
+"  status                    Controlla stato e permessi della directory sessioni\n"
 "  resize SESSION_ID SIZE    Aumenta la dimensione di una sessione container\n"
-"  export SESSION_ID PATH    Esporta la sessione in un archivio .tar.zst\n"
-"  import ARCHIVE            Importa una sessione da un archivio .tar.zst\n"
+"  export SESSION_ID PATH    Esporta la sessione in archivio .tar.zst\n"
+"  import ARCHIVE            Importa una sessione da archivio .tar.zst\n"
 "  copy SESSION_ID           Copia la sessione (opzionale: --to-mode, --size)\n"
-"  convert SESSION_ID MODE   Converte la sessione in un'altra modalità (opzionale: --size)\n"
+"  convert SESSION_ID MODE   Converte la sessione in altra modalità (opzionale: --size)\n"
 "\n"
 "MODALITÀ SESSIONE:\n"
-"  native                    Modifica diretta del filesystem (richiede filesystem compatibile POSIX)\n"
+"  native                    Modifiche dirette al filesystem (richiede filesystem compatibile POSIX)\n"
+"  squashfs                  Snapshot compresso delle modifiche live correnti\n"
 "  dynfilefs                 Overlay filesystem dinamico (funziona su qualsiasi filesystem)\n"
-"  raw                       Immagine disco raw (funziona su qualsiasi filesystem, 4000MB di default)\n"
+"  raw                       Immagine disco raw (funziona su qualsiasi filesystem, 4000MB default)\n"
 "\n"
 "COMPORTAMENTO DEI COMANDI:\n"
-"  • create senza MODE: Usa la modalità native (può fallire su FAT32/NTFS/exFAT)\n"
-"  • create senza SIZE: Usa 4000MB per le modalità container\n"
+"  • create senza MODE: Usa modalità native (può fallire su FAT32/NTFS/exFAT)\n"
+"  • create senza SIZE: Usa 4000MB per modalità fisse/container; SquashFS non ha dimensione fissa\n"
+"  • I salvataggi periodici SquashFS accettano 30, 60, 120, 240 o 480 minuti; 0 li disabilita\n"
 "  • convert sostituisce la sorgente per default; --new-session la preserva\n"
-"  • cleanup senza --days: Usa una soglia di 30 giorni per l'eliminazione\n"
-"  • cleanup protegge sia le sessioni attive che quelle in esecuzione dalla cancellazione\n"
+"  • cleanup senza --days: Usa soglia di 30 giorni per eliminazione\n"
+"  • cleanup protegge sessioni attive e in esecuzione dall'eliminazione\n"
+"  • delete esplicito può trasferire una sessione SquashFS su RAM alla snapshot attiva del boot corrente\n"
 "\n"
 "ESEMPI:\n"
 "\n"
 "  Utilizzo Base:\n"
 "    minios-session list                           Elenca tutte le sessioni disponibili\n"
-"    minios-session active                         Mostra quale sessione verrà avviata al prossimo boot\n"
-"    minios-session running                        Mostra la sessione attualmente in esecuzione\n"
-"    minios-session info                           Mostra informazioni sulla compatibilità del filesystem\n"
+"    minios-session active                         Mostra quale sessione verrà avviata\n"
+"    minios-session running                        Mostra la sessione in esecuzione\n"
+"    minios-session info                           Mostra info compatibilità filesystem\n"
 "\n"
 "  Gestione Sessioni:\n"
-"    minios-session activate 2                     Imposta la sessione #2 come predefinita per il prossimo avvio\n"
+"    minios-session activate 2                     Imposta la sessione #2 come predefinita al prossimo boot\n"
+"    minios-session settings 2 --shutdown on --autosave 60  Configura salvataggi automatici SquashFS\n"
 "    minios-session delete 3                       Elimina definitivamente la sessione #3\n"
-"    minios-session cleanup --days 30              Elimina le sessioni più vecchie di 30 giorni\n"
-"    minios-session cleanup                        Elimina le sessioni più vecchie di 30 giorni (default)\n"
+"    minios-session delete 1 --handoff             Trasferisce SquashFS in esecuzione su snapshot attiva ed elimina #1\n"
+"    minios-session cleanup --days 30              Elimina sessioni più vecchie di 30 giorni\n"
+"    minios-session cleanup                        Elimina sessioni più vecchie di 30 giorni (default)\n"
 "\n"
 "  Creazione Sessioni:\n"
-"    minios-session create                         Crea una sessione native (modifiche al filesystem)\n"
-"    minios-session create native                  Crea esplicitamente una sessione native\n"
-"    minios-session create dynfilefs               Crea una sessione dynfilefs da 4000MB (dimensione predefinita)\n"
-"    minios-session create dynfilefs 8000          Crea una sessione dynfilefs da 8000MB\n"
-"    minios-session create raw 2000                Crea un'immagine disco raw da 2000MB\n"
+"    minios-session create                         Crea sessione native (modifiche filesystem)\n"
+"    minios-session create native                  Crea sessione native esplicitamente\n"
+"    minios-session create squashfs                Crea snapshot delle modifiche live in sessione SquashFS\n"
+"    minios-session create dynfilefs               Crea sessione dynfilefs da 4000MB (dimensione default)\n"
+"    minios-session create dynfilefs 8000          Crea sessione dynfilefs da 8000MB\n"
+"    minios-session create raw 2000                Crea immagine disco raw da 2000MB\n"
 "\n"
-"  Operazioni sulle Sessioni:\n"
+"  Operazioni Sessione:\n"
 "    minios-session resize 2 4000                  Ridimensiona la sessione #2 a 4000MB\n"
 "    minios-session export 3 /tmp/backup.tar.zst   Esporta la sessione #3 in archivio\n"
-"    minios-session import /tmp/backup.tar.zst     Importa una sessione da archivio\n"
+"    minios-session import /tmp/backup.tar.zst     Importa sessione da archivio\n"
 "    minios-session copy 2                         Copia la sessione #2\n"
-"    minios-session copy 2 --to-mode raw --size 3000  Copia la sessione #2 in modalità raw con 3000MB\n"
-"    minios-session convert 3 dynfilefs --size 2000   Converte la sessione #3 in dynfilefs con 2000MB\n"
+"    minios-session copy 2 --to-mode raw --size 3000  Copia la sessione #2 come raw da 3000MB\n"
+"    minios-session convert 3 dynfilefs --size 2000   Converte la sessione #3 in dynfilefs da 2000MB\n"
 "\n"
 "  Gestione Errori:\n"
-"    minios-session create                         Può fallire su FAT32/NTFS/exFAT: \"Usa modalità dynfilefs o raw\"\n"
+"    minios-session create                         Può fallire su FAT32/NTFS/exFAT: \"Usa dynfilefs o modalità raw\"\n"
 "    minios-session create raw 5000                Fallirà su FAT32: MiniOS limita i container fissi a 4000MB\n"
 "\n"
 "  Output JSON (per automazione):\n"
-"    minios-session --json list                    Elenca le sessioni in formato JSON\n"
-"    minios-session active --json                  Mostra info sulla sessione attiva in JSON\n"
-"    minios-session info --json                    Mostra info di sistema in JSON\n"
+"    minios-session --json list                    Elenca sessioni in formato JSON\n"
+"    minios-session active --json                  Mostra info sessione attiva in JSON\n"
+"    minios-session info --json                    Mostra info sistema in JSON\n"
 "\n"
 "  Directory Sessioni Personalizzata:\n"
 "    minios-session --sessions-dir /mnt/usb/sessions list\n"
@@ -715,786 +1108,921 @@ msgstr ""
 "\n"
 "        "
 
-#: lib/minios_session.py:2965 lib/minios_session.py:2973
+#: lib/minios_session.py:3801 lib/minios_session.py:3809
 msgid "Output in JSON format"
 msgstr "Output in formato JSON"
 
-#: lib/minios_session.py:2967 lib/minios_session.py:2975
+#: lib/minios_session.py:3803 lib/minios_session.py:3811
 msgid "Custom path to sessions directory"
 msgstr "Percorso personalizzato alla directory delle sessioni"
 
-#: lib/minios_session.py:2969
+#: lib/minios_session.py:3805
 msgid "Available commands"
 msgstr "Comandi disponibili"
 
-#: lib/minios_session.py:2978
+#: lib/minios_session.py:3814
 msgid "Read a LUKS passphrase from standard input"
 msgstr "Leggi una passphrase LUKS dallo standard input"
 
-#: lib/minios_session.py:2981
+#: lib/minios_session.py:3817
 msgid "List all sessions"
 msgstr "Elenca tutte le sessioni"
 
-#: lib/minios_session.py:2984
+#: lib/minios_session.py:3820
 msgid "Show active session"
 msgstr "Mostra la sessione attiva"
 
-#: lib/minios_session.py:2987
+#: lib/minios_session.py:3823
 msgid "Show running session"
 msgstr "Mostra la sessione in esecuzione"
 
-#: lib/minios_session.py:2990
+#: lib/minios_session.py:3826
 msgid "Show filesystem and compatibility information"
 msgstr "Mostra le informazioni sul filesystem e sulla compatibilità"
 
-#: lib/minios_session.py:2993
+#: lib/minios_session.py:3829
 msgid "Activate a session"
 msgstr "Attiva una sessione"
 
-#: lib/minios_session.py:2994
+#: lib/minios_session.py:3830
 msgid "Session ID to activate"
 msgstr "ID della sessione da attivare"
 
-#: lib/minios_session.py:2997
+#: lib/minios_session.py:3833
+msgid "Save a SquashFS session"
+msgstr "Salva una sessione SquashFS"
+
+#: lib/minios_session.py:3834
+msgid "Running SquashFS session ID to save"
+msgstr "ID della sessione SquashFS in esecuzione da salvare"
+
+#: lib/minios_session.py:3836
+msgid "Stream save progress events with JSON output"
+msgstr "Mostra eventi di avanzamento salvataggio in output JSON"
+
+#: lib/minios_session.py:3841
 msgid "Create a new session"
 msgstr "Crea una nuova sessione"
 
-#: lib/minios_session.py:2999
+#: lib/minios_session.py:3843
 msgid "Session mode (default: native)"
 msgstr "Modalità sessione (predefinita: nativa)"
 
-#: lib/minios_session.py:3001
+#: lib/minios_session.py:3845
 msgid "Size in MB, GB, or TB for container modes (default: 4000MB)"
 msgstr "Dimensione in MB, GB o TB per le modalità container (default: 4000MB)"
 
-#: lib/minios_session.py:3004
+#: lib/minios_session.py:3847
+msgid "SquashFS shutdown save policy (default: shutdown)"
+msgstr "Policy di salvataggio SquashFS all'arresto (default: shutdown)"
+
+#: lib/minios_session.py:3851
+msgid "Periodic SquashFS save interval in minutes (0 disables it)"
+msgstr "Intervallo di salvataggio periodico SquashFS in minuti (0 lo disabilita)"
+
+#: lib/minios_session.py:3855
+msgid "Configure SquashFS automatic saving"
+msgstr "Configura il salvataggio automatico SquashFS"
+
+#: lib/minios_session.py:3856
+msgid "SquashFS session ID"
+msgstr "ID sessione SquashFS"
+
+#: lib/minios_session.py:3861
+msgid "Periodic save interval in minutes (0 disables it)"
+msgstr "Intervallo di salvataggio periodico in minuti (0 lo disabilita)"
+
+#: lib/minios_session.py:3868
 msgid "Delete a session"
 msgstr "Elimina una sessione"
 
-#: lib/minios_session.py:3005
+#: lib/minios_session.py:3869
 msgid "Session ID to delete"
 msgstr "ID della sessione da eliminare"
 
-#: lib/minios_session.py:3008
+#: lib/minios_session.py:3871
+msgid "Move a running RAM-backed SquashFS session to the active snapshot before deletion"
+msgstr "Sposta una sessione SquashFS su RAM in esecuzione nella snapshot attiva prima dell'eliminazione"
+
+#: lib/minios_session.py:3874
 msgid "Clean up old sessions"
 msgstr "Pulizia vecchie sessioni"
 
-#: lib/minios_session.py:3010
+#: lib/minios_session.py:3876
 msgid "Delete sessions older than N days (default: 30)"
 msgstr "Elimina le sessioni più vecchie di N giorni (predefinito: 30)"
 
-#: lib/minios_session.py:3013
+#: lib/minios_session.py:3879
 msgid "Check sessions directory status"
 msgstr "Controlla lo stato della directory delle sessioni"
 
-#: lib/minios_session.py:3016
+#: lib/minios_session.py:3882
 msgid "Resize a session"
 msgstr "Ridimensiona una sessione"
 
-#: lib/minios_session.py:3017
+#: lib/minios_session.py:3883
 msgid "Session ID to resize"
 msgstr "ID della sessione da ridimensionare"
 
-#: lib/minios_session.py:3018
+#: lib/minios_session.py:3884
 msgid "New size in MB, GB, or TB"
 msgstr "Nuova dimensione in MB, GB o TB"
 
-#: lib/minios_session.py:3021
+#: lib/minios_session.py:3887
 msgid "Export session to archive"
 msgstr "Esporta sessione in archivio"
 
-#: lib/minios_session.py:3022
+#: lib/minios_session.py:3888
 msgid "Session ID to export"
 msgstr "ID della sessione da esportare"
 
-#: lib/minios_session.py:3023
+#: lib/minios_session.py:3889
 msgid "Output file or directory path"
 msgstr "Percorso del file o della directory di output"
 
-#: lib/minios_session.py:3024
+#: lib/minios_session.py:3890
 msgid "Skip archive verification"
 msgstr "Salta la verifica dell'archivio"
 
-#: lib/minios_session.py:3027
+#: lib/minios_session.py:3893
 msgid "Import session from archive"
 msgstr "Importa sessione da archivio"
 
-#: lib/minios_session.py:3028
+#: lib/minios_session.py:3894
 msgid "Path to session archive (.tar.zst)"
 msgstr "Percorso dell'archivio sessione (.tar.zst)"
 
-#: lib/minios_session.py:3030
+#: lib/minios_session.py:3896
 msgid "Automatically convert to compatible mode"
 msgstr "Converti automaticamente in modalità compatibile"
 
-#: lib/minios_session.py:3032
+#: lib/minios_session.py:3898
 msgid "Force specific session mode"
 msgstr "Forza modalità sessione specifica"
 
-#: lib/minios_session.py:3033
+#: lib/minios_session.py:3899
 msgid "Skip integrity verification"
 msgstr "Salta la verifica dell'integrità"
 
-#: lib/minios_session.py:3035
+#: lib/minios_session.py:3901
 msgid "Skip compatibility checks"
 msgstr "Salta i controlli di compatibilità"
 
-#: lib/minios_session.py:3038
+#: lib/minios_session.py:3904
 msgid "Copy a session"
 msgstr "Copia una sessione"
 
-#: lib/minios_session.py:3039
+#: lib/minios_session.py:3905
 msgid "Session ID to copy"
 msgstr "ID della sessione da copiare"
 
-#: lib/minios_session.py:3041
+#: lib/minios_session.py:3907
 msgid "Convert to different mode (optional)"
 msgstr "Converti in modalità diversa (opzionale)"
 
-#: lib/minios_session.py:3043 lib/minios_session.py:3051
+#: lib/minios_session.py:3909 lib/minios_session.py:3917
 msgid "Size for a container target, in MB, GB, or TB"
 msgstr "Dimensione per un container di destinazione, in MB, GB o TB"
 
-#: lib/minios_session.py:3046
+#: lib/minios_session.py:3912
 msgid "Convert session mode"
 msgstr "Converti modalità sessione"
 
-#: lib/minios_session.py:3047
+#: lib/minios_session.py:3913
 msgid "Session ID to convert"
 msgstr "ID della sessione da convertire"
 
-#: lib/minios_session.py:3049
+#: lib/minios_session.py:3915
 msgid "Target mode"
 msgstr "Modalità di destinazione"
 
-#: lib/minios_session.py:3053
+#: lib/minios_session.py:3919
 msgid "Create new session instead of in-place conversion"
 msgstr "Crea una nuova sessione invece della conversione in loco"
 
-#: lib/minios_session.py:3091
+#: lib/minios_session.py:3963
 msgid "Could not find sessions directory."
 msgstr "Impossibile trovare la directory delle sessioni."
 
-#: lib/minios_session.py:3092 lib/minios_session.py:3097
+#: lib/minios_session.py:3964 lib/minios_session.py:3969
 msgid "This tool must be run from within a MiniOS live system with persistent sessions enabled."
 msgstr "Questo strumento deve essere eseguito all'interno di un sistema live MiniOS con sessioni persistenti abilitate."
 
-#: lib/minios_session.py:3096
+#: lib/minios_session.py:3968
 msgid "Error: Could not find sessions directory."
 msgstr "Errore: Impossibile trovare la directory delle sessioni."
 
-#: lib/minios_session.py:3114
+#: lib/minios_session.py:3986
 msgid "Active session: #{}"
 msgstr "Sessione attiva: #{}"
 
-#: lib/minios_session.py:3115 lib/minios_session.py:3131
+#: lib/minios_session.py:3987 lib/minios_session.py:4003
 msgid "Mode: {}"
 msgstr "Modalità: {}"
 
-#: lib/minios_session.py:3116 lib/minios_session.py:3132
+#: lib/minios_session.py:3988 lib/minios_session.py:4004
 msgid "Version: {}"
 msgstr "Versione: {}"
 
-#: lib/minios_session.py:3117 lib/minios_session.py:3133
+#: lib/minios_session.py:3989 lib/minios_session.py:4005
 msgid "Edition: {}"
 msgstr "Edizione: {}"
 
-#: lib/minios_session.py:3118 lib/minios_session.py:3134
+#: lib/minios_session.py:3990 lib/minios_session.py:4006
 msgid "Union FS: {}"
 msgstr "Sistema Union: {}"
 
-#: lib/minios_session.py:3119 lib/minios_session.py:3135
+#: lib/minios_session.py:3991 lib/minios_session.py:4007
 msgid "Size: {}"
 msgstr "Dimensione: {}"
 
-#: lib/minios_session.py:3120 lib/minios_session.py:3137
+#: lib/minios_session.py:3992 lib/minios_session.py:4009
 msgid "Last Modified: {}"
 msgstr "Ultima modifica: {}"
 
-#: lib/minios_session.py:3122
+#: lib/minios_session.py:3994
 msgid "No active session found"
 msgstr "Nessuna sessione attiva trovata"
 
-#: lib/minios_session.py:3130
+#: lib/minios_session.py:4002
 msgid "Running session: #{}"
 msgstr "Sessione in esecuzione: #{}"
 
-#: lib/minios_session.py:3139 lib/minios_session.py:3263
-#: lib/minios_session.py:3272
+#: lib/minios_session.py:4011 lib/minios_session.py:4187
+#: lib/minios_session.py:4196
 msgid "Status: {}"
 msgstr "Stato: {}"
 
-#: lib/minios_session.py:3141
+#: lib/minios_session.py:4013
 msgid "No running session detected"
 msgstr "Nessuna sessione in esecuzione rilevata"
 
-#: lib/minios_session.py:3149 lib/minios_session.py:3274
+#: lib/minios_session.py:4021 lib/minios_session.py:4198
 msgid "Error: {}"
 msgstr "Errore: {}"
 
-#: lib/minios_session.py:3155
+#: lib/minios_session.py:4027
 msgid "MiniOS Media Information:"
 msgstr "Informazioni Media MiniOS:"
 
-#: lib/minios_session.py:3158
+#: lib/minios_session.py:4030
 msgid "Filesystem Type: {}"
 msgstr "Tipo Filesystem: {}"
 
-#: lib/minios_session.py:3159
+#: lib/minios_session.py:4031
 msgid "Device: {}"
 msgstr "Dispositivo: {}"
 
-#: lib/minios_session.py:3160
+#: lib/minios_session.py:4032
 msgid "Mount Options: {}"
 msgstr "Opzioni di mount: {}"
 
-#: lib/minios_session.py:3160
+#: lib/minios_session.py:4032
 msgid "none"
 msgstr "nessuno"
 
-#: lib/minios_session.py:3161
+#: lib/minios_session.py:4033
 msgid "Read-only: {}"
 msgstr "Sola lettura: {}"
 
-#: lib/minios_session.py:3161 lib/minios_session.py:3162
+#: lib/minios_session.py:4033 lib/minios_session.py:4034
+#: lib/minios_session.py:4097
 msgid "Yes"
 msgstr "Sì"
 
-#: lib/minios_session.py:3161 lib/minios_session.py:3162
+#: lib/minios_session.py:4033 lib/minios_session.py:4034
+#: lib/minios_session.py:4097
 msgid "No"
 msgstr "No"
 
-#: lib/minios_session.py:3162
+#: lib/minios_session.py:4034
 msgid "POSIX Compatible: {}"
 msgstr "Compatibile POSIX: {}"
 
-#: lib/minios_session.py:3165
+#: lib/minios_session.py:4037
 msgid "Compatible Session Modes:"
 msgstr "Modalità Sessione Compatibili:"
 
-#: lib/minios_session.py:3171
+#: lib/minios_session.py:4043
 msgid "  None (read-only media)"
 msgstr "  Nessuno (media di sola lettura)"
 
-#: lib/minios_session.py:3176
+#: lib/minios_session.py:4048
 msgid "Filesystem Limitations:"
 msgstr "Limitazioni del Filesystem:"
 
-#: lib/minios_session.py:3178
+#: lib/minios_session.py:4050
 msgid "  • Maximum file size: {}MB ({:.1f}GB)"
 msgstr "  • Dimensione massima file: {}MB ({:.1f}GB)"
 
-#: lib/minios_session.py:3181
+#: lib/minios_session.py:4053
 msgid "  • No POSIX features (no native mode support)"
 msgstr "  • Nessuna funzionalità POSIX (nessun supporto per la modalità nativa)"
 
-#: lib/minios_session.py:3183
+#: lib/minios_session.py:4055
 msgid "  • Case-insensitive filenames"
 msgstr "  • Nomi file non sensibili alle maiuscole/minuscole"
 
-#: lib/minios_session.py:3185
+#: lib/minios_session.py:4057
 msgid "No known limitations"
 msgstr "Nessuna limitazione nota"
 
-#: lib/minios_session.py:3233 lib/minios_session.py:3237
+#: lib/minios_session.py:4096
+msgid "Save at shutdown: {}"
+msgstr "Salva all'arresto: {}"
+
+#: lib/minios_session.py:4098
+msgid "Periodic save: {} minutes"
+msgstr "Salvataggio periodico: {} minuti"
+
+#: lib/minios_session.py:4099
+msgid "Periodic save: Off"
+msgstr "Salvataggio periodico: Disattivato"
+
+#: lib/minios_session.py:4115
+msgid "--progress requires --json"
+msgstr "--progress richiede --json"
+
+#: lib/minios_session.py:4157 lib/minios_session.py:4161
 msgid "Cleanup completed: {} sessions deleted"
 msgstr "Pulizia completata: {} sessioni eliminate"
 
-#: lib/minios_session.py:3239
+#: lib/minios_session.py:4163
 msgid "Errors:"
 msgstr "Errori:"
 
-#: lib/minios_session.py:3261
+#: lib/minios_session.py:4185
 msgid "Sessions directory: {}"
 msgstr "Directory delle sessioni: {}"
 
-#: lib/minios_session.py:3263
+#: lib/minios_session.py:4187
 msgid "Found"
 msgstr "Trovata"
 
-#: lib/minios_session.py:3265 lib/minios_session.py:3267
+#: lib/minios_session.py:4189 lib/minios_session.py:4191
 msgid "Access: {}"
 msgstr "Accesso: {}"
 
-#: lib/minios_session.py:3265
+#: lib/minios_session.py:4189
 msgid "Writable"
 msgstr "Scrivibile"
 
-#: lib/minios_session.py:3267
+#: lib/minios_session.py:4191
 msgid "Read-only"
 msgstr "Sola lettura"
 
-#: lib/minios_session.py:3269
+#: lib/minios_session.py:4193
 msgid "Reason: {}"
 msgstr "Motivo: {}"
 
-#: lib/minios_session.py:3270
+#: lib/minios_session.py:4194
 msgid "Filesystem type: {}"
 msgstr "Tipo di filesystem: {}"
 
-#: lib/minios_session.py:3272
+#: lib/minios_session.py:4196
 msgid "Not found"
 msgstr "Non trovata"
 
-#: lib/minios_session_manager.py:96
+#: lib/minios_session_manager.py:126 lib/minios_session_manager.py:163
 msgid "Operation cancelled"
 msgstr "Operazione annullata"
 
-#: lib/minios_session_manager.py:110
+#: lib/minios_session_manager.py:193
 msgid "LUKS Passphrase"
 msgstr "Passphrase LUKS"
 
-#: lib/minios_session_manager.py:113 lib/minios_session_manager.py:1144
+#: lib/minios_session_manager.py:196 lib/minios_session_manager.py:1394
 msgid "Continue"
 msgstr "Continua"
 
-#: lib/minios_session_manager.py:117
+#: lib/minios_session_manager.py:200
 msgid "Passphrase:"
 msgstr "Passphrase:"
 
-#: lib/minios_session_manager.py:123
+#: lib/minios_session_manager.py:206
 msgid "Confirm passphrase:"
 msgstr "Conferma passphrase:"
 
-#: lib/minios_session_manager.py:133
+#: lib/minios_session_manager.py:216
 msgid "LUKS passphrases do not match or are empty."
 msgstr "Le passphrase LUKS non corrispondono o sono vuote."
 
-#: lib/minios_session_manager.py:199
+#: lib/minios_session_manager.py:279
 msgid "Sessions directory is writable"
 msgstr "La directory delle sessioni è scrivibile"
 
-#: lib/minios_session_manager.py:243
+#: lib/minios_session_manager.py:317
 msgid "Persistence is read-only (out of space)"
 msgstr "Persistenza in sola lettura (spazio esaurito)"
 
-#: lib/minios_session_manager.py:252
+#: lib/minios_session_manager.py:326
 msgid "Low space on persistence device ({} MB free)"
 msgstr "Spazio insufficiente sul dispositivo di persistenza ({} MB liberi)"
 
-#: lib/minios_session_manager.py:258
+#: lib/minios_session_manager.py:332
 msgid "{} startup warnings - click to review"
 msgstr "{} avvisi di avvio - clicca per visualizzare"
 
-#: lib/minios_session_manager.py:305
-#: share/applications/minios-session-manager.desktop:4
-msgid "MiniOS Session Manager"
-msgstr "Gestore di sessioni MiniOS"
-
-#: lib/minios_session_manager.py:352 lib/minios_session_manager.py:1285
+#: lib/minios_session_manager.py:420 lib/minios_session_manager.py:1543
 msgid "Loading sessions..."
 msgstr "Caricamento sessioni..."
 
-#: lib/minios_session_manager.py:385 lib/minios_session_manager.py:917
+#: lib/minios_session_manager.py:451 lib/minios_session_manager.py:1013
 msgid "Create"
 msgstr "Crea"
 
-#: lib/minios_session_manager.py:401 lib/minios_session_manager.py:1548
+#: lib/minios_session_manager.py:472 lib/minios_session_manager.py:1899
 msgid "Import"
 msgstr "Importa"
 
-#: lib/minios_session_manager.py:416
+#: lib/minios_session_manager.py:484
 msgid "Cleanup"
 msgstr "Pulizia"
 
-#: lib/minios_session_manager.py:461
+#: lib/minios_session_manager.py:537
 msgid "Error fetching session data: {}"
 msgstr "Errore durante il recupero dei dati della sessione: {}"
 
-#: lib/minios_session_manager.py:483
+#: lib/minios_session_manager.py:559
 msgid "Failed to get session list: {}"
 msgstr "Impossibile ottenere l'elenco delle sessioni: {}"
 
-#: lib/minios_session_manager.py:530
+#: lib/minios_session_manager.py:607
 msgid "Failed to parse session list JSON: {}"
 msgstr "Impossibile analizzare il JSON dell'elenco sessioni: {}"
 
-#: lib/minios_session_manager.py:663
+#: lib/minios_session_manager.py:742
 msgid "Modified:"
 msgstr "Modificato:"
 
-#: lib/minios_session_manager.py:683
+#: lib/minios_session_manager.py:762
 msgid "AVAILABLE"
 msgstr "DISPONIBILE"
 
-#: lib/minios_session_manager.py:722
+#: lib/minios_session_manager.py:806
 msgid "_Activate Session"
 msgstr "_Attiva sessione"
 
-#: lib/minios_session_manager.py:728
+#: lib/minios_session_manager.py:811
+msgid "Save _Settings..."
+msgstr "Impostazioni di salvataggio..."
+
+#: lib/minios_session_manager.py:816
 msgid "_Resize Session"
 msgstr "_Ridimensiona sessione"
 
-#: lib/minios_session_manager.py:738
+#: lib/minios_session_manager.py:826
 msgid "_Export Session"
 msgstr "_Esporta sessione"
 
-#: lib/minios_session_manager.py:744
+#: lib/minios_session_manager.py:832
 msgid "_Copy Session"
 msgstr "_Copia sessione"
 
-#: lib/minios_session_manager.py:750
+#: lib/minios_session_manager.py:838
 msgid "Con_vert Session"
 msgstr "Con_verti sessione"
 
-#: lib/minios_session_manager.py:760
+#: lib/minios_session_manager.py:848
 msgid "_Open Folder"
 msgstr "_Apri cartella"
 
-#: lib/minios_session_manager.py:770
+#: lib/minios_session_manager.py:858
 msgid "_Delete Session"
 msgstr "_Elimina sessione"
 
-#: lib/minios_session_manager.py:871
+#: lib/minios_session_manager.py:968
 msgid "Session folder not found"
 msgstr "Cartella sessione non trovata"
 
-#: lib/minios_session_manager.py:873 lib/minios_session_manager.py:1292
-#: lib/minios_session_manager.py:1770
+#: lib/minios_session_manager.py:970 lib/minios_session_manager.py:1549
+#: lib/minios_session_manager.py:1643 lib/minios_session_manager.py:2121
 msgid "Failed to get session information"
 msgstr "Impossibile ottenere le informazioni sulla sessione"
 
-#: lib/minios_session_manager.py:875
+#: lib/minios_session_manager.py:972
 msgid "Failed to open folder: {}"
 msgstr "Impossibile aprire la cartella: {}"
 
-#: lib/minios_session_manager.py:882
+#: lib/minios_session_manager.py:979
 msgid "Sessions directory is not writable. Cannot create new sessions."
 msgstr "La directory delle sessioni non è scrivibile. Impossibile creare nuove sessioni."
 
-#: lib/minios_session_manager.py:910
+#: lib/minios_session_manager.py:1006
 msgid "Create New Session"
 msgstr "Crea Nuova Sessione"
 
-#: lib/minios_session_manager.py:928
+#: lib/minios_session_manager.py:1024
 msgid "Detected filesystem:"
 msgstr "Filesystem rilevato:"
 
-#: lib/minios_session_manager.py:932
+#: lib/minios_session_manager.py:1028
 msgid "Select session mode:"
 msgstr "Seleziona modalità sessione:"
 
-#: lib/minios_session_manager.py:940
+#: lib/minios_session_manager.py:1036
 msgid "Native Mode"
 msgstr "Modalità Nativa"
 
-#: lib/minios_session_manager.py:941
+#: lib/minios_session_manager.py:1037
 msgid "Direct storage on POSIX filesystems"
 msgstr "Archiviazione diretta su filesystem POSIX"
 
-#: lib/minios_session_manager.py:948
+#: lib/minios_session_manager.py:1044
 msgid "Native Mode (not compatible)"
 msgstr "Modalità Nativa (non compatibile)"
 
-#: lib/minios_session_manager.py:949
+#: lib/minios_session_manager.py:1045
 msgid "Not available: requires POSIX filesystem"
 msgstr "Non disponibile: richiede filesystem POSIX"
 
-#: lib/minios_session_manager.py:955
+#: lib/minios_session_manager.py:1051
+msgid "SquashFS Mode"
+msgstr "Modalità SquashFS"
+
+#: lib/minios_session_manager.py:1052
+msgid "Compressed snapshot of current live changes"
+msgstr "Snapshot compresso delle modifiche live correnti"
+
+#: lib/minios_session_manager.py:1060
 msgid "DynFileFS Mode"
 msgstr "Modalità DynFileFS"
 
-#: lib/minios_session_manager.py:956
+#: lib/minios_session_manager.py:1061
 msgid "Dynamic files"
 msgstr "File dinamici"
 
-#: lib/minios_session_manager.py:964
+#: lib/minios_session_manager.py:1069
 msgid "Raw Mode"
 msgstr "Modalità Raw"
 
-#: lib/minios_session_manager.py:965
+#: lib/minios_session_manager.py:1070
 msgid "Static image files"
 msgstr "File immagine statici"
 
-#: lib/minios_session_manager.py:973
+#: lib/minios_session_manager.py:1078
 msgid "LUKS Mode"
 msgstr "Modalità LUKS"
 
-#: lib/minios_session_manager.py:974
+#: lib/minios_session_manager.py:1079
 msgid "Encrypted LUKS2/ext4 container"
 msgstr "Container LUKS2/ext4 cifrato"
 
-#: lib/minios_session_manager.py:984 lib/minios_session_manager.py:1685
-#: lib/minios_session_manager.py:1833
+#: lib/minios_session_manager.py:1089 lib/minios_session_manager.py:1573
+msgid "Save automatically at shutdown (recommended)"
+msgstr "Salva automaticamente all'arresto (consigliato)"
+
+#: lib/minios_session_manager.py:1100 lib/minios_session_manager.py:1582
+msgid "Periodic save:"
+msgstr "Salvataggio periodico:"
+
+#: lib/minios_session_manager.py:1111 lib/minios_session_manager.py:1594
+msgid "Periodic saving increases CPU usage and writes to storage. An interval of 1 hour or longer is recommended."
+msgstr "Il salvataggio periodico aumenta l'utilizzo della CPU e le scritture su disco. Si consiglia un intervallo di almeno 1 ora."
+
+#: lib/minios_session_manager.py:1123 lib/minios_session_manager.py:2036
+#: lib/minios_session_manager.py:2184
 msgid "Size (MB):"
 msgstr "Dimensione (MB):"
 
-#: lib/minios_session_manager.py:993 lib/minios_session_manager.py:1020
+#: lib/minios_session_manager.py:1132 lib/minios_session_manager.py:1169
 msgid "(Only used for container modes)"
 msgstr "(Utilizzato solo per le modalità container)"
 
-#: lib/minios_session_manager.py:1016
+#: lib/minios_session_manager.py:1147 lib/minios_session_manager.py:1604
+msgid "You can also save manually at any time using Save Now."
+msgstr "Puoi anche salvare manualmente in qualsiasi momento usando Salva ora."
+
+#: lib/minios_session_manager.py:1149 lib/minios_session_manager.py:1606
+msgid "Changes since the last save are discarded when the computer is turned off."
+msgstr "Le modifiche dall'ultimo salvataggio vengono perse quando il computer viene spento."
+
+#: lib/minios_session_manager.py:1165
 msgid "(Maximum {}MB on FAT32)"
 msgstr "(Massimo {}MB su FAT32)"
 
-#: lib/minios_session_manager.py:1065
+#: lib/minios_session_manager.py:1222
 msgid "Creating new session, please wait..."
 msgstr "Creazione nuova sessione, attendere prego..."
 
-#: lib/minios_session_manager.py:1076
+#: lib/minios_session_manager.py:1235
+msgid "Save Now is available only for the running SquashFS session."
+msgstr "Salva ora è disponibile solo per la sessione SquashFS in esecuzione."
+
+#: lib/minios_session_manager.py:1295
 msgid "Sessions directory is not writable. Cannot activate sessions."
 msgstr "La directory delle sessioni non è scrivibile. Impossibile attivare le sessioni."
 
-#: lib/minios_session_manager.py:1082
+#: lib/minios_session_manager.py:1301
 msgid "Activating session, please wait..."
 msgstr "Attivazione sessione, attendere prego..."
 
-#: lib/minios_session_manager.py:1088
+#: lib/minios_session_manager.py:1307
 msgid "Session activated successfully"
 msgstr "Sessione attivata con successo"
 
-#: lib/minios_session_manager.py:1088 lib/minios_session_manager.py:1090
+#: lib/minios_session_manager.py:1307 lib/minios_session_manager.py:1309
 msgid "Failed to activate session"
 msgstr "Impossibile attivare la sessione"
 
-#: lib/minios_session_manager.py:1100
+#: lib/minios_session_manager.py:1318
 msgid "Sessions directory is not writable. Cannot delete sessions."
 msgstr "La directory delle sessioni non è scrivibile. Impossibile eliminare le sessioni."
 
-#: lib/minios_session_manager.py:1107
+#: lib/minios_session_manager.py:1334
+msgid "Create and activate another SquashFS session before deleting the running SquashFS session."
+msgstr "Crea e attiva un'altra sessione SquashFS prima di eliminare la sessione SquashFS in esecuzione."
+
+#: lib/minios_session_manager.py:1337
+msgid "Delete running SquashFS session?"
+msgstr "Eliminare la sessione SquashFS in esecuzione?"
+
+#: lib/minios_session_manager.py:1339
+msgid "The current system is already running from RAM. Session #{} will become the save target for this boot. Future manual and automatic saves will be written to it. Session #{} will then be permanently deleted."
+msgstr "Il sistema attuale è già in esecuzione da RAM. La sessione #{} diventerà la destinazione di salvataggio per questo avvio. I futuri salvataggi manuali e automatici verranno scritti su di essa. La sessione #{} verrà quindi eliminata definitivamente."
+
+#: lib/minios_session_manager.py:1343
+msgid "Delete and Continue"
+msgstr "Elimina e continua"
+
+#: lib/minios_session_manager.py:1345
 msgid "Delete this session?"
 msgstr "Eliminare questa sessione?"
 
-#: lib/minios_session_manager.py:1108
+#: lib/minios_session_manager.py:1346
 msgid "Session #{} and all of its data will be permanently deleted. This action cannot be undone."
 msgstr "La sessione #{} e tutti i suoi dati saranno eliminati in modo permanente. Questa azione non può essere annullata."
 
-#: lib/minios_session_manager.py:1111
+#: lib/minios_session_manager.py:1348
 msgid "Delete Session"
 msgstr "Elimina Sessione"
 
-#: lib/minios_session_manager.py:1112
+#: lib/minios_session_manager.py:1352
 msgid "Keep Session"
 msgstr "Mantieni sessione"
 
-#: lib/minios_session_manager.py:1114
+#: lib/minios_session_manager.py:1356
+msgid "Switching save target and deleting session..."
+msgstr "Cambio della destinazione di salvataggio ed eliminazione della sessione in corso..."
+
+#: lib/minios_session_manager.py:1357
 msgid "Deleting session, please wait..."
 msgstr "Eliminazione sessione, attendere prego..."
 
-#: lib/minios_session_manager.py:1120
+#: lib/minios_session_manager.py:1368
 msgid "Session deleted successfully"
 msgstr "Sessione eliminata con successo"
 
-#: lib/minios_session_manager.py:1120 lib/minios_session_manager.py:1122
+#: lib/minios_session_manager.py:1368 lib/minios_session_manager.py:1372
 msgid "Failed to delete session"
 msgstr "Impossibile eliminare la sessione"
 
-#: lib/minios_session_manager.py:1132
+#: lib/minios_session_manager.py:1382
 msgid "Sessions directory is not writable. Cannot cleanup sessions."
 msgstr "La directory delle sessioni non è scrivibile. Impossibile pulire le sessioni."
 
-#: lib/minios_session_manager.py:1137
+#: lib/minios_session_manager.py:1387
 msgid "Cleanup Old Sessions"
 msgstr "Pulizia Vecchie Sessioni"
 
-#: lib/minios_session_manager.py:1153
+#: lib/minios_session_manager.py:1403
 msgid "Delete sessions older than how many days?"
 msgstr "Eliminare sessioni più vecchie di quanti giorni?"
 
-#: lib/minios_session_manager.py:1173
+#: lib/minios_session_manager.py:1423
 msgid "Delete old sessions?"
 msgstr "Eliminare le sessioni vecchie?"
 
-#: lib/minios_session_manager.py:1174
+#: lib/minios_session_manager.py:1424
 msgid "All sessions older than {} days will be permanently deleted."
 msgstr "Tutte le sessioni più vecchie di {} giorni saranno eliminate in modo permanente."
 
-#: lib/minios_session_manager.py:1177
+#: lib/minios_session_manager.py:1427
 msgid "Delete Old Sessions"
 msgstr "Elimina sessioni vecchie"
 
-#: lib/minios_session_manager.py:1179
+#: lib/minios_session_manager.py:1429
 msgid "Cleaning up old sessions, please wait..."
 msgstr "Pulizia vecchie sessioni, attendere prego..."
 
-#: lib/minios_session_manager.py:1185
+#: lib/minios_session_manager.py:1435
 msgid "Cleanup completed successfully"
 msgstr "Pulizia completata con successo"
 
-#: lib/minios_session_manager.py:1185 lib/minios_session_manager.py:1187
+#: lib/minios_session_manager.py:1435 lib/minios_session_manager.py:1437
 msgid "Cleanup failed"
 msgstr "Pulizia fallita"
 
-#: lib/minios_session_manager.py:1199
+#: lib/minios_session_manager.py:1449
 msgid "Something went wrong"
 msgstr "Si è verificato un errore"
 
-#: lib/minios_session_manager.py:1203
+#: lib/minios_session_manager.py:1453
 msgid "Completed"
 msgstr "Completato"
 
-#: lib/minios_session_manager.py:1255
+#: lib/minios_session_manager.py:1506
 msgid "Failed to create session: {}"
 msgstr "Impossibile creare la sessione: {}"
 
-#: lib/minios_session_manager.py:1315
+#: lib/minios_session_manager.py:1558
+msgid "Save settings are available only for SquashFS sessions."
+msgstr "Le impostazioni di salvataggio sono disponibili solo per le sessioni SquashFS."
+
+#: lib/minios_session_manager.py:1561
+msgid "SquashFS Save Settings"
+msgstr "Impostazioni di salvataggio SquashFS"
+
+#: lib/minios_session_manager.py:1564
+msgid "Apply"
+msgstr "Applica"
+
+#: lib/minios_session_manager.py:1624
+msgid "Updating save settings..."
+msgstr "Aggiornamento delle impostazioni di salvataggio in corso..."
+
+#: lib/minios_session_manager.py:1632
+msgid "Save settings updated"
+msgstr "Impostazioni di salvataggio aggiornate"
+
+#: lib/minios_session_manager.py:1666
 msgid "Cannot resize session while it is running. Resize operation is not allowed for the currently active session."
 msgstr "Impossibile ridimensionare la sessione mentre è in esecuzione. L'operazione di ridimensionamento non è consentita per la sessione attualmente attiva."
 
-#: lib/minios_session_manager.py:1334 lib/minios_session_manager.py:1788
+#: lib/minios_session_manager.py:1685 lib/minios_session_manager.py:2139
 msgid "Failed to parse session information"
 msgstr "Impossibile analizzare le informazioni della sessione"
 
-#: lib/minios_session_manager.py:1339
+#: lib/minios_session_manager.py:1690
 msgid "Resize Session {}"
 msgstr "Ridimensiona Sessione {}"
 
-#: lib/minios_session_manager.py:1346
+#: lib/minios_session_manager.py:1697
 msgid "Resize"
 msgstr "Ridimensiona"
 
-#: lib/minios_session_manager.py:1357
+#: lib/minios_session_manager.py:1708
 msgid "Session:"
 msgstr "Sessione:"
 
-#: lib/minios_session_manager.py:1361
+#: lib/minios_session_manager.py:1712
 msgid "New size (MB):"
 msgstr "Nuova dimensione (MB):"
 
-#: lib/minios_session_manager.py:1381
+#: lib/minios_session_manager.py:1732
 msgid "Resizing session, please wait..."
 msgstr "Ridimensionamento sessione, attendere prego..."
 
-#: lib/minios_session_manager.py:1412 lib/minios_session_manager.py:1414
-#: lib/minios_session_manager.py:1416
+#: lib/minios_session_manager.py:1763 lib/minios_session_manager.py:1765
+#: lib/minios_session_manager.py:1767
 msgid "Resize failed"
 msgstr "Ridimensionamento fallito"
 
-#: lib/minios_session_manager.py:1423
+#: lib/minios_session_manager.py:1774
 msgid "Export Session {}"
 msgstr "Esporta Sessione {}"
 
-#: lib/minios_session_manager.py:1431
+#: lib/minios_session_manager.py:1782
 msgid "Export"
 msgstr "Esporta"
 
-#: lib/minios_session_manager.py:1438 lib/minios_session_manager.py:1519
+#: lib/minios_session_manager.py:1789 lib/minios_session_manager.py:1870
 msgid "TAR.ZSTD archives (*.tar.zst)"
 msgstr "Archivi TAR.ZSTD (*.tar.zst)"
 
-#: lib/minios_session_manager.py:1443 lib/minios_session_manager.py:1524
+#: lib/minios_session_manager.py:1794 lib/minios_session_manager.py:1875
 msgid "All files"
 msgstr "Tutti i file"
 
-#: lib/minios_session_manager.py:1457
+#: lib/minios_session_manager.py:1808
 msgid "Exporting session, please wait..."
 msgstr "Esportazione sessione, attendere prego..."
 
-#: lib/minios_session_manager.py:1482
+#: lib/minios_session_manager.py:1833
 msgid "Session exported successfully"
 msgstr "Sessione esportata con successo"
 
-#: lib/minios_session_manager.py:1487 lib/minios_session_manager.py:1489
-#: lib/minios_session_manager.py:1491
+#: lib/minios_session_manager.py:1838 lib/minios_session_manager.py:1840
+#: lib/minios_session_manager.py:1842
 msgid "Export failed"
 msgstr "Esportazione fallita"
 
-#: lib/minios_session_manager.py:1498
+#: lib/minios_session_manager.py:1849
 msgid "Sessions directory is not writable. Cannot import sessions."
 msgstr "La directory delle sessioni non è scrivibile. Impossibile importare sessioni."
 
-#: lib/minios_session_manager.py:1507
+#: lib/minios_session_manager.py:1858
 msgid "Import Session"
 msgstr "Importa Sessione"
 
-#: lib/minios_session_manager.py:1515
+#: lib/minios_session_manager.py:1866
 msgid "Open"
 msgstr "Apri"
 
-#: lib/minios_session_manager.py:1541
+#: lib/minios_session_manager.py:1892
 msgid "Import Options"
 msgstr "Opzioni di importazione"
 
-#: lib/minios_session_manager.py:1559
+#: lib/minios_session_manager.py:1910
 msgid "Archive:"
 msgstr "Archivio:"
 
-#: lib/minios_session_manager.py:1563
+#: lib/minios_session_manager.py:1914
 msgid "Auto-convert to compatible mode if needed"
 msgstr "Converti automaticamente in modalità compatibile se necessario"
 
-#: lib/minios_session_manager.py:1569
+#: lib/minios_session_manager.py:1920
 msgid "Force import to mode:"
 msgstr "Forza importazione in modalità:"
 
-#: lib/minios_session_manager.py:1571
+#: lib/minios_session_manager.py:1922
 msgid "Auto (from metadata)"
 msgstr "Auto (dai metadati)"
 
-#: lib/minios_session_manager.py:1596
+#: lib/minios_session_manager.py:1947
 msgid "Importing session, please wait..."
 msgstr "Importazione sessione, attendere prego..."
 
-#: lib/minios_session_manager.py:1626
+#: lib/minios_session_manager.py:1977
 msgid "Session imported successfully"
 msgstr "Sessione importata con successo"
 
-#: lib/minios_session_manager.py:1632 lib/minios_session_manager.py:1634
-#: lib/minios_session_manager.py:1636
+#: lib/minios_session_manager.py:1983 lib/minios_session_manager.py:1985
+#: lib/minios_session_manager.py:1987
 msgid "Import failed"
 msgstr "Importazione fallita"
 
-#: lib/minios_session_manager.py:1643
+#: lib/minios_session_manager.py:1994
 msgid "Copy Session {}"
 msgstr "Copia Sessione {}"
 
-#: lib/minios_session_manager.py:1650
+#: lib/minios_session_manager.py:2001
 msgid "Copy"
 msgstr "Copia"
 
-#: lib/minios_session_manager.py:1661
+#: lib/minios_session_manager.py:2012
 msgid "Copy session:"
 msgstr "Copia sessione:"
 
-#: lib/minios_session_manager.py:1665
+#: lib/minios_session_manager.py:2016
 msgid "Convert to different mode"
 msgstr "Converti in modalità diversa"
 
-#: lib/minios_session_manager.py:1670 lib/minios_session_manager.py:1818
+#: lib/minios_session_manager.py:2021 lib/minios_session_manager.py:2169
 msgid "Target mode:"
 msgstr "Modalità di destinazione:"
 
-#: lib/minios_session_manager.py:1722
+#: lib/minios_session_manager.py:2073
 msgid "Copying session, please wait..."
 msgstr "Copia sessione, attendere prego..."
 
-#: lib/minios_session_manager.py:1752
+#: lib/minios_session_manager.py:2103
 msgid "Session copied successfully"
 msgstr "Sessione copiata con successo"
 
-#: lib/minios_session_manager.py:1758 lib/minios_session_manager.py:1760
-#: lib/minios_session_manager.py:1762
+#: lib/minios_session_manager.py:2109 lib/minios_session_manager.py:2111
+#: lib/minios_session_manager.py:2113
 msgid "Copy failed"
 msgstr "Copia fallita"
 
-#: lib/minios_session_manager.py:1793
+#: lib/minios_session_manager.py:2144
 msgid "Convert Session {}"
 msgstr "Converti Sessione {}"
 
-#: lib/minios_session_manager.py:1800
+#: lib/minios_session_manager.py:2151
 msgid "Convert"
 msgstr "Converti"
 
-#: lib/minios_session_manager.py:1811
+#: lib/minios_session_manager.py:2162
 msgid "Convert session:"
 msgstr "Converti sessione:"
 
-#: lib/minios_session_manager.py:1814
+#: lib/minios_session_manager.py:2165
 msgid "Current mode: {}"
 msgstr "Modalità attuale: {}"
 
-#: lib/minios_session_manager.py:1880
+#: lib/minios_session_manager.py:2231
 msgid "Converting session, please wait..."
 msgstr "Conversione sessione, attendere prego..."
 
-#: lib/minios_session_manager.py:1908
+#: lib/minios_session_manager.py:2259
 msgid "Session converted successfully"
 msgstr "Sessione convertita con successo"
 
-#: lib/minios_session_manager.py:1914 lib/minios_session_manager.py:1916
-#: lib/minios_session_manager.py:1918
+#: lib/minios_session_manager.py:2265 lib/minios_session_manager.py:2267
+#: lib/minios_session_manager.py:2269
 msgid "Convert failed"
 msgstr "Conversione fallita"
+
+#: debian/minios-session-manager/etc/xdg/autostart/minios-persistence-alert.desktop:3
+#: share/autostart/minios-persistence-alert.desktop:3
+msgid "MiniOS Persistence Alert"
+msgstr "MiniOS Avviso Persistenza"
+
+#: debian/minios-session-manager/etc/xdg/autostart/minios-persistence-alert.desktop:4
+#: share/autostart/minios-persistence-alert.desktop:4
+msgid "Warn about low persistence space and missed startup warnings"
+msgstr "Avvisa in caso di spazio di persistenza insufficiente e avvisi di avvio non visualizzati"
 
 #: share/applications/minios-session-manager.desktop:13
 msgid "Manage MiniOS persistent sessions"
@@ -1503,72 +2031,3 @@ msgstr "Gestisci le sessioni persistenti di MiniOS"
 #: share/applications/minios-session-manager.desktop:25
 msgid "session;persistent;changes;storage;"
 msgstr "sessione;persistente;modifiche;archiviazione;"
-
-#: share/autostart/minios-persistence-alert.desktop:3
-msgid "MiniOS Persistence Alert"
-msgstr "MiniOS Avviso Persistenza"
-
-#: share/autostart/minios-persistence-alert.desktop:4
-msgid "Warn about low persistence space and missed startup warnings"
-msgstr "Avvisa in caso di spazio di persistenza insufficiente e avvisi di avvio non visualizzati"
-
-#~ msgid "Activate Session"
-#~ msgstr "Attiva Sessione"
-
-#~ msgid "Resize Session"
-#~ msgstr "Ridimensiona Sessione"
-
-#~ msgid "Export Session"
-#~ msgstr "Esporta Sessione"
-
-#~ msgid "Copy Session"
-#~ msgstr "Copia Sessione"
-
-#~ msgid "Convert Session"
-#~ msgstr "Converti Sessione"
-
-#~ msgid "Open Folder"
-#~ msgstr "Apri Cartella"
-
-#~ msgid ""
-#~ "You're about to permanently delete session #{}.\n"
-#~ "\n"
-#~ "This action cannot be undone and all data in this session will be lost forever.\n"
-#~ "\n"
-#~ "Are you absolutely sure you want to proceed?"
-#~ msgstr ""
-#~ "Stai per eliminare definitivamente la sessione #{}.\n"
-#~ "\n"
-#~ "Questa azione non può essere annullata e tutti i dati di questa sessione andranno persi per sempre.\n"
-#~ "\n"
-#~ "Sei assolutamente sicuro di voler procedere?"
-
-#~ msgid "Yes, delete it"
-#~ msgstr "Sì, eliminala"
-
-#~ msgid "Keep it safe"
-#~ msgstr "Mantienila al sicuro"
-
-#~ msgid "Confirm Cleanup"
-#~ msgstr "Conferma Pulizia"
-
-#~ msgid ""
-#~ "This will delete all sessions older than {} days.\n"
-#~ "\n"
-#~ "Continue?"
-#~ msgstr ""
-#~ "Questo eliminerà tutte le sessioni più vecchie di {} giorni.\n"
-#~ "\n"
-#~ "Continuare?"
-
-#~ msgid "Oops! Something went wrong"
-#~ msgstr "Ops! Qualcosa è andato storto"
-
-#~ msgid "Got it"
-#~ msgstr "Capito"
-
-#~ msgid "Success"
-#~ msgstr "Successo"
-
-#~ msgid "OK"
-#~ msgstr "OK"

@@ -28,6 +28,8 @@ import threading
 import time
 from datetime import datetime, timezone
 
+gettext.bindtextdomain('minios-session-manager', '/usr/share/locale')
+gettext.textdomain('minios-session-manager')
 _ = gettext.gettext
 
 STATE_FILE = "/run/minios-persistence/state"
@@ -320,7 +322,7 @@ def _run_gui():
             connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
             parameters = GLib.Variant(
                 '(susssasa{sv}i)',
-                ('MiniOS Session Manager', 0, 'document-save',
+                (_('MiniOS Session Manager'), 0, 'document-save',
                  summary, body, [], {}, 5000))
             connection.call_sync(
                 'org.freedesktop.Notifications', '/org/freedesktop/Notifications',

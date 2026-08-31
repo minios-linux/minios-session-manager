@@ -296,12 +296,18 @@ class TestCheckSessionsDirectoryStatus:
     def test_directory_found_and_writable(self, temp_sessions_dir):
         """Test status when directory exists and is writable."""
         from minios_session import SessionManager
-        
+
+        filesystem_info = {
+            'type': 'ext4',
+            'device': '/dev/sda1',
+            'mount_options': 'rw',
+            'is_readonly': False,
+            'is_posix_compatible': True,
+        }
         with patch('os.path.exists', return_value=True), \
-             patch('subprocess.run') as mock_run, \
+             patch.object(SessionManager, '_detect_filesystem_type',
+                          return_value=(filesystem_info, None)), \
              patch('tempfile.NamedTemporaryFile'):
-            mock_run.return_value = MagicMock(stdout='ext4\n', returncode=0)
-            
             sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
             sm.sessions_dir = temp_sessions_dir
             
