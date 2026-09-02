@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: minios-session-manager 1.1.0\n"
 "Report-Msgid-Bugs-To: support@minios.dev\n"
-"POT-Creation-Date: 2026-09-01 01:24+0300\n"
-"PO-Revision-Date: 2026-08-31 22:24+0000\n"
+"POT-Creation-Date: 2026-09-02 14:13+0300\n"
+"PO-Revision-Date: 2026-09-02 10:43+0000\n"
 "Last-Translator: crims0n <crims0n@minios.dev>\n"
 "Language-Team: none\n"
 "Language: id\n"
@@ -2030,3 +2030,11 @@ msgstr "Kelola sesi persisten MiniOS"
 #: share/applications/minios-session-manager.desktop:25
 msgid "session;persistent;changes;storage;"
 msgstr "sesi;persisten;perubahan;penyimpanan;"
+
+#: share/polkit/dev.minios.session-manager.policy:11
+msgid "Run MiniOS Session Manager CLI operations"
+msgstr "Jalankan operasi CLI Manajer Sesi MiniOS"
+
+#: share/polkit/dev.minios.session-manager.policy:20
+msgid "Authentication is required to perform session operations"
+msgstr "Diperlukan otentikasi untuk menjalankan operasi sesi"
