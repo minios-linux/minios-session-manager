@@ -429,6 +429,10 @@ class SessionManagerGUI:
         overlay = Gtk.Overlay()
         overlay.add(scrolled)
         overlay.add_overlay(self.loading_box)
+        # The initial refresh happens before window.show_all(). Without
+        # no-show-all, GTK makes this already-hidden overlay visible again and
+        # RAM-only boots remain stuck on "Loading sessions..." forever.
+        self.loading_box.set_no_show_all(True)
         self.loading_box.set_visible(False)
         
         main_box.pack_start(overlay, True, True, 0)

@@ -49,3 +49,8 @@ def test_squashfs_create_policies_and_save_progress_are_exposed():
     assert "'save', session_id, '--json', '--progress'" in SOURCE
     assert 'GLib.timeout_add(500, show_progress_if_needed)' in SOURCE
     assert '_("Saving Session")' in SOURCE
+
+def test_loading_overlay_stays_hidden_after_initial_refresh():
+    assert "self.loading_box.set_no_show_all(True)" in SOURCE
+    assert SOURCE.index("self.loading_box.set_no_show_all(True)") < SOURCE.index(
+        "self.loading_box.set_visible(False)")
