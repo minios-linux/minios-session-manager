@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -54,3 +55,17 @@ def test_loading_overlay_stays_hidden_after_initial_refresh():
     assert "self.loading_box.set_no_show_all(True)" in SOURCE
     assert SOURCE.index("self.loading_box.set_no_show_all(True)") < SOURCE.index(
         "self.loading_box.set_visible(False)")
+
+
+def test_ram_only_status_explains_missing_persistent_storage():
+    assert "Persistent sessions are unavailable" in SOURCE
+    assert "Sessions directory not found" not in SOURCE
+
+
+def test_manpage_versions_match_changelog():
+    changelog = (ROOT / "debian/changelog").read_text(encoding="utf-8")
+    version = re.search(r'^minios-session-manager \(([^)]+)\)', changelog).group(1)
+    for name in ("minios-session-manager.1", "minios-session.1"):
+        first_line = (ROOT / "debian" / name).read_text(
+            encoding="utf-8").splitlines()[0]
+        assert 'MiniOS Session Manager {}"'.format(version) in first_line

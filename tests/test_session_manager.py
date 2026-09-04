@@ -499,6 +499,7 @@ class TestAuditRegressions:
         gui = object.__new__(module.SessionManagerGUI)
         gui.cli_command = 'minios-session'
         gui._cli_lock = module.threading.Lock()
+        gui._cli_process_lock = module.threading.Lock()
         gui._cli_process = None
         gui._closing = False
         process = MagicMock(returncode=0)
@@ -542,6 +543,212 @@ class TestAuditRegressions:
         gui._process_session_data.assert_called_once_with(
             1, True, '[]', '', None, None)
 
+    def test_gui_distinguishes_ram_only_status_from_query_failure(self):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        gui._run_cli_command = MagicMock(return_value=(
+            True, json.dumps({
+                'success': False, 'found': False, 'writable': False,
+                'sessions_dir': None,
+                'error': 'Sessions directory not found',
+            }), ''))
+        status = gui._check_sessions_directory_status()
+        assert status['found'] is False
+        assert status['_query_error'] is False
+
+        gui._run_cli_command = MagicMock(return_value=(
+            False, '', 'Authorization cancelled'))
+        status = gui._check_sessions_directory_status()
+        assert status['found'] is False
+        assert status['_query_error'] is True
+        assert status['error'] == 'Authorization cancelled'
+
+    def test_gui_rejects_non_object_status_response(self):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        gui._run_cli_command = MagicMock(return_value=(True, '[]', ''))
+
+        status = gui._check_sessions_directory_status()
+
+        assert status['_query_error'] is True
+        assert 'not an object' in status['error']
+
+    @pytest.mark.parametrize('payload', [
+        {},
+        {'success': True, 'found': 'false', 'writable': 'false'},
+        {'success': True, 'found': False, 'writable': True},
+        {'success': True, 'found': True, 'writable': False},
+        {'success': False, 'found': True, 'writable': False,
+         'sessions_dir': '/changes', 'filesystem_type': 'ext4'},
+        {'success': False, 'found': False, 'writable': False,
+         'sessions_dir': None},
+        {'success': True, 'found': True, 'writable': True,
+         'sessions_dir': '/changes', 'filesystem_type': 'ext4',
+         'error': 'unexpected'},
+    ])
+    def test_gui_rejects_invalid_status_schema(self, payload):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        gui._run_cli_command = MagicMock(return_value=(
+            True, json.dumps(payload), ''))
+
+        status = gui._check_sessions_directory_status()
+
+        assert status['_query_error'] is True
+
+    def test_gui_query_error_does_not_render_ram_only_empty_state(self):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        gui._refresh_generation = 0
+        gui.sessions_status = {
+            'found': False, 'writable': False, '_query_error': True,
+            'error': 'Authorization cancelled',
+        }
+        gui._show_sessions_query_error_state = MagicMock()
+
+        gui.refresh_session_list()
+
+        gui._show_sessions_query_error_state.assert_called_once_with(1)
+
+    def test_gui_retry_recovers_after_status_query_failure(self):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        gui._status_retry_generation = 1
+        gui._closing = False
+        gui._filesystem_info = {}
+        gui.sessions_status_banner = MagicMock()
+        gui.sessions_status_retry = MagicMock()
+        gui.create_btn = MagicMock()
+        gui.import_btn = MagicMock()
+        gui.cleanup_btn = MagicMock()
+        gui.refresh_session_list = MagicMock()
+
+        result = gui._finish_sessions_directory_status_retry(1, {
+            'success': False, 'found': False, 'writable': False,
+            'sessions_dir': None, 'error': 'Sessions directory not found',
+            '_query_error': False,
+        })
+
+        assert result is False
+        gui.sessions_status_retry.set_visible.assert_called_once_with(False)
+        gui.sessions_status_retry.set_sensitive.assert_called_once_with(True)
+        for button in (gui.create_btn, gui.import_btn, gui.cleanup_btn):
+            button.set_sensitive.assert_called_once_with(False)
+        gui.refresh_session_list.assert_called_once_with()
+
+    def test_gui_retry_refreshes_visible_error_after_another_failure(self):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        gui._status_retry_generation = 1
+        gui._closing = False
+        gui._filesystem_info = {}
+        gui.sessions_status_banner = MagicMock()
+        gui.sessions_status_retry = MagicMock()
+        gui.create_btn = MagicMock()
+        gui.import_btn = MagicMock()
+        gui.cleanup_btn = MagicMock()
+        gui.refresh_session_list = MagicMock()
+
+        gui._finish_sessions_directory_status_retry(1, {
+            'success': False, 'found': False, 'writable': False,
+            '_query_error': True, 'error': 'Still unavailable',
+        })
+
+        gui.sessions_status_retry.set_visible.assert_called_once_with(True)
+        gui.refresh_session_list.assert_called_once_with()
+
+    def test_gui_retry_runs_status_query_in_worker(self):
+        import minios_session_manager as module
+
+        gui = object.__new__(module.SessionManagerGUI)
+        gui._status_retry_generation = 0
+        gui.sessions_status_banner = MagicMock()
+        gui.sessions_status_retry = MagicMock()
+        thread = MagicMock()
+        with patch.object(module.threading, 'Thread', return_value=thread) as factory:
+            gui._retry_sessions_directory_status(None)
+
+        gui.sessions_status_retry.set_sensitive.assert_called_once_with(False)
+        gui.sessions_status_retry.set_visible.assert_called_once_with(False)
+        assert callable(factory.call_args[1]['target'])
+        assert thread.daemon is True
+        thread.start.assert_called_once_with()
+
+    def test_stale_fetch_error_does_not_change_current_refresh(self):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        gui._refresh_generation = 2
+        gui._show_error = MagicMock()
+        gui._show_loading = MagicMock()
+
+        assert gui._process_session_fetch_error(1, 'stale') is False
+        gui._show_error.assert_not_called()
+        gui._show_loading.assert_not_called()
+
+    @pytest.mark.parametrize('payload, expected', [
+        ({
+            'filesystem': {'type': 'ext4'},
+            'compatible_modes': ['native', 'squashfs'],
+            'limitations': {},
+        }, True),
+        ({}, False),
+        ({
+            'filesystem': {'type': 'ext4'},
+            'compatible_modes': ['native'],
+            'limitations': {'max_file_size': True},
+        }, False),
+    ])
+    def test_gui_validates_filesystem_info_schema(self, payload, expected):
+        from minios_session_manager import SessionManagerGUI
+
+        assert SessionManagerGUI._valid_filesystem_info(payload) is expected
+
+    @pytest.mark.parametrize('output', ['{}', '[null]', '["bad"]'])
+    def test_gui_rejects_invalid_session_list_schema_without_clearing_rows(
+            self, output):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        gui._refresh_generation = 1
+        gui.sessions_list = MagicMock()
+        gui.sessions_list.get_children.return_value = [MagicMock()]
+        gui._show_error = MagicMock()
+        gui._show_loading = MagicMock()
+
+        gui._process_session_data(1, True, output, '', None, None)
+
+        gui._show_error.assert_called_once_with(
+            'Failed to parse session list JSON: '
+            'response does not match the session list schema')
+        gui.sessions_list.remove.assert_not_called()
+        gui._show_loading.assert_called_once_with(False)
+
+    def test_loading_overlay_can_be_shown_again_after_initial_hide(self):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        gui.loading_box = MagicMock()
+        gui.loading_box.get_style_context.return_value = MagicMock()
+        gui.loading_spinner = MagicMock()
+        gui.loading_label = MagicMock()
+
+        gui._show_loading(False)
+        gui._show_loading(True, 'Working')
+
+        calls = gui.loading_box.set_visible.call_args_list
+        assert calls[0][0] == (False,)
+        assert calls[1][0] == (True,)
+        gui.loading_spinner.stop.assert_called_once_with()
+        gui.loading_spinner.start.assert_called_once_with()
+        gui.loading_label.set_text.assert_any_call('Working')
+
     def test_gui_decodes_structured_cli_errors(self):
         from minios_session_manager import SessionManagerGUI
 
@@ -556,6 +763,17 @@ class TestAuditRegressions:
             'Не удалось найти каталог сессий.\n\n'
             'Сохранение сессий не включено.')
         assert '\\u' not in message
+
+    @pytest.mark.parametrize('document', [
+        '{"success":false,"success":true}',
+        '{"value":NaN}',
+        '{"value":Infinity}',
+    ])
+    def test_gui_strict_json_rejects_ambiguous_documents(self, document):
+        import minios_session_manager as module
+
+        with pytest.raises(ValueError):
+            module._strict_json_loads(document)
 
     def test_session_id_cannot_escape_custom_sessions_dir(self, temp_sessions_dir):
         from minios_session import SessionManager

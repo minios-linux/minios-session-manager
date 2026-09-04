@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
 import gettext
 from datetime import datetime
 
@@ -67,29 +68,55 @@ def _save_phase_text(phase):
     }.get(phase, _("Saving session..."))
 
 
+def _strict_json_loads(text):
+    def object_from_pairs(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError('duplicate JSON object key: {}'.format(key))
+            value[key] = item
+        return value
+
+    def reject_constant(value):
+        raise ValueError('invalid JSON constant: {}'.format(value))
+
+    return json.loads(
+        text, object_pairs_hook=object_from_pairs,
+        parse_constant=reject_constant)
+
+
 class SessionManagerGUI:
     """GUI application for session management"""
 
     def __init__(self):
         self.cli_command = self._get_minios_session_cli_path()
         self._cli_lock = threading.Lock()
+        self._cli_process_lock = threading.Lock()
         self._cli_process = None
         self._closing = False
         self._refresh_generation = 0
+        self._status_retry_generation = 0
+        self._status_pending = True
+        self._snapshot_time = None
+        self._sessions_by_id = {}
+        self._filesystem_info = {}
         self.luks_available = bool(
             shutil.which('cryptsetup') and shutil.which('losetup') and
             os.path.isfile('/run/initramfs/etc/minios-initramfs-crypt')
         )
         
-        # Check sessions directory status
-        self.sessions_status = self._check_sessions_directory_status()
-        self.sessions_writable = self.sessions_status.get('writable', False)
+        self.sessions_status = {
+            'success': False, 'found': False, 'writable': False,
+            '_query_error': False,
+        }
+        self.sessions_writable = False
         
         self._load_css()
         
         self.builder = Gtk.Builder()
         self.create_interface()
-        self.refresh_session_list()
+        self._retry_sessions_directory_status(None)
+        GLib.timeout_add_seconds(30, self._periodic_session_refresh)
 
     def _load_css(self):
         """Load the MiniOS base CSS followed by the first app override found."""
@@ -122,17 +149,21 @@ class SessionManagerGUI:
             # Long exports, conversions, and imports are not bounded by an arbitrary UI timeout.
             # The lock prevents overlapping privileged operations from racing each other.
             with self._cli_lock:
-                if self._closing:
-                    return False, "", _("Operation cancelled")
-                self._cli_process = subprocess.Popen(
-                    cmd, stdin=subprocess.PIPE if input_data is not None else None,
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                    universal_newlines=True)
+                with self._cli_process_lock:
+                    if self._closing:
+                        return False, "", _("Operation cancelled")
+                    process = subprocess.Popen(
+                        cmd, stdin=subprocess.PIPE if input_data is not None else None,
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                        universal_newlines=True)
+                    self._cli_process = process
                 try:
-                    output, error = self._cli_process.communicate(input=input_data)
-                    return self._cli_process.returncode == 0, output, error
+                    output, error = process.communicate(input=input_data)
+                    return process.returncode == 0, output, error
                 finally:
-                    self._cli_process = None
+                    with self._cli_process_lock:
+                        if self._cli_process is process:
+                            self._cli_process = None
         except Exception as e:
             return False, "", str(e)
 
@@ -143,7 +174,7 @@ class SessionManagerGUI:
         if not text:
             return 'Unknown error'
         try:
-            payload = json.loads(text)
+            payload = _strict_json_loads(text)
         except (TypeError, ValueError):
             return text
         if not isinstance(payload, dict):
@@ -159,32 +190,36 @@ class SessionManagerGUI:
         try:
             cmd = ['pkexec', self.cli_command, 'save', session_id, '--json', '--progress']
             with self._cli_lock:
-                if self._closing:
-                    return False, "", _("Operation cancelled")
                 with tempfile.TemporaryFile() as error_file:
-                    self._cli_process = subprocess.Popen(
-                        cmd, stdout=subprocess.PIPE, stderr=error_file,
-                        universal_newlines=True)
+                    with self._cli_process_lock:
+                        if self._closing:
+                            return False, "", _("Operation cancelled")
+                        process = subprocess.Popen(
+                            cmd, stdout=subprocess.PIPE, stderr=error_file,
+                            universal_newlines=True)
+                        self._cli_process = process
                     final_output = ""
                     try:
-                        for line in self._cli_process.stdout:
+                        for line in process.stdout:
                             stripped = line.strip()
                             if not stripped:
                                 continue
                             try:
-                                event = json.loads(stripped)
+                                event = _strict_json_loads(stripped)
                             except (TypeError, ValueError):
                                 continue
                             if event.get('type') == 'phase':
                                 phase_callback(event.get('phase'))
                             else:
                                 final_output = stripped
-                        self._cli_process.wait()
+                        process.wait()
                         error_file.seek(0)
                         error = error_file.read().decode('utf-8', 'replace')
-                        return self._cli_process.returncode == 0, final_output, error
+                        return process.returncode == 0, final_output, error
                     finally:
-                        self._cli_process = None
+                        with self._cli_process_lock:
+                            if self._cli_process is process:
+                                self._cli_process = None
         except Exception as e:
             return False, "", str(e)
 
@@ -219,49 +254,75 @@ class SessionManagerGUI:
         return payload + password + '\n' if confirm else payload
 
     def _get_session_mode(self, session_id):
-        success, output, _error = self._run_cli_command(['list', '--json'])
-        if success:
-            try:
-                return next((session.get('mode') for session in json.loads(output)
-                             if session.get('id') == session_id), None)
-            except (ValueError, TypeError):
-                pass
-        return None
+        return self._sessions_by_id.get(session_id, {}).get('mode')
 
     def _fat_size_limit(self):
-        success, output, _error = self._run_cli_command(['info', '--json'])
-        if success:
-            try:
-                return json.loads(output).get('limitations', {}).get('max_file_size')
-            except (ValueError, TypeError):
-                pass
-        return None
+        return self._filesystem_info.get('limitations', {}).get('max_file_size')
 
     def _on_window_destroy(self, _window):
         """Terminate the active privileged child before the GUI exits."""
-        self._closing = True
-        if self._cli_process and self._cli_process.poll() is None:
-            self._cli_process.terminate()
-        Gtk.main_quit()
+        with self._cli_process_lock:
+            self._closing = True
+            process = self._cli_process
+        try:
+            if process and process.poll() is None:
+                try:
+                    process.terminate()
+                except ProcessLookupError:
+                    pass
+        finally:
+            Gtk.main_quit()
 
     def _check_sessions_directory_status(self):
         """Check sessions directory status using CLI"""
         try:
             success, output, error = self._run_cli_command(['status', '--json'])
             if success and output.strip():
-                return json.loads(output.strip())
+                status = _strict_json_loads(output.strip())
+                if not isinstance(status, dict):
+                    raise ValueError('CLI response is not an object')
+                for field in ('success', 'found', 'writable'):
+                    if not isinstance(status.get(field), bool):
+                        raise ValueError('CLI response field {} is not boolean'.format(field))
+                sessions_dir = status.get('sessions_dir')
+                if sessions_dir is not None and not isinstance(sessions_dir, str):
+                    raise ValueError('CLI response sessions_dir is invalid')
+                error_text = status.get('error')
+                if not status['success']:
+                    if (status['found'] or status['writable'] or
+                            sessions_dir is not None or
+                            not isinstance(error_text, str) or not error_text):
+                        raise ValueError('CLI response has an invalid unavailable state')
+                elif not status['found']:
+                    if (status['writable'] or not sessions_dir or
+                            not isinstance(error_text, str) or not error_text):
+                        raise ValueError('CLI response has an invalid missing state')
+                else:
+                    filesystem_type = status.get('filesystem_type')
+                    if (not sessions_dir or
+                            not isinstance(filesystem_type, str) or
+                            not filesystem_type or
+                            (not status['writable'] and
+                             (not isinstance(error_text, str) or not error_text))):
+                        raise ValueError('CLI response has an invalid found state')
+                    if status['writable'] and error_text is not None:
+                        raise ValueError('CLI response has an unexpected error')
+                status['_query_error'] = False
+                return status
             else:
                 return {
                     'success': False,
                     'found': False,
                     'writable': False,
+                    '_query_error': True,
                     'error': self._cli_error_text(error)
                 }
-        except json.JSONDecodeError as e:
+        except (TypeError, ValueError) as e:
             return {
                 'success': False,
                 'found': False,
                 'writable': False,
+                '_query_error': True,
                 'error': f'Failed to parse CLI response: {e}'
             }
         except Exception as e:
@@ -269,12 +330,20 @@ class SessionManagerGUI:
                 'success': False,
                 'found': False,
                 'writable': False,
+                '_query_error': True,
                 'error': str(e)
             }
 
-    def _build_sessions_status_info(self, main_box):
-        """Build sessions directory status information panel."""
-        if self.sessions_status.get('found', False) and self.sessions_writable:
+    def _sessions_status_presentation(self):
+        """Return the semantic intent and text for the current status."""
+        if getattr(self, '_status_pending', False):
+            intent = 'info'
+            status_text = _("Checking session status...")
+        elif self.sessions_status.get('_query_error', False):
+            intent = 'error'
+            status_text = _("Error: {}").format(
+                self.sessions_status.get('error') or _('Unknown error'))
+        elif self.sessions_status.get('found', False) and self.sessions_writable:
             intent = 'success'
             status_text = _("Sessions directory is writable")
         elif self.sessions_status.get('found', False):
@@ -285,11 +354,99 @@ class SessionManagerGUI:
             # changes directory. Keep the manager usable without presenting this
             # expected state as an application failure.
             intent = 'warning'
-            status_text = _("Sessions directory not found")
+            status_text = _("Persistent sessions are unavailable — the system is running without changes storage.")
+        return intent, status_text
+
+    def _build_sessions_status_info(self, main_box):
+        """Build sessions directory status information panel."""
+        intent, status_text = self._sessions_status_presentation()
         banner = StatusBanner(status_text, intent=intent)
         banner.label.set_markup(
             '<b>{}</b>'.format(GLib.markup_escape_text(status_text)))
+        self.sessions_status_banner = banner
+        self.sessions_status_retry = Gtk.Button(label=_("Retry"))
+        self.sessions_status_retry.connect(
+            'clicked', self._retry_sessions_directory_status)
+        self.sessions_status_retry.set_no_show_all(True)
+        self.sessions_status_retry.set_visible(
+            not self._status_pending and
+            self.sessions_status.get('_query_error', False))
+        banner.pack_end(self.sessions_status_retry, False, False, 0)
         main_box.pack_start(banner, False, False, 0)
+
+    def _retry_sessions_directory_status(self, _button):
+        """Retry a failed status query without blocking the GTK main loop."""
+        self._status_retry_generation += 1
+        generation = self._status_retry_generation
+        self._status_pending = True
+        intent, status_text = self._sessions_status_presentation()
+        self.sessions_status_banner.set_intent(intent)
+        self.sessions_status_banner.label.set_markup(
+            '<b>{}</b>'.format(GLib.markup_escape_text(status_text)))
+        self.sessions_status_retry.set_visible(False)
+        self.sessions_status_retry.set_sensitive(False)
+
+        def check_status():
+            status = self._check_sessions_directory_status()
+            GLib.idle_add(
+                self._finish_sessions_directory_status_retry,
+                generation, status)
+
+        thread = threading.Thread(target=check_status)
+        thread.daemon = True
+        thread.start()
+
+    def _finish_sessions_directory_status_retry(self, generation, status):
+        """Apply a status retry result on the GTK main thread."""
+        if generation != self._status_retry_generation or self._closing:
+            return False
+        self._status_pending = False
+        self.sessions_status = status
+        self.sessions_writable = self.sessions_status.get('writable', False)
+        intent, status_text = self._sessions_status_presentation()
+        self.sessions_status_banner.set_intent(intent)
+        self.sessions_status_banner.label.set_markup(
+            '<b>{}</b>'.format(GLib.markup_escape_text(status_text)))
+        query_error = self.sessions_status.get('_query_error', False)
+        self.sessions_status_retry.set_visible(query_error)
+        self.sessions_status_retry.set_sensitive(True)
+        self.create_btn.set_sensitive(
+            self.sessions_writable and bool(self._filesystem_info))
+        for button in (self.import_btn, self.cleanup_btn):
+            button.set_sensitive(self.sessions_writable)
+        self.refresh_session_list()
+        return False
+
+    def _periodic_session_refresh(self):
+        """Refresh external session changes without overlapping an operation."""
+        if self._closing:
+            return False
+        with self._cli_process_lock:
+            busy = self._cli_process is not None
+        if (not busy and not self._status_pending and
+                not self.sessions_status.get('_query_error', False) and
+                self.sessions_status.get('found', False)):
+            self.refresh_session_list()
+        return True
+
+    def _show_sessions_query_error_state(self, generation):
+        """Render an initial status failure without opening a modal dialog."""
+        if generation != self._refresh_generation:
+            return False
+        for row in self.sessions_list.get_children():
+            self.sessions_list.remove(row)
+        row = Gtk.ListBoxRow()
+        row.set_sensitive(False)
+        label = Gtk.Label(label=(
+            self.sessions_status.get('error') or _('Unknown error')))
+        label.set_line_wrap(True)
+        label.set_margin_top(20)
+        label.set_margin_bottom(20)
+        row.add(label)
+        self.sessions_list.add(row)
+        self.sessions_list.show_all()
+        self._show_loading(False)
+        return False
 
     PERSISTENCE_STATE_FILE = "/run/minios-persistence/state"
 
@@ -501,6 +658,9 @@ class SessionManagerGUI:
         """Refresh the session list from CLI"""
         self._refresh_generation += 1
         generation = self._refresh_generation
+        if self.sessions_status.get('_query_error', False):
+            self._show_sessions_query_error_state(generation)
+            return
         if not self.sessions_status.get('found', False):
             # No persistence directory is expected for RAM-only boots without
             # ``perch``. Render the normal empty state instead of invoking list,
@@ -516,30 +676,61 @@ class SessionManagerGUI:
                 list_success, list_output, list_error = self._run_cli_command(['list', '--json'])
                 active_success, active_output, active_error = self._run_cli_command(['active', '--json'])
                 running_success, running_output, running_error = self._run_cli_command(['running', '--json'])
-                
+                info_success, info_output, _info_error = self._run_cli_command(['info', '--json'])
+
+                if not active_success or not running_success:
+                    detail = active_error if not active_success else running_error
+                    GLib.idle_add(
+                        self._process_session_fetch_error, generation,
+                        _("Error fetching session data: {}").format(
+                            self._cli_error_text(detail)))
+                    return
+
                 # Parse active and running session IDs
                 active_session_id = None
                 running_session_id = None
-                
+
                 if active_success and active_output.strip():
-                    try:
-                        active_data = json.loads(active_output.strip())
+                    active_data = _strict_json_loads(active_output.strip())
+                    if active_data is not None and not isinstance(active_data, dict):
+                        raise ValueError('active response is not an object or null')
+                    if active_data is not None:
                         active_session_id = active_data.get('id')
-                    except Exception:
-                        pass
-                
+                        if not isinstance(active_session_id, str) or not active_session_id:
+                            raise ValueError('active response has an invalid id')
+                else:
+                    raise ValueError('active response is empty')
+
                 if running_success and running_output.strip():
-                    try:
-                        running_data = json.loads(running_output.strip())
+                    running_data = _strict_json_loads(running_output.strip())
+                    if running_data is not None and not isinstance(running_data, dict):
+                        raise ValueError('running response is not an object or null')
+                    if running_data is not None:
                         running_session_id = running_data.get('id')
-                    except Exception:
-                        pass
-                
+                        if not isinstance(running_session_id, str) or not running_session_id:
+                            raise ValueError('running response has an invalid id')
+                else:
+                    raise ValueError('running response is empty')
+
+                if not info_success:
+                    raise ValueError(
+                        self._cli_error_text(_info_error) or
+                        'filesystem information is unavailable')
+                if not info_output.strip():
+                    raise ValueError('filesystem information response is empty')
+                filesystem_info = _strict_json_loads(info_output.strip())
+                if not self._valid_filesystem_info(filesystem_info):
+                    raise ValueError('filesystem information response is invalid')
+
                 # Return results to main thread
-                GLib.idle_add(self._process_session_data, generation, list_success, list_output, list_error, active_session_id, running_session_id)
+                GLib.idle_add(
+                    self._process_session_data, generation, list_success,
+                    list_output, list_error, active_session_id,
+                    running_session_id, filesystem_info)
             except Exception as e:
-                GLib.idle_add(self._show_error, _("Error fetching session data: {}").format(str(e)))
-                GLib.idle_add(self._show_loading, False)
+                GLib.idle_add(
+                    self._process_session_fetch_error, generation,
+                    _("Error fetching session data: {}").format(str(e)))
         
         # Show loading indicator
         self._show_loading(True)
@@ -549,112 +740,138 @@ class SessionManagerGUI:
         thread.daemon = True
         thread.start()
 
-    def _process_session_data(self, generation, list_success, list_output, list_error, active_session_id, running_session_id):
+    def _process_session_fetch_error(self, generation, message):
+        """Show only errors from the current refresh generation."""
+        if generation != self._refresh_generation:
+            return False
+        self._filesystem_info = {}
+        if hasattr(self, 'create_btn'):
+            self.create_btn.set_sensitive(False)
+        self._show_error(message)
+        self._show_loading(False)
+        return False
+
+    @staticmethod
+    def _valid_filesystem_info(info):
+        if not isinstance(info, dict):
+            return False
+        filesystem = info.get('filesystem')
+        compatible_modes = info.get('compatible_modes')
+        limitations = info.get('limitations')
+        if (not isinstance(filesystem, dict) or
+                not isinstance(filesystem.get('type'), str) or
+                not filesystem['type'] or
+                not isinstance(compatible_modes, list) or
+                any(not isinstance(mode, str) or not mode
+                    for mode in compatible_modes) or
+                not isinstance(limitations, dict)):
+            return False
+        max_file_size = limitations.get('max_file_size')
+        if (max_file_size is not None and
+                (not isinstance(max_file_size, int) or
+                 isinstance(max_file_size, bool) or max_file_size <= 0)):
+            return False
+        return True
+
+    @staticmethod
+    def _valid_session_record(session):
+        if not isinstance(session, dict):
+            return False
+        for field in ('id', 'mode', 'version', 'edition', 'union',
+                      'size_formatted', 'path'):
+            if not isinstance(session.get(field), str) or not session[field]:
+                return False
+        size = session.get('size')
+        if not isinstance(size, int) or isinstance(size, bool) or size < 0:
+            return False
+        if session.get('modified') is not None and not isinstance(
+                session.get('modified'), str):
+            return False
+        for field in ('is_default', 'is_running'):
+            if not isinstance(session.get(field), bool):
+                return False
+        return True
+
+    def _process_session_data(self, generation, list_success, list_output,
+                              list_error, active_session_id,
+                              running_session_id, filesystem_info=None):
         """Process session data in main thread"""
         if generation != self._refresh_generation:
             return
         try:
-            # Clear existing session rows
-            for row in self.sessions_list.get_children():
-                self.sessions_list.remove(row)
-            
             # Check for list errors
             if not list_success:
                 self._show_error(_("Failed to get session list: {}").format(
                     self._cli_error_text(list_error)))
                 return
-            
+
+            stripped_output = list_output.strip()
+            try:
+                sessions = _strict_json_loads(stripped_output)
+            except (TypeError, ValueError) as error:
+                self._show_error(
+                    _("Failed to parse session list JSON: {}").format(str(error)))
+                return
+            if (not isinstance(sessions, list) or
+                    any(not self._valid_session_record(session)
+                        for session in sessions)):
+                self._show_error(_("Failed to parse session list JSON: {}").format(
+                    'response does not match the session list schema'))
+                return
+
+            self._sessions_by_id = {
+                session['id']: session for session in sessions
+            }
+            self._filesystem_info = filesystem_info or {}
+            self._snapshot_time = time.monotonic()
+            self.create_btn.set_sensitive(
+                self.sessions_writable and bool(self._filesystem_info))
+
+            # Keep the previous rows visible until a complete response is valid.
+            for row in self.sessions_list.get_children():
+                self.sessions_list.remove(row)
+
             # Parse JSON output
-            if list_output.strip().startswith('['):
-                # JSON format - parse sessions directly
+            # JSON format - parse sessions directly
+            sessions_found = len(sessions) > 0
+
+            for session in sessions:
+                session_id = session.get('id', 'unknown')
+                # Determine status from separate commands
+                is_active = (session_id == active_session_id)
+                is_running = (session_id == running_session_id)
+                mode = session.get('mode', 'unknown')
+                version = session.get('version', 'unknown')
+                edition = session.get('edition', 'unknown')
+                union = session.get('union', 'unknown')
+                size = session.get('size_formatted', 'unknown')
+
+                # For dynfilefs, add total size if available
+                if mode == 'dynfilefs' and 'total_size_formatted' in session:
+                    total_size = session.get('total_size_formatted', '')
+                    if total_size:
+                        size = f"{size} / {total_size}"
+
+                modified_str = session.get('modified') or 'unknown'
+
+                # Format modified date
                 try:
-                    sessions = json.loads(list_output.strip())
-                    sessions_found = len(sessions) > 0
-                    
-                    for session in sessions:
-                        session_id = session.get('id', 'unknown')
-                        # Determine status from separate commands
-                        is_active = (session_id == active_session_id)
-                        is_running = (session_id == running_session_id)
-                        mode = session.get('mode', 'unknown')
-                        version = session.get('version', 'unknown')
-                        edition = session.get('edition', 'unknown')
-                        union = session.get('union', 'unknown')
-                        size = session.get('size_formatted', 'unknown')
-                        
-                        # For dynfilefs, add total size if available
-                        if mode == 'dynfilefs' and 'total_size_formatted' in session:
-                            total_size = session.get('total_size_formatted', '')
-                            if total_size:
-                                size = f"{size} / {total_size}"
-                        
-                        modified_str = session.get('modified', 'unknown')
-                        
-                        # Format modified date
-                        try:
-                            if modified_str != 'unknown':
-                                from datetime import datetime
-                                # Python 3.6 compatible ISO format parsing
-                                # Extract datetime part (first 19 chars: '2023-01-15T12:30:45')
-                                dt_part = modified_str[:19]
-                                modified_dt = datetime.strptime(dt_part, '%Y-%m-%dT%H:%M:%S')
-                                modified = modified_dt.strftime('%Y-%m-%d %H:%M:%S')
-                            else:
-                                modified = 'unknown'
-                        except Exception:
-                            modified = modified_str
-                        
-                        # Create session row
-                        self._create_session_row(session_id, is_active, is_running, mode, version, edition, union, size, modified)
-                
-                except json.JSONDecodeError as e:
-                    self._show_error(_("Failed to parse session list JSON: {}").format(str(e)))
-                    return
-            else:
-                # Fallback to text parsing (backward compatibility)
-                lines = list_output.split('\n')
-                sessions_found = False
-                
-                for i, line in enumerate(lines):
-                    if line.startswith('Session #'):
-                        sessions_found = True
-                        # Extract session info
-                        session_id = line.split('#')[1].split()[0]
-                        # Determine status from separate commands
-                        is_active = (session_id == active_session_id)
-                        is_running = (session_id == running_session_id)
-                        
-                        # Look for following lines with details
-                        mode = version = edition = union = size = modified = "Unknown"
-                        total_size = None
-                        
-                        for j in range(i+1, min(i+7, len(lines))):  # Increased range for Total Size line
-                            detail_line = lines[j].strip()
-                            if detail_line.startswith('Mode:'):
-                                mode = detail_line.split(':', 1)[1].strip()
-                            elif detail_line.startswith('Version:'):
-                                version_info = detail_line.split(':', 1)[1].strip()
-                                parts = version_info.split('/')
-                                if len(parts) >= 2:
-                                    version = parts[0].strip()
-                                    edition = parts[1].strip()
-                                    if len(parts) >= 3:
-                                        union = parts[2].strip()
-                                else:
-                                    version = version_info
-                            elif detail_line.startswith('Size:'):
-                                size = detail_line.split(':', 1)[1].strip()
-                            elif detail_line.startswith('Total Size:'):
-                                total_size = detail_line.split(':', 1)[1].strip()
-                            elif detail_line.startswith('Last Modified:'):
-                                modified = detail_line.split(':', 1)[1].strip()
-                        
-                        # For dynfilefs, combine size and total_size
-                        if mode == 'dynfilefs' and total_size:
-                            size = f"{size} / {total_size}"
-                        
-                        # Create session row
-                        self._create_session_row(session_id, is_active, is_running, mode, version, edition, union, size, modified)
+                    if modified_str != 'unknown':
+                        from datetime import datetime
+                        # Python 3.6 compatible ISO format parsing
+                        # Extract datetime part (first 19 chars: '2023-01-15T12:30:45')
+                        dt_part = modified_str[:19]
+                        modified_dt = datetime.strptime(dt_part, '%Y-%m-%dT%H:%M:%S')
+                        modified = modified_dt.strftime('%Y-%m-%d %H:%M:%S')
+                    else:
+                        modified = 'unknown'
+                except Exception:
+                    modified = modified_str
+
+                # Create session row
+                self._create_session_row(
+                    session_id, is_active, is_running, mode, version,
+                    edition, union, size, modified)
             
             if not sessions_found:
                 # Show "no sessions" message
@@ -955,25 +1172,15 @@ class SessionManagerGUI:
         """Handle open folder from context menu"""
         if self.selected_session_id:
             import subprocess
-            # Get session path from CLI
-            sessions = self._run_cli_command(['list', '--json'])[1]
-            if sessions:
-                try:
-                    sessions_data = json.loads(sessions)
-                    session_path = None
-                    for session in sessions_data:
-                        if session['id'] == self.selected_session_id:
-                            session_path = session.get('path')
-                            break
-
-                    if session_path and os.path.exists(session_path):
-                        subprocess.Popen(['xdg-open', session_path])
-                    else:
-                        self._show_error(_("Session folder not found"))
-                except json.JSONDecodeError:
-                    self._show_error(_("Failed to get session information"))
-                except Exception as e:
-                    self._show_error(_("Failed to open folder: {}").format(str(e)))
+            session = self._sessions_by_id.get(self.selected_session_id, {})
+            session_path = session.get('path')
+            try:
+                if session_path and os.path.exists(session_path):
+                    subprocess.Popen(['xdg-open', session_path])
+                else:
+                    self._show_error(_("Session folder not found"))
+            except Exception as e:
+                self._show_error(_("Failed to open folder: {}").format(str(e)))
 
 
     def on_create_clicked(self, button):
@@ -983,27 +1190,17 @@ class SessionManagerGUI:
             self._show_error(_("Sessions directory is not writable. Cannot create new sessions."))
             return
         
-        # First, get filesystem information using JSON output
-        fs_success, fs_output, fs_error = self._run_cli_command(['info', '--json'])
+        # Filesystem information is refreshed together with the session list.
+        fs_info = self._filesystem_info
         compatible_modes = ['native', 'dynfilefs', 'raw']  # Default
         filesystem_type = "unknown"
         limitations = {}
-        
-        if fs_success:
-            try:
-                import json
-                fs_info = json.loads(fs_output)
-                filesystem_type = fs_info.get('filesystem', {}).get('type', 'unknown')
-                compatible_modes = fs_info.get('compatible_modes', ['native', 'dynfilefs', 'raw'])
-                limitations = fs_info.get('limitations', {})
-            except (json.JSONDecodeError, KeyError) as e:
-                print(f"Error parsing filesystem info: {e}")
-                # Fallback: determine compatibility based on filesystem type
-                if filesystem_type in ['ext2', 'ext3', 'ext4', 'btrfs', 'xfs', 'f2fs', 'reiserfs']:
-                    compatible_modes = ['native', 'squashfs', 'dynfilefs', 'raw']
-                else:
-                    # Non-POSIX filesystems only support container modes.
-                    compatible_modes = ['dynfilefs', 'raw']
+
+        if fs_info:
+            filesystem_type = fs_info.get('filesystem', {}).get('type', 'unknown')
+            compatible_modes = fs_info.get(
+                'compatible_modes', ['native', 'dynfilefs', 'raw'])
+            limitations = fs_info.get('limitations', {})
         
         # Create session mode selection dialog
         dialog = Gtk.Dialog(
@@ -1264,7 +1461,7 @@ class SessionManagerGUI:
                 state['dialog'] = None
             detail = error.strip()
             try:
-                result = json.loads(output) if output else {}
+                result = _strict_json_loads(output) if output else {}
                 detail = result.get('message') or detail
             except (TypeError, ValueError):
                 pass
@@ -1524,7 +1721,7 @@ class SessionManagerGUI:
             detail = error.strip() if error else ''
             if output:
                 try:
-                    result = json.loads(output)
+                    result = _strict_json_loads(output)
                     detail = result.get('message') or result.get('error') or detail
                 except (TypeError, ValueError):
                     pass
@@ -1548,14 +1745,8 @@ class SessionManagerGUI:
 
     def _show_squashfs_settings_dialog(self, session_id):
         """Show user-facing automatic-save settings for a SquashFS session."""
-        success, output, error = self._run_cli_command(['list', '--json'])
-        if not success:
-            self._show_error(error or _("Failed to get session information"))
-            return
-        try:
-            session = next(item for item in json.loads(output)
-                           if item.get('id') == session_id)
-        except (StopIteration, TypeError, ValueError):
+        session = self._sessions_by_id.get(session_id)
+        if session is None:
             self._show_error(_("Session not found"))
             return
         if session.get('mode') != 'squashfs':
@@ -1641,24 +1832,12 @@ class SessionManagerGUI:
 
     def _show_resize_dialog(self, session_id):
         """Show resize dialog for a session"""
-        # Get session information
-        sessions = self._run_cli_command(['list', '--json'])[1]
-        if not sessions:
-            self._show_error(_("Failed to get session information"))
+        session_info = self._sessions_by_id.get(session_id)
+        if session_info is None:
+            self._show_error(_("Session not found"))
             return
-        
+
         try:
-            sessions_data = json.loads(sessions)
-            session_info = None
-            for session in sessions_data:
-                if session['id'] == session_id:
-                    session_info = session
-                    break
-            
-            if not session_info:
-                self._show_error(_("Session not found"))
-                return
-            
             session_mode = session_info.get('mode', 'unknown')
             if session_mode not in ['dynfilefs', 'raw', 'luks']:
                 self._show_error(_("Resize is only supported for dynfilefs, raw, and LUKS mode sessions"))
@@ -1763,11 +1942,11 @@ class SessionManagerGUI:
         else:
             try:
                 if output:
-                    result = json.loads(output)
+                    result = _strict_json_loads(output)
                     message = result.get('message', error or _('Resize failed'))
                 else:
                     message = error or _('Resize failed')
-            except json.JSONDecodeError:
+            except (TypeError, ValueError):
                 message = error or _('Resize failed')
             self._show_error(message)
 
@@ -1838,11 +2017,11 @@ class SessionManagerGUI:
         else:
             try:
                 if output:
-                    result = json.loads(output)
+                    result = _strict_json_loads(output)
                     message = result.get('message', error or _('Export failed'))
                 else:
                     message = error or _('Export failed')
-            except json.JSONDecodeError:
+            except (TypeError, ValueError):
                 message = error or _('Export failed')
             self._show_error(message)
 
@@ -1983,11 +2162,11 @@ class SessionManagerGUI:
         else:
             try:
                 if output:
-                    result = json.loads(output)
+                    result = _strict_json_loads(output)
                     message = result.get('message', error or _('Import failed'))
                 else:
                     message = error or _('Import failed')
-            except json.JSONDecodeError:
+            except (TypeError, ValueError):
                 message = error or _('Import failed')
             self._show_error(message)
 
@@ -2109,34 +2288,22 @@ class SessionManagerGUI:
         else:
             try:
                 if output:
-                    result = json.loads(output)
+                    result = _strict_json_loads(output)
                     message = result.get('message', error or _('Copy failed'))
                 else:
                     message = error or _('Copy failed')
-            except json.JSONDecodeError:
+            except (TypeError, ValueError):
                 message = error or _('Copy failed')
             self._show_error(message)
 
     def _show_convert_dialog(self, session_id):
         """Show convert dialog for a session"""
-        # Get session information
-        sessions = self._run_cli_command(['list', '--json'])[1]
-        if not sessions:
-            self._show_error(_("Failed to get session information"))
+        session_info = self._sessions_by_id.get(session_id)
+        if session_info is None:
+            self._show_error(_("Session not found"))
             return
 
         try:
-            sessions_data = json.loads(sessions)
-            session_info = None
-            for session in sessions_data:
-                if session['id'] == session_id:
-                    session_info = session
-                    break
-
-            if not session_info:
-                self._show_error(_("Session not found"))
-                return
-
             current_mode = session_info.get('mode', 'unknown')
 
         except (json.JSONDecodeError, KeyError):
@@ -2265,11 +2432,11 @@ class SessionManagerGUI:
         else:
             try:
                 if output:
-                    result = json.loads(output)
+                    result = _strict_json_loads(output)
                     message = result.get('message', error or _('Convert failed'))
                 else:
                     message = error or _('Convert failed')
-            except json.JSONDecodeError:
+            except (TypeError, ValueError):
                 message = error or _('Convert failed')
             self._show_error(message)
 

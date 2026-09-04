@@ -1,3 +1,13 @@
+minios-session-manager (1.2.9) unstable; urgency=medium
+
+  * Explain RAM-only boots without persistent changes storage in user-facing terms
+  * Keep status command and authorization failures distinct from RAM-only boots
+  * Validate status responses and allow failed checks to be retried from the GUI
+  * Run status and metadata refreshes asynchronously with strict JSON schemas
+  * Refresh cached session metadata and synchronize man-page versions
+
+ -- crims0n <crims0n@minios.dev>  Fri, 04 Sep 2026 14:45:11 +0300
+
 minios-session-manager (1.2.8) unstable; urgency=medium
 
   * Keep the loading overlay hidden after the initial session refresh
