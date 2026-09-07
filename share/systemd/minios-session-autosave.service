@@ -1,6 +1,6 @@
 [Unit]
 Description=Save MiniOS SquashFS session periodically
-Documentation=man:minios-session-manager(1)
+Documentation=man:minios-session(1)
 After=local-fs.target minios-persistence-guard.service
 
 [Service]

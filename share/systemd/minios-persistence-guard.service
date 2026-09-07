@@ -1,6 +1,6 @@
 [Unit]
 Description=MiniOS persistence guard (backing-storage and inner-filesystem monitor)
-Documentation=man:minios-session-manager(1)
+Documentation=man:minios-session(1)
 DefaultDependencies=no
 After=local-fs.target
 Wants=local-fs.target

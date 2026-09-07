@@ -1,0 +1,12 @@
+usr/bin/minios-session
+usr/bin/minios-persistence-guard
+usr/lib/minios-session-manager/minios_session.py
+usr/lib/minios-session-manager/minios_persistence_guard.py
+usr/share/bash-completion/completions/minios-session
+usr/share/locale/*/LC_MESSAGES/minios-session-manager.mo
+usr/share/polkit-1/actions/dev.minios.session-manager.policy
+usr/lib/systemd/system/minios-persistence-guard.service
+usr/lib/systemd/system/minios-session-autosave.service
+usr/lib/systemd/system/minios-session-autosave.timer
+etc/init.d/minios-persistence-guard
+etc/init.d/minios-session-autosave

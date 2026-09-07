@@ -102,6 +102,29 @@ def test_package_requires_minios_gui_1_4_api():
     control = (ROOT / "debian/control").read_text(encoding="utf-8")
     assert control.count("python3-minios-gui (>= 1.4.0)") == 2
 
+
+def test_split_packages_have_disjoint_payloads_and_exact_backend_dependency():
+    backend = set((ROOT / "debian/minios-session.install").read_text(
+        encoding="utf-8").splitlines())
+    frontend = set((ROOT / "debian/minios-session-manager.install").read_text(
+        encoding="utf-8").splitlines())
+    control = (ROOT / "debian/control").read_text(encoding="utf-8")
+
+    assert backend.isdisjoint(frontend)
+    assert "usr/bin/minios-session" in backend
+    assert "usr/bin/minios-session-manager" in frontend
+    assert "minios-session (= ${binary:Version})" in control
+    assert "Breaks: minios-session-manager (<< 1.3.0)" in control
+    assert "Replaces: minios-session-manager (<< 1.3.0)" in control
+
+
+def test_persistence_alert_autostart_is_safe_after_package_removal():
+    desktop = (ROOT / "share/autostart/minios-persistence-alert.desktop").read_text(
+        encoding="utf-8")
+    assert "Exec=minios-persistence-alert\n" in desktop
+    assert "TryExec=minios-persistence-alert\n" in desktop
+
+
 def test_loading_overlay_stays_hidden_after_initial_refresh():
     assert "self.loading_box.set_no_show_all(True)" in SOURCE
     assert SOURCE.index("self.loading_box.set_no_show_all(True)") < SOURCE.index(

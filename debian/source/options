@@ -16,6 +16,7 @@ tar-ignore=debian/files
 tar-ignore=debian/*.substvars
 tar-ignore=debian/*.debhelper
 tar-ignore=debian/*.log
+tar-ignore=debian/minios-session
 tar-ignore=debian/minios-session-manager
 tar-ignore=debian/tmp
 

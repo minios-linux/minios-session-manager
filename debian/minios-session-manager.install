@@ -1,0 +1,8 @@
+usr/bin/minios-session-manager
+usr/bin/minios-persistence-alert
+usr/lib/minios-session-manager/minios_session_manager.py
+usr/lib/minios-session-manager/minios_persistence_alert.py
+usr/lib/minios-session-manager/minios_session_ui.py
+usr/share/applications/minios-session-manager.desktop
+etc/xdg/autostart/minios-persistence-alert.desktop
+usr/share/minios-session-manager/style.css

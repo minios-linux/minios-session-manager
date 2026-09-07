@@ -36,8 +36,8 @@ def test_devuan_registers_guard_and_periodic_autosave():
     assert "# Default-Start:     2 3 4 5" in autosave
     assert "# Default-Stop:      0 1 6" in autosave
     assert "INTERVAL=${MINIOS_AUTOSAVE_POLL_SECONDS:-1800}" in autosave
-    assert "dh_installinit --name=minios-persistence-guard --only-scripts" in rules
-    assert "dh_installinit --name=minios-session-autosave --only-scripts" in rules
+    assert "dh_installinit -pminios-session --name=minios-persistence-guard --only-scripts" in rules
+    assert "dh_installinit -pminios-session --name=minios-session-autosave --only-scripts" in rules
 
 
 def test_devuan_periodic_daemon_uses_existing_autosave_backend(tmp_path):

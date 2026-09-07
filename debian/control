@@ -8,14 +8,21 @@ Homepage: https://minios.dev
 Vcs-Git: https://github.com/minios-linux/minios-live
 Vcs-Browser: https://github.com/minios-linux/minios-live
 
+Package: minios-session
+Architecture: all
+Depends: ${misc:Depends}, lsb-base, python3 (>= 3.6), minios-tools (>= 1.6.3), dynfilefs, cryptsetup, zstd, rsync, e2fsprogs, util-linux (>= 2.31)
+Recommends: polkitd | policykit-1, pkexec | policykit-1
+Breaks: minios-session-manager (<< 1.3.0)
+Replaces: minios-session-manager (<< 1.3.0)
+Description: command-line session management backend for MiniOS
+ minios-session provides the non-graphical persistent-session backend,
+ persistence guard, and autosave integration used by MiniOS Session Manager.
+ It can also be used directly from a terminal or automation.
+
 Package: minios-session-manager
 Architecture: all
-Depends: ${misc:Depends}, lsb-base, python3 (>= 3.6), python3-gi, gir1.2-gtk-3.0, python3-minios-gui (>= 1.4.0), minios-tools (>= 1.6.3), dynfilefs, cryptsetup, polkitd | policykit-1, pkexec | policykit-1, zstd, rsync, e2fsprogs, util-linux (>= 2.31)
-Description: MiniOS session management utility
- A utility for managing MiniOS persistent sessions from within
- the running system. Provides both command-line and graphical
- interfaces for viewing, creating, activating, deleting, exporting,
- importing, copying, converting, and cleaning up sessions.
- .
- Supports multiple session modes (native, dynfilefs, raw, LUKS) and works
- on various filesystems including ext4, FAT32, NTFS, and exFAT.
+Depends: ${misc:Depends}, minios-session (= ${binary:Version}), python3 (>= 3.6), python3-gi, gir1.2-gtk-3.0, python3-minios-gui (>= 1.4.0), polkitd | policykit-1, pkexec | policykit-1
+Description: graphical session manager for MiniOS
+ MiniOS Session Manager is the GTK frontend for the minios-session backend.
+ It provides graphical workflows for viewing, creating, activating, deleting,
+ exporting, importing, copying, converting, and cleaning up sessions.
