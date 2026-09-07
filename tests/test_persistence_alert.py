@@ -8,6 +8,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 
 import minios_persistence_alert as alert  # noqa: E402
+from minios_session_ui import save_phase_text  # noqa: E402
 
 
 class TestStateReading:
@@ -112,6 +113,11 @@ class TestSquashfsTray:
 
 
 class TestSquashfsSaveUx:
+    def test_save_phase_text_comes_from_shared_session_ui(self):
+        assert alert.save_phase_text is save_phase_text
+        assert save_phase_text("compress") == "Compressing session..."
+        assert save_phase_text("unexpected") == "Saving session..."
+
     def test_progress_save_command_uses_same_backend(self):
         assert alert.save_command("3", "/usr/bin/minios-session", progress=True) == [
             "pkexec", "/usr/bin/minios-session", "save", "3", "--json", "--progress"]

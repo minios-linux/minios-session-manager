@@ -16,10 +16,6 @@
     padding: 3px;
 }
 
-.manager-footer {
-    padding-top: 8px;
-}
-
 /* ==================== List Styles ==================== */
 listbox {
     background-color: alpha(@theme_base_color, 0.35);

@@ -20,9 +20,12 @@ from datetime import datetime
 
 gi.require_version('Gtk', '3.0')
 gi.require_version('Gdk', '3.0')
-from gi.repository import Gdk, Gio, Gtk, GLib, Pango
-from minios_gui import (StatusBanner, apply_minios_css, ask_confirmation,
-                        new_header_bar, new_icon, show_error_dialog, show_info_dialog)
+from gi.repository import Gdk, Gtk, GLib, Pango
+from minios_gui import (BackgroundTask, OperationView, ProgressDialog,
+                        StatusBanner, apply_minios_css, ask_confirmation,
+                        choose_open_file, choose_save_file, new_header_bar,
+                        new_icon, show_error_dialog, show_info_dialog)
+from minios_session_ui import save_phase_text, send_desktop_notification
 
 # Internationalization setup
 try:
@@ -39,33 +42,6 @@ def _style_dialog_affirmative(dialog, label):
         button.set_label(label)
         button.get_style_context().add_class('suggested-action')
     dialog.set_default_response(Gtk.ResponseType.OK)
-
-
-def _send_desktop_notification(summary, body):
-    try:
-        connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-        parameters = GLib.Variant(
-            '(susssasa{sv}i)',
-            (_('MiniOS Session Manager'), 0, 'document-save', summary, body, [], {}, 4000))
-        connection.call_sync(
-            'org.freedesktop.Notifications', '/org/freedesktop/Notifications',
-            'org.freedesktop.Notifications', 'Notify', parameters,
-            GLib.VariantType.new('(u)'), Gio.DBusCallFlags.NONE, 2000, None)
-        return True
-    except Exception:
-        return False
-
-
-def _save_phase_text(phase):
-    return {
-        'prepare': _("Preparing session..."),
-        'inventory': _("Scanning session changes..."),
-        'capture': _("Collecting session changes..."),
-        'compress': _("Compressing session..."),
-        'verify': _("Verifying session..."),
-        'publish': _("Finishing session save..."),
-        'complete': _("Finishing session save..."),
-    }.get(phase, _("Saving session..."))
 
 
 def _strict_json_loads(text):
@@ -166,6 +142,24 @@ class SessionManagerGUI:
                             self._cli_process = None
         except Exception as e:
             return False, "", str(e)
+
+    def _start_cli_task(self, args, finished, input_data=None):
+        """Run one ordinary CLI request and deliver its TaskOutcome safely."""
+        def worker(token):
+            token.raise_if_cancelled()
+            result = self._run_cli_command(args, input_data)
+            token.raise_if_cancelled()
+            return result
+
+        def complete(outcome):
+            if outcome.succeeded:
+                finished(*outcome.value)
+            elif not outcome.cancelled:
+                finished(False, "", str(outcome.error))
+            elif not self._closing:
+                finished(False, "", _("Operation cancelled"))
+
+        return BackgroundTask(worker, complete, owner=self.window).start()
 
     @staticmethod
     def _cli_error_text(error):
@@ -386,15 +380,22 @@ class SessionManagerGUI:
         self.sessions_status_retry.set_visible(False)
         self.sessions_status_retry.set_sensitive(False)
 
-        def check_status():
-            status = self._check_sessions_directory_status()
-            GLib.idle_add(
-                self._finish_sessions_directory_status_retry,
-                generation, status)
+        def check_status(token):
+            token.raise_if_cancelled()
+            return self._check_sessions_directory_status()
 
-        thread = threading.Thread(target=check_status)
-        thread.daemon = True
-        thread.start()
+        def finish_status(outcome):
+            if outcome.succeeded:
+                self._finish_sessions_directory_status_retry(
+                    generation, outcome.value)
+            elif not outcome.cancelled:
+                self._finish_sessions_directory_status_retry(generation, {
+                    'success': False, 'found': False, 'writable': False,
+                    '_query_error': True, 'error': str(outcome.error),
+                })
+
+        BackgroundTask(
+            check_status, finish_status, owner=self.window).start()
 
     def _finish_sessions_directory_status_retry(self, generation, status):
         """Apply a status retry result on the GTK main thread."""
@@ -573,11 +574,10 @@ class SessionManagerGUI:
         scrolled.add(self.sessions_list)
 
         # Loading overlay components
-        self.loading_spinner = Gtk.Spinner()
-        self.loading_label = Gtk.Label(label=_("Loading sessions..."))
-        self.loading_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        self.loading_box.pack_start(self.loading_spinner, False, False, 0)
-        self.loading_box.pack_start(self.loading_label, False, False, 0)
+        self.loading_box = OperationView(
+            status=_("Loading sessions..."), cancellable=False)
+        self.loading_spinner = self.loading_box.spinner
+        self.loading_label = self.loading_box.status_label
         self.loading_box.set_halign(Gtk.Align.CENTER)
         self.loading_box.set_valign(Gtk.Align.CENTER)
         self.loading_box.get_style_context().add_class('loading-overlay')
@@ -604,8 +604,7 @@ class SessionManagerGUI:
         toolbar_box = Gtk.Grid(column_spacing=8)
         toolbar_box.set_column_homogeneous(True)
         toolbar_box.get_style_context().add_class("manager-footer")
-        toolbar_box.set_halign(Gtk.Align.END)
-        toolbar_box.set_margin_top(15)
+        toolbar_box.set_halign(Gtk.Align.CENTER)
         main_box.pack_start(toolbar_box, False, False, 0)
         
         # Create button
@@ -669,76 +668,66 @@ class SessionManagerGUI:
                 generation, True, '[]', '', None, None)
             return
 
-        def fetch_data():
-            """Fetch data in background thread"""
-            try:
-                # Get session list and active/running sessions separately for accurate status
-                list_success, list_output, list_error = self._run_cli_command(['list', '--json'])
-                active_success, active_output, active_error = self._run_cli_command(['active', '--json'])
-                running_success, running_output, running_error = self._run_cli_command(['running', '--json'])
-                info_success, info_output, _info_error = self._run_cli_command(['info', '--json'])
+        def fetch_data(token):
+            """Fetch and validate one complete list snapshot."""
+            list_success, list_output, list_error = self._run_cli_command(['list', '--json'])
+            active_success, active_output, active_error = self._run_cli_command(['active', '--json'])
+            running_success, running_output, running_error = self._run_cli_command(['running', '--json'])
+            info_success, info_output, info_error = self._run_cli_command(['info', '--json'])
+            token.raise_if_cancelled()
 
-                if not active_success or not running_success:
-                    detail = active_error if not active_success else running_error
-                    GLib.idle_add(
-                        self._process_session_fetch_error, generation,
-                        _("Error fetching session data: {}").format(
-                            self._cli_error_text(detail)))
-                    return
+            if not active_success or not running_success:
+                detail = active_error if not active_success else running_error
+                raise ValueError(self._cli_error_text(detail))
 
-                # Parse active and running session IDs
-                active_session_id = None
-                running_session_id = None
+            active_session_id = None
+            if active_output.strip():
+                active_data = _strict_json_loads(active_output.strip())
+                if active_data is not None and not isinstance(active_data, dict):
+                    raise ValueError('active response is not an object or null')
+                if active_data is not None:
+                    active_session_id = active_data.get('id')
+                    if not isinstance(active_session_id, str) or not active_session_id:
+                        raise ValueError('active response has an invalid id')
+            else:
+                raise ValueError('active response is empty')
 
-                if active_success and active_output.strip():
-                    active_data = _strict_json_loads(active_output.strip())
-                    if active_data is not None and not isinstance(active_data, dict):
-                        raise ValueError('active response is not an object or null')
-                    if active_data is not None:
-                        active_session_id = active_data.get('id')
-                        if not isinstance(active_session_id, str) or not active_session_id:
-                            raise ValueError('active response has an invalid id')
-                else:
-                    raise ValueError('active response is empty')
+            running_session_id = None
+            if running_output.strip():
+                running_data = _strict_json_loads(running_output.strip())
+                if running_data is not None and not isinstance(running_data, dict):
+                    raise ValueError('running response is not an object or null')
+                if running_data is not None:
+                    running_session_id = running_data.get('id')
+                    if not isinstance(running_session_id, str) or not running_session_id:
+                        raise ValueError('running response has an invalid id')
+            else:
+                raise ValueError('running response is empty')
 
-                if running_success and running_output.strip():
-                    running_data = _strict_json_loads(running_output.strip())
-                    if running_data is not None and not isinstance(running_data, dict):
-                        raise ValueError('running response is not an object or null')
-                    if running_data is not None:
-                        running_session_id = running_data.get('id')
-                        if not isinstance(running_session_id, str) or not running_session_id:
-                            raise ValueError('running response has an invalid id')
-                else:
-                    raise ValueError('running response is empty')
-
-                if not info_success:
-                    raise ValueError(
-                        self._cli_error_text(_info_error) or
-                        'filesystem information is unavailable')
-                if not info_output.strip():
-                    raise ValueError('filesystem information response is empty')
-                filesystem_info = _strict_json_loads(info_output.strip())
-                if not self._valid_filesystem_info(filesystem_info):
-                    raise ValueError('filesystem information response is invalid')
-
-                # Return results to main thread
-                GLib.idle_add(
-                    self._process_session_data, generation, list_success,
-                    list_output, list_error, active_session_id,
+            if not info_success:
+                raise ValueError(
+                    self._cli_error_text(info_error) or
+                    'filesystem information is unavailable')
+            if not info_output.strip():
+                raise ValueError('filesystem information response is empty')
+            filesystem_info = _strict_json_loads(info_output.strip())
+            if not self._valid_filesystem_info(filesystem_info):
+                raise ValueError('filesystem information response is invalid')
+            return (list_success, list_output, list_error, active_session_id,
                     running_session_id, filesystem_info)
-            except Exception as e:
-                GLib.idle_add(
-                    self._process_session_fetch_error, generation,
-                    _("Error fetching session data: {}").format(str(e)))
+
+        def finish_fetch(outcome):
+            if outcome.succeeded:
+                self._process_session_data(generation, *outcome.value)
+            elif not outcome.cancelled:
+                self._process_session_fetch_error(
+                    generation, _("Error fetching session data: {}").format(
+                        str(outcome.error)))
         
         # Show loading indicator
         self._show_loading(True)
         
-        # Run fetch in thread to avoid blocking UI
-        thread = threading.Thread(target=fetch_data)
-        thread.daemon = True
-        thread.start()
+        BackgroundTask(fetch_data, finish_fetch, owner=self.window).start()
 
     def _process_session_fetch_error(self, generation, message):
         """Show only errors from the current refresh generation."""
@@ -1397,33 +1386,26 @@ class SessionManagerGUI:
 
             dialog.destroy()
             
-            # Create session in background thread
-            def create_session_bg():
-                try:
-                    if mode in ["dynfilefs", "raw", "luks"]:
-                        command = ['create', mode, str(size_mb), '--json']
-                        if mode == 'luks':
-                            command.append('--password-stdin')
-                        success, output, error = self._run_cli_command(command, password_input)
-                    elif mode == 'squashfs':
-                        success, output, error = self._run_cli_command([
-                            'create', mode, '--policy', squashfs_policy,
-                            '--autosave', str(squashfs_autosave), '--json'])
-                    else:
-                        success, output, error = self._run_cli_command(['create', mode, '--json'])
-                    
-                    # Update UI in main thread
-                    GLib.idle_add(self._on_session_creation_complete, success, output, error, None)
-                except Exception as e:
-                    GLib.idle_add(self._on_session_creation_complete, False, "", str(e), None)
-            
             password_input = self._prompt_luks_passphrase(confirm=True) if mode == 'luks' else None
             if mode == 'luks' and password_input is None:
                 return
+            if mode in ["dynfilefs", "raw", "luks"]:
+                command = ['create', mode, str(size_mb), '--json']
+                if mode == 'luks':
+                    command.append('--password-stdin')
+            elif mode == 'squashfs':
+                command = [
+                    'create', mode, '--policy', squashfs_policy,
+                    '--autosave', str(squashfs_autosave), '--json']
+            else:
+                command = ['create', mode, '--json']
             self._show_loading(True, _("Creating new session, please wait..."))
-            thread = threading.Thread(target=create_session_bg)
-            thread.daemon = True
-            thread.start()
+            self._start_cli_task(
+                command,
+                lambda success, output, error:
+                self._on_session_creation_complete(
+                    success, output, error, None),
+                password_input)
         else:
             dialog.destroy()
 
@@ -1441,14 +1423,14 @@ class SessionManagerGUI:
         def update_phase(phase):
             state['phase'] = phase
             if state['dialog'] is not None:
-                state['dialog'].message_label.set_text(_save_phase_text(phase))
+                state['dialog'].message_label.set_text(save_phase_text(phase))
             return False
 
         def show_progress_if_needed():
             if state['done']:
                 return False
             dialog = self._create_progress_dialog(
-                _("Saving Session"), _save_phase_text(state['phase']))
+                _("Saving Session"), save_phase_text(state['phase']))
             state['dialog'] = dialog
             state['shown'] = True
             dialog.show_all()
@@ -1468,9 +1450,10 @@ class SessionManagerGUI:
             if success:
                 self.refresh_session_list()
                 if not state['shown']:
-                    _send_desktop_notification(
+                    send_desktop_notification(
                         _("Session saved"),
-                        _("SquashFS session #{} was saved successfully.").format(session_id))
+                        _("SquashFS session #{} was saved successfully.").format(session_id),
+                        timeout_ms=4000)
             else:
                 message = _("Failed to save session")
                 if detail:
@@ -1501,17 +1484,12 @@ class SessionManagerGUI:
         # Show loading overlay
         self._show_loading(True, _("Activating session, please wait..."))
         
-        # Activate session in background thread
-        def activate_session_bg():
-            try:
-                success, output, error = self._run_cli_command(['activate', session_id, '--json'])
-                GLib.idle_add(self._on_session_operation_complete, success, output, error, None, _("Session activated successfully"), _("Failed to activate session"))
-            except Exception as e:
-                GLib.idle_add(self._on_session_operation_complete, False, "", str(e), None, "", _("Failed to activate session"))
-        
-        thread = threading.Thread(target=activate_session_bg)
-        thread.daemon = True
-        thread.start()
+        self._start_cli_task(
+            ['activate', session_id, '--json'],
+            lambda success, output, error: self._on_session_operation_complete(
+                success, output, error, None,
+                _("Session activated successfully"),
+                _("Failed to activate session")))
 
     def on_delete_clicked(self, button):
         """Handle delete session action"""
@@ -1557,24 +1535,16 @@ class SessionManagerGUI:
             True, _("Switching save target and deleting session...") if handoff else
             _("Deleting session, please wait..."))
 
-        def delete_session_bg():
-            try:
-                command = ['delete', session_id]
-                if handoff:
-                    command.append('--handoff')
-                command.append('--json')
-                success, output, error = self._run_cli_command(command)
-                GLib.idle_add(
-                    self._on_session_operation_complete, success, output, error, None,
-                    _("Session deleted successfully"), _("Failed to delete session"))
-            except Exception as e:
-                GLib.idle_add(
-                    self._on_session_operation_complete, False, "", str(e), None,
-                    "", _("Failed to delete session"))
-
-        thread = threading.Thread(target=delete_session_bg)
-        thread.daemon = True
-        thread.start()
+        command = ['delete', session_id]
+        if handoff:
+            command.append('--handoff')
+        command.append('--json')
+        self._start_cli_task(
+            command,
+            lambda success, output, error: self._on_session_operation_complete(
+                success, output, error, None,
+                _("Session deleted successfully"),
+                _("Failed to delete session")))
 
     def on_cleanup_clicked(self, button):
         """Handle cleanup button click"""
@@ -1629,17 +1599,13 @@ class SessionManagerGUI:
                 # Show loading overlay
                 self._show_loading(True, _("Cleaning up old sessions, please wait..."))
                 
-                # Run cleanup in background thread
-                def cleanup_sessions_bg():
-                    try:
-                        success, output, error = self._run_cli_command(['cleanup', '--days', str(days), '--json'])
-                        GLib.idle_add(self._on_session_operation_complete, success, output, error, None, _("Cleanup completed successfully"), _("Cleanup failed"))
-                    except Exception as e:
-                        GLib.idle_add(self._on_session_operation_complete, False, "", str(e), None, "", _("Cleanup failed"))
-                
-                thread = threading.Thread(target=cleanup_sessions_bg)
-                thread.daemon = True
-                thread.start()
+                self._start_cli_task(
+                    ['cleanup', '--days', str(days), '--json'],
+                    lambda success, output, error:
+                    self._on_session_operation_complete(
+                        success, output, error, None,
+                        _("Cleanup completed successfully"),
+                        _("Cleanup failed")))
         else:
             dialog.destroy()
 
@@ -1655,42 +1621,15 @@ class SessionManagerGUI:
 
 
     def _create_progress_dialog(self, title, message):
-        """Create a progress dialog with spinner"""
-        progress_dialog = Gtk.Dialog(
-            title=title,
-            parent=self.window,
-            modal=True,
-            destroy_with_parent=True
-        )
+        """Create the shared indeterminate operation dialog."""
+        progress_dialog = ProgressDialog(
+            parent=self.window, title=title, status=message,
+            cancellable=False)
         progress_dialog.set_deletable(False)
         progress_dialog.set_resizable(False)
         progress_dialog.set_default_size(400, 150)
-        
-        content_area = progress_dialog.get_content_area()
-        content_area.set_spacing(15)
-        content_area.set_margin_start(20)
-        content_area.set_margin_end(20)
-        content_area.set_margin_top(20)
-        content_area.set_margin_bottom(20)
-        
-        # Progress box with spinner and text
-        progress_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=15)
-        progress_box.set_halign(Gtk.Align.CENTER)
-        
-        # Spinner
-        spinner = Gtk.Spinner()
-        spinner.set_size_request(32, 32)
-        spinner.start()
-        progress_box.pack_start(spinner, False, False, 0)
-        
-        # Message label
-        message_label = Gtk.Label(label=message)
-        message_label.set_halign(Gtk.Align.START)
-        progress_box.pack_start(message_label, False, False, 0)
-        
-        content_area.pack_start(progress_box, True, True, 0)
-        progress_dialog.message_label = message_label
-        
+        progress_dialog.operation_view.set_state('running')
+        progress_dialog.message_label = progress_dialog.operation_view.status_label
         return progress_dialog
 
     def _on_session_creation_complete(self, success, output, error, progress_dialog):
@@ -1736,10 +1675,10 @@ class SessionManagerGUI:
             # Ensure CSS class is applied every time we show the loading overlay
             self.loading_box.get_style_context().add_class('loading-overlay')
             self.loading_box.set_visible(True)
-            self.loading_spinner.start()
+            self.loading_box.set_state('running')
         else:
             self.loading_box.set_visible(False)
-            self.loading_spinner.stop()
+            self.loading_box.set_state('idle')
             # Reset to default text
             self.loading_label.set_text(_("Loading sessions..."))
 
@@ -1818,17 +1757,13 @@ class SessionManagerGUI:
 
         self._show_loading(True, _("Updating save settings..."))
 
-        def update_bg():
-            ok, out, err = self._run_cli_command([
-                'settings', session_id, '--shutdown', shutdown,
-                '--autosave', autosave, '--json'])
-            GLib.idle_add(
-                self._on_session_operation_complete, ok, out, err, None,
-                _("Save settings updated"), _("Failed to update save settings"))
-
-        thread = threading.Thread(target=update_bg)
-        thread.daemon = True
-        thread.start()
+        self._start_cli_task(
+            ['settings', session_id, '--shutdown', shutdown,
+             '--autosave', autosave, '--json'],
+            lambda success, output, error: self._on_session_operation_complete(
+                success, output, error, None,
+                _("Save settings updated"),
+                _("Failed to update save settings")))
 
     def _show_resize_dialog(self, session_id):
         """Show resize dialog for a session"""
@@ -1914,20 +1849,10 @@ class SessionManagerGUI:
             # Show loading overlay
             self._show_loading(True, _("Resizing session, please wait..."))
             
-            # Perform resize in background
-            def resize_session_bg():
-                try:
-                    args = ['resize', session_id, str(new_size), '--json']
-                    if password_input is not None:
-                        args.append('--password-stdin')
-                    success, output, error = self._run_cli_command(args, password_input)
-                    GLib.idle_add(self._on_resize_complete, success, output, error)
-                except Exception as e:
-                    GLib.idle_add(self._on_resize_complete, False, "", str(e))
-            
-            thread = threading.Thread(target=resize_session_bg)
-            thread.daemon = True
-            thread.start()
+            args = ['resize', session_id, str(new_size), '--json']
+            if password_input is not None:
+                args.append('--password-stdin')
+            self._start_cli_task(args, self._on_resize_complete, password_input)
         else:
             dialog.destroy()
 
@@ -1952,60 +1877,24 @@ class SessionManagerGUI:
 
     def _show_export_dialog(self, session_id):
         """Show export dialog for a session"""
-        # Create file chooser dialog
-        dialog = Gtk.FileChooserDialog(
-            title=_("Export Session {}").format(session_id),
-            parent=self.window,
-            action=Gtk.FileChooserAction.SAVE
-        )
-        dialog.add_buttons(
-            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
-            Gtk.STOCK_SAVE, Gtk.ResponseType.OK
-        )
-        _style_dialog_affirmative(dialog, _('Export'))
+        output_path = choose_save_file(
+            self.window, _("Export Session {}").format(session_id),
+            filters=((_("TAR.ZSTD archives (*.tar.zst)"), ("*.tar.zst",)),
+                     (_("All files"), ("*",))),
+            current_name="session_{}.tar.zst".format(session_id),
+            accept_label=_("Export"))
+        if output_path is None:
+            return
+        session_mode = self._get_session_mode(session_id)
+        password_input = self._prompt_luks_passphrase() if session_mode == 'luks' else None
+        if session_mode == 'luks' and password_input is None:
+            return
 
-        # Set default filename
-        dialog.set_current_name(f"session_{session_id}.tar.zst")
-
-        # Add file filter for tar.zst
-        filter_tar = Gtk.FileFilter()
-        filter_tar.set_name(_("TAR.ZSTD archives (*.tar.zst)"))
-        filter_tar.add_pattern("*.tar.zst")
-        dialog.add_filter(filter_tar)
-
-        filter_all = Gtk.FileFilter()
-        filter_all.set_name(_("All files"))
-        filter_all.add_pattern("*")
-        dialog.add_filter(filter_all)
-
-        response = dialog.run()
-        if response == Gtk.ResponseType.OK:
-            output_path = dialog.get_filename()
-            dialog.destroy()
-            session_mode = self._get_session_mode(session_id)
-            password_input = self._prompt_luks_passphrase() if session_mode == 'luks' else None
-            if session_mode == 'luks' and password_input is None:
-                return
-
-            # Show loading overlay
-            self._show_loading(True, _("Exporting session, please wait..."))
-
-            # Perform export in background
-            def export_session_bg():
-                try:
-                    args = ['export', session_id, output_path, '--json']
-                    if password_input is not None:
-                        args.append('--password-stdin')
-                    success, output, error = self._run_cli_command(args, password_input)
-                    GLib.idle_add(self._on_export_complete, success, output, error)
-                except Exception as e:
-                    GLib.idle_add(self._on_export_complete, False, "", str(e))
-
-            thread = threading.Thread(target=export_session_bg)
-            thread.daemon = True
-            thread.start()
-        else:
-            dialog.destroy()
+        self._show_loading(True, _("Exporting session, please wait..."))
+        args = ['export', session_id, output_path, '--json']
+        if password_input is not None:
+            args.append('--password-stdin')
+        self._start_cli_task(args, self._on_export_complete, password_input)
 
     def _on_export_complete(self, success, output, error):
         """Handle export completion"""
@@ -2036,38 +1925,13 @@ class SessionManagerGUI:
 
     def _show_import_dialog(self):
         """Show import dialog"""
-        # Create file chooser dialog
-        dialog = Gtk.FileChooserDialog(
-            title=_("Import Session"),
-            parent=self.window,
-            action=Gtk.FileChooserAction.OPEN
-        )
-        dialog.add_buttons(
-            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
-            Gtk.STOCK_OPEN, Gtk.ResponseType.OK
-        )
-        _style_dialog_affirmative(dialog, _('Open'))
-
-        # Add file filter for tar.zst
-        filter_tar = Gtk.FileFilter()
-        filter_tar.set_name(_("TAR.ZSTD archives (*.tar.zst)"))
-        filter_tar.add_pattern("*.tar.zst")
-        dialog.add_filter(filter_tar)
-
-        filter_all = Gtk.FileFilter()
-        filter_all.set_name(_("All files"))
-        filter_all.add_pattern("*")
-        dialog.add_filter(filter_all)
-
-        response = dialog.run()
-        if response == Gtk.ResponseType.OK:
-            archive_path = dialog.get_filename()
-            dialog.destroy()
-
-            # Show options dialog
+        archive_path = choose_open_file(
+            self.window, _("Import Session"),
+            filters=((_("TAR.ZSTD archives (*.tar.zst)"), ("*.tar.zst",)),
+                     (_("All files"), ("*",))),
+            accept_label=_("Open"))
+        if archive_path is not None:
             self._show_import_options_dialog(archive_path)
-        else:
-            dialog.destroy()
 
     def _show_import_options_dialog(self, archive_path):
         """Show import options dialog"""
@@ -2129,25 +1993,14 @@ class SessionManagerGUI:
             # Show loading overlay
             self._show_loading(True, _("Importing session, please wait..."))
 
-            # Perform import in background
-            def import_session_bg():
-                try:
-                    args = ['import', archive_path, '--json']
-                    if auto_convert:
-                        args.append('--auto-convert')
-                    if force_mode:
-                        args.extend(['--force-mode', force_mode])
-                    if password_input is not None:
-                        args.append('--password-stdin')
-
-                    success, output, error = self._run_cli_command(args, password_input)
-                    GLib.idle_add(self._on_import_complete, success, output, error)
-                except Exception as e:
-                    GLib.idle_add(self._on_import_complete, False, "", str(e))
-
-            thread = threading.Thread(target=import_session_bg)
-            thread.daemon = True
-            thread.start()
+            args = ['import', archive_path, '--json']
+            if auto_convert:
+                args.append('--auto-convert')
+            if force_mode:
+                args.extend(['--force-mode', force_mode])
+            if password_input is not None:
+                args.append('--password-stdin')
+            self._start_cli_task(args, self._on_import_complete, password_input)
         else:
             dialog.destroy()
 
@@ -2255,25 +2108,14 @@ class SessionManagerGUI:
             # Show loading overlay
             self._show_loading(True, _("Copying session, please wait..."))
 
-            # Perform copy in background
-            def copy_session_bg():
-                try:
-                    args = ['copy', session_id, '--json']
-                    if target_mode:
-                        args.extend(['--to-mode', target_mode])
-                    if size_mb:
-                        args.extend(['--size', str(size_mb)])
-                    if password_input is not None:
-                        args.append('--password-stdin')
-
-                    success, output, error = self._run_cli_command(args, password_input)
-                    GLib.idle_add(self._on_copy_complete, success, output, error)
-                except Exception as e:
-                    GLib.idle_add(self._on_copy_complete, False, "", str(e))
-
-            thread = threading.Thread(target=copy_session_bg)
-            thread.daemon = True
-            thread.start()
+            args = ['copy', session_id, '--json']
+            if target_mode:
+                args.extend(['--to-mode', target_mode])
+            if size_mb:
+                args.extend(['--size', str(size_mb)])
+            if password_input is not None:
+                args.append('--password-stdin')
+            self._start_cli_task(args, self._on_copy_complete, password_input)
         else:
             dialog.destroy()
 
@@ -2401,23 +2243,12 @@ class SessionManagerGUI:
             # Show loading overlay
             self._show_loading(True, _("Converting session, please wait..."))
 
-            # Perform convert in background
-            def convert_session_bg():
-                try:
-                    args = ['convert', session_id, target_mode, '--json']
-                    if size_mb:
-                        args.extend(['--size', str(size_mb)])
-                    if password_input is not None:
-                        args.append('--password-stdin')
-
-                    success, output, error = self._run_cli_command(args, password_input)
-                    GLib.idle_add(self._on_convert_complete, success, output, error)
-                except Exception as e:
-                    GLib.idle_add(self._on_convert_complete, False, "", str(e))
-
-            thread = threading.Thread(target=convert_session_bg)
-            thread.daemon = True
-            thread.start()
+            args = ['convert', session_id, target_mode, '--json']
+            if size_mb:
+                args.extend(['--size', str(size_mb)])
+            if password_input is not None:
+                args.append('--password-stdin')
+            self._start_cli_task(args, self._on_convert_complete, password_input)
         else:
             dialog.destroy()
 

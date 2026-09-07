@@ -480,9 +480,10 @@ class TestAuditRegressions:
         repository.GLib = MagicMock()
         repository.Pango = MagicMock()
         minios_gui = types.ModuleType('minios_gui')
-        for name in ('StatusBanner', 'apply_minios_css', 'ask_confirmation',
-                     'new_header_bar', 'new_icon', 'show_error_dialog',
-                     'show_info_dialog'):
+        for name in ('BackgroundTask', 'OperationView', 'ProgressDialog',
+                     'StatusBanner', 'apply_minios_css', 'ask_confirmation',
+                     'choose_open_file', 'choose_save_file', 'new_header_bar',
+                     'new_icon', 'show_error_dialog', 'show_info_dialog'):
             setattr(minios_gui, name, MagicMock())
 
         module_path = os.path.join(
@@ -663,22 +664,24 @@ class TestAuditRegressions:
         gui.sessions_status_retry.set_visible.assert_called_once_with(True)
         gui.refresh_session_list.assert_called_once_with()
 
-    def test_gui_retry_runs_status_query_in_worker(self):
+    def test_gui_retry_runs_status_query_in_background_task(self):
         import minios_session_manager as module
 
         gui = object.__new__(module.SessionManagerGUI)
         gui._status_retry_generation = 0
+        gui.window = MagicMock()
         gui.sessions_status_banner = MagicMock()
         gui.sessions_status_retry = MagicMock()
-        thread = MagicMock()
-        with patch.object(module.threading, 'Thread', return_value=thread) as factory:
+        task = MagicMock()
+        task.start.return_value = task
+        with patch.object(module, 'BackgroundTask', return_value=task) as factory:
             gui._retry_sessions_directory_status(None)
 
         gui.sessions_status_retry.set_sensitive.assert_called_once_with(False)
         gui.sessions_status_retry.set_visible.assert_called_once_with(False)
-        assert callable(factory.call_args[1]['target'])
-        assert thread.daemon is True
-        thread.start.assert_called_once_with()
+        assert callable(factory.call_args[0][0])
+        assert callable(factory.call_args[0][1])
+        task.start.assert_called_once_with()
 
     def test_stale_fetch_error_does_not_change_current_refresh(self):
         from minios_session_manager import SessionManagerGUI
@@ -745,8 +748,8 @@ class TestAuditRegressions:
         calls = gui.loading_box.set_visible.call_args_list
         assert calls[0][0] == (False,)
         assert calls[1][0] == (True,)
-        gui.loading_spinner.stop.assert_called_once_with()
-        gui.loading_spinner.start.assert_called_once_with()
+        gui.loading_box.set_state.assert_any_call('idle')
+        gui.loading_box.set_state.assert_any_call('running')
         gui.loading_label.set_text.assert_any_call('Working')
 
     def test_gui_decodes_structured_cli_errors(self):

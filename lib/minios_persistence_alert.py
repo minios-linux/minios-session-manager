@@ -28,6 +28,8 @@ import threading
 import time
 from datetime import datetime, timezone
 
+from minios_session_ui import save_phase_text, send_desktop_notification
+
 gettext.bindtextdomain('minios-session-manager', '/usr/share/locale')
 gettext.textdomain('minios-session-manager')
 _ = gettext.gettext
@@ -218,18 +220,6 @@ def settings_command(session_id, shutdown=None, autosave=None, command=SESSION_C
     return argv
 
 
-def save_phase_text(phase):
-    return {
-        "prepare": _("Preparing session..."),
-        "inventory": _("Scanning session changes..."),
-        "capture": _("Collecting session changes..."),
-        "compress": _("Compressing session..."),
-        "verify": _("Verifying session..."),
-        "publish": _("Finishing session save..."),
-        "complete": _("Finishing session save..."),
-    }.get(phase, _("Saving session..."))
-
-
 def format_saved_time(value):
     if not value:
         return None
@@ -274,8 +264,9 @@ def save_result(returncode, stdout, stderr):
 def _run_gui():
     import gi
     gi.require_version("Gtk", "3.0")
-    from gi.repository import Gio, Gtk, GLib
-    from minios_gui import apply_minios_css
+    from gi.repository import Gtk, GLib
+    from minios_gui import (BackgroundTask, ProgressDialog, apply_minios_css,
+                            ask_confirmation)
 
     app_css = None
     for candidate in (
@@ -316,21 +307,6 @@ def _run_gui():
                         worst_severity(records),
                         format_boot_warnings(records))
         mark_acknowledged()
-
-    def send_notification(summary, body):
-        try:
-            connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-            parameters = GLib.Variant(
-                '(susssasa{sv}i)',
-                (_('MiniOS Session Manager'), 0, 'document-save',
-                 summary, body, [], {}, 5000))
-            connection.call_sync(
-                'org.freedesktop.Notifications', '/org/freedesktop/Notifications',
-                'org.freedesktop.Notifications', 'Notify', parameters,
-                GLib.VariantType.new('(u)'), Gio.DBusCallFlags.NONE, 2000, None)
-            return True
-        except Exception:
-            return False
 
     state = {
         "last_level": "ok", "session": None, "policy": "manual",
@@ -407,25 +383,15 @@ def _run_gui():
         periodic_item.set_sensitive(settings_enabled)
 
     def create_save_dialog():
-        dialog = Gtk.Dialog(title=_("Saving Session"), modal=False)
+        dialog = ProgressDialog(
+            title=_("Saving Session"),
+            status=save_phase_text(saving["phase"]), cancellable=False)
+        dialog.set_modal(False)
         dialog.set_deletable(False)
         dialog.set_resizable(False)
         dialog.set_default_size(380, 120)
-        box = dialog.get_content_area()
-        box.set_spacing(14)
-        box.set_margin_start(20)
-        box.set_margin_end(20)
-        box.set_margin_top(20)
-        box.set_margin_bottom(20)
-        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
-        spinner = Gtk.Spinner()
-        spinner.start()
-        row.pack_start(spinner, False, False, 0)
-        label = Gtk.Label(label=save_phase_text(saving["phase"]))
-        label.set_line_wrap(True)
-        row.pack_start(label, True, True, 0)
-        box.pack_start(row, True, True, 0)
-        return dialog, label
+        dialog.operation_view.set_state("running")
+        return dialog, dialog.operation_view.status_label
 
     def update_save_phase(phase):
         saving["phase"] = phase
@@ -458,7 +424,7 @@ def _run_gui():
             state["saved_override_until"] = time.monotonic() + 35.0
             update_tooltip()
             if not shown:
-                send_notification(
+                send_desktop_notification(
                     _("Session saved"),
                     _("SquashFS session #{} was saved successfully.").format(session_id))
         else:
@@ -529,7 +495,8 @@ def _run_gui():
         state["settings_active"] = True
         update_controls()
 
-        def worker():
+        def worker(token):
+            token.raise_if_cancelled()
             try:
                 process = subprocess.Popen(
                     command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -538,12 +505,19 @@ def _run_gui():
                 result = (process.returncode, stdout, stderr)
             except Exception as error:
                 result = (1, "", str(error))
-            GLib.idle_add(
-                finish_settings, *result, desired_policy, desired_autosave)
+            token.raise_if_cancelled()
+            return result
 
-        thread = threading.Thread(target=worker)
-        thread.daemon = True
-        thread.start()
+        def complete(outcome):
+            if outcome.succeeded:
+                finish_settings(
+                    *outcome.value, desired_policy, desired_autosave)
+            elif not outcome.cancelled:
+                finish_settings(
+                    1, "", str(outcome.error), desired_policy,
+                    desired_autosave)
+
+        BackgroundTask(worker, complete).start()
 
     def on_shutdown_toggled(item):
         if state["syncing_menu"] or state["settings_active"] or not state.get("session"):
@@ -559,21 +533,14 @@ def _run_gui():
     def confirm_periodic_save(minutes):
         if minutes == 0:
             return True
-        dialog = Gtk.MessageDialog(
-            message_type=Gtk.MessageType.WARNING,
-            buttons=Gtk.ButtonsType.NONE,
-            text=_("Enable periodic session saving?"))
-        dialog.format_secondary_text(_(
-            "Periodic saving increases CPU usage and writes to storage. "
-            "With the current SquashFS mode each save rebuilds the snapshot. "
-            "An interval of 1 hour or longer is recommended."))
-        dialog.add_button(_("Cancel"), Gtk.ResponseType.CANCEL)
-        enable = dialog.add_button(_("Enable Periodic Save"), Gtk.ResponseType.OK)
-        enable.get_style_context().add_class("suggested-action")
-        dialog.set_default_response(Gtk.ResponseType.CANCEL)
-        accepted = dialog.run() == Gtk.ResponseType.OK
-        dialog.destroy()
-        return accepted
+        return ask_confirmation(
+            None,
+            _("Enable periodic session saving?"),
+            _("Periodic saving increases CPU usage and writes to storage. "
+              "With the current SquashFS mode each save rebuilds the snapshot. "
+              "An interval of 1 hour or longer is recommended."),
+            confirm_label=_("Enable Periodic Save"),
+            cancel_label=_("Cancel"))
 
     def on_autosave_toggled(item):
         if (not item.get_active() or state["syncing_menu"] or
@@ -633,7 +600,7 @@ def _run_gui():
                     body = _(
                         "Your session is stored as a compressed snapshot. Use the save "
                         "icon at any time. Automatic saving can be configured from the tray menu.")
-                if send_notification(_("SquashFS session is active"), body):
+                if send_desktop_notification(_("SquashFS session is active"), body):
                     state["notice_shown"] = True
                     mark_squashfs_notice_seen()
         return True
