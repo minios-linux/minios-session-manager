@@ -1,4 +1,4 @@
-.TH MINIOS-SESSION 1 "September 2026" "MiniOS Session Manager 1.3.0" "User Commands"
+.TH MINIOS-SESSION 1 "September 2026" "MiniOS Session Manager 1.4.0" "User Commands"
 .SH NAME
 minios-session \- command-line interface for managing MiniOS persistent sessions
 .SH SYNOPSIS
@@ -42,11 +42,11 @@ Create a new session with the specified mode and optional size. The new session 
 .RS
 .TP
 \fImode\fR (optional)
-Session mode: native, dynfilefs, raw, or luks (default: native). LUKS creates a LUKS2/ext4 changes.luks file and requires initrd support for perchmode=luks.
+Session mode: native, squashfs, dynfilefs, dynblk, raw, or luks (default: native). dynblk is exposed only when its userspace utility, kernel module, and initrd capability marker are available. LUKS creates a LUKS2/ext4 changes.luks file and requires initrd support for perchmode=luks.
 .TP
 \fIsize\fR (optional)
 Decimal size in MB, GB, or TB for container modes. DynFileFS, raw, and LUKS
-default to 4000MB and are limited to 1TB.
+default to 4000MB. dynblk defaults to 16GiB and is limited to 128GiB.
 .RE
 .TP
 .B delete \fIsession_id\fR
@@ -58,7 +58,7 @@ ID of the session to delete
 .RE
 .TP
 .B resize \fIsession_id\fR \fIsize\fR
-Resize the specified session to a larger size in MB, GB, or TB. Works for dynfilefs, raw, and LUKS sessions. Cannot resize currently running sessions.
+Resize the specified session to a larger size in MB, GB, or TB. Works for dynfilefs, dynblk, raw, and LUKS sessions. dynblk growth expands the virtual block device and then its ext4 filesystem without preallocating the new virtual capacity. Cannot resize currently running sessions.
 .RS
 .TP
 \fIsession_id\fR (required)
@@ -94,7 +94,7 @@ Path to the archive file (.tar.zst)
 Automatically convert to compatible mode for current filesystem
 .TP
 \fB\-\-force-mode\fR \fIMODE\fR (optional)
-Force import as specific mode (native/dynfilefs/raw/luks)
+Force import as specific mode (native/dynfilefs/dynblk/raw/luks)
 .TP
 \fB\-\-no-verify\fR (optional)
 Skip session integrity verification after import
@@ -111,11 +111,11 @@ Copy a session, optionally converting to a different mode.
 ID of the session to copy
 .TP
 \fB\-\-to-mode\fR \fIMODE\fR (optional)
-Convert to different mode: native, dynfilefs, raw, or luks
+Convert to different mode: native, dynfilefs, dynblk, raw, or luks
 .TP
 \fB\-\-size\fR \fISIZE\fR (optional)
-Decimal size in MB, GB, or TB for dynfilefs, raw, or LUKS targets. The normal
-container default is 4000MB when no source size is inferred.
+Decimal size in MB, GB, or TB for dynfilefs, dynblk, raw, or LUKS targets.
+dynblk defaults to 16GiB; the other container modes default to 4000MB when no source size is inferred.
 .RE
 .TP
 .B convert \fIsession_id\fR \fItarget_mode\fR [\-\-size \fISIZE\fR] [\-\-new-session]
@@ -126,10 +126,10 @@ Convert an existing session to a different mode in-place.
 ID of the session to convert
 .TP
 \fItarget_mode\fR (required)
-Target mode: native, dynfilefs, raw, or luks
+Target mode: native, dynfilefs, dynblk, raw, or luks
 .TP
 \fB\-\-size\fR \fISIZE\fR (optional)
-Decimal size in MB, GB, or TB for dynfilefs, raw, or LUKS targets.
+Decimal size in MB, GB, or TB for dynfilefs, dynblk, raw, or LUKS targets.
 .TP
 \fB\-\-new-session\fR (optional)
 Create a converted session with a new ID and preserve the source. Without this
@@ -160,6 +160,8 @@ command automatically detects the filesystem type and validates mode compatibili
 .TP
 - With dynfilefs mode but package not installed: Returns error requesting dynfilefs package installation
 .TP
+- With dynblk mode but no matching initrd/kernel capability: Returns an availability error
+.TP
 - With oversized raw or LUKS images on FAT32: Returns an error with the 4000MB limit
 .RE
 .TP
@@ -172,7 +174,7 @@ without mode: Uses native mode, may fail on non-POSIX filesystems
 .TP
 - 
 .B create
-without size: Uses 4000MB for dynfilefs, raw, and LUKS modes
+without size: Uses 16GiB for dynblk and 4000MB for dynfilefs, raw, and LUKS modes
 .TP
 - 
 .B cleanup
@@ -183,13 +185,16 @@ without days: Uses 30-day threshold for session deletion
 Active sessions are protected from deletion and in-place conversion. Running
 sessions are protected from deletion, export, copy, resize, and conversion.
 .SH SESSION MODES
-MiniOS supports four persistence modes for different storage scenarios:
+MiniOS supports six persistence modes for different storage scenarios:
 .TP
 .B native
 Direct storage on POSIX-compatible filesystems (ext4, btrfs, etc.). This is the default and most efficient mode for compatible filesystems.
 .TP
 .B dynfilefs
 Dynamic file-based storage suitable for non-POSIX filesystems (FAT32, NTFS, exFAT). Creates expandable container files.
+.TP
+.B dynblk
+Format-1 kernel block storage backed by thin volumeNNN.db files. The mode is available only when the running system has the dynblk utility and module and the initramfs advertises dynblk resume support. Its virtual size defaults to 16GiB and cannot exceed 128GiB.
 .TP
 .B raw
 Fixed-size image file storage compatible with any filesystem. Requires pre-allocation of storage space.
@@ -203,11 +208,11 @@ LUKS choices and --password-stdin are shown only when cryptsetup, losetup, and
 The tool automatically detects your media's filesystem type and restricts session creation to compatible modes:
 .TP
 .B POSIX Filesystems (ext2/3/4, btrfs, xfs, f2fs)
-Native mode and available container modes are supported. LUKS additionally
+Native mode and available container modes are supported. dynblk is admitted on ext2/3/4 and Btrfs when its capability check succeeds; XFS/f2fs are not dynblk backing targets. LUKS additionally
 requires cryptsetup, loop support, and the initrd LUKS capability marker.
 .TP
 .B FAT32, NTFS, and exFAT
-DynFileFS and Raw are supported on writable media. LUKS is also supported when
+DynFileFS and Raw are supported on writable media. dynblk is also offered on vfat, exFAT, and ntfs3 when its capability check succeeds. LUKS is supported when
 its capability check succeeds; fixed Raw and LUKS files are limited to 4000MB
 on FAT32. Native mode is unsupported.
 .TP
@@ -247,6 +252,8 @@ Create sessions:
 .br
 .B minios-session create dynfilefs 8000
 .br
+.B minios-session create dynblk 16GB
+.br
 .B minios-session create raw 2000
 .RE
 .PP
@@ -266,7 +273,7 @@ Import session:
 .RS
 .B minios-session import /tmp/backup.tar.zst
 .br
-.B minios-session import /tmp/backup.tar.zst --force-mode dynfilefs
+.B minios-session import /tmp/backup.tar.zst --force-mode dynblk
 .br
 .B minios-session import /tmp/backup.tar.zst --auto-convert
 .RE
@@ -280,7 +287,7 @@ Copy session:
 .PP
 Convert session:
 .RS
-.B minios-session convert 3 dynfilefs --size 4GB
+.B minios-session convert 3 dynblk --size 16GB
 .RE
 .PP
 JSON output:

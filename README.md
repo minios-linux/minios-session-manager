@@ -21,6 +21,7 @@ minios-session-manager
 minios-session list
 minios-session create native
 minios-session create luks 4GB
+minios-session create dynblk 16GB
 minios-session create squashfs --policy shutdown
 minios-session create squashfs --policy manual --autosave 60
 minios-session activate <id>
@@ -49,6 +50,7 @@ minios-session resize <id> 8GB
 
 - **native** - Direct filesystem storage (ext2/ext3/ext4, Btrfs, XFS, etc.)
 - **dynfilefs** - Expandable container files (works on any filesystem including FAT32/NTFS/exFAT)
+- **dynblk** - Format-1 kernel block device with thin backing files; exposed only when the running kernel and initramfs support it
 - **raw** - Fixed-size image files (works on any filesystem including FAT32/NTFS/exFAT)
 - **luks** - LUKS2-encrypted ext4 file (`changes.luks`), with no partition table or nested container
 - **squashfs** - Exact compressed snapshots stored as a single `changes.sb`;
@@ -81,15 +83,15 @@ use `--new-session` to preserve it.
 ## Filesystem Support
 
 - **POSIX filesystems** - Native mode and available container modes
-- **FAT32/NTFS/exFAT** - DynFileFS and raw containers; LUKS containers when
+- **FAT32/NTFS/exFAT** - DynFileFS and raw containers; dynblk where the lower filesystem is admitted by its kernel driver; LUKS containers when
   cryptsetup, loop support, and the initrd LUKS hook are available
 - SquashFS save currently requires a POSIX persistence filesystem because its
   private exact-capture staging must preserve links, ownership, modes, xattrs,
   ACLs, capabilities, and whiteouts. FAT32/NTFS/exFAT activation remains gated
   until a metadata-capable bounded workspace is implemented.
-- DynFileFS, raw, and LUKS default to 4000 MB. CLI sizes accept decimal
-  `MB`/`GB`/`TB` units up to 1 TB. Raw and LUKS are capped at 4000 MB on FAT32.
-- Containers only grow; shrinking is unsupported.
+- DynFileFS, raw, and LUKS default to 4000 MB. dynblk defaults to a 16 GiB virtual device and is capped at 128 GiB. CLI sizes accept decimal
+  `MB`/`GB`/`TB` units; raw and LUKS are capped at 4000 MB on FAT32.
+- DynFileFS and dynblk expose thin virtual capacity: their configured logical size does not require that much free space up front. Both can grow later; shrinking is unsupported.
 
 Creating a LUKS session prompts twice for confirmation. Other operations that
 read or create LUKS data use `--password-stdin`; passphrases are never placed in
@@ -97,7 +99,9 @@ arguments or metadata.
 
 LUKS mode and `--password-stdin` are omitted from GUI and CLI choices unless
 `/run/initramfs/etc/minios-initramfs-crypt`, `cryptsetup`, and `losetup` are
-available in the running system.
+available in the running system. dynblk is likewise omitted unless
+`/run/initramfs/etc/minios-initramfs-dynblk`, the `dynblk` utility, and the
+matching kernel module are available.
 
 LUKS exports contain decrypted logical session files, not the encrypted
 `changes.luks` container. Importing into LUKS creates a new encrypted container.

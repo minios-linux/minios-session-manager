@@ -1056,10 +1056,11 @@ class TestAuditRegressions:
         sm._check_free_space = fake_check
 
         sm.create_session(session_mode='dynfilefs', size_mb=4000)
+        sm.create_session(session_mode='dynblk', size_mb=sm.DYNBLK_DEFAULT_SIZE_MB)
         sm.create_session(session_mode='raw', size_mb=4000)
 
-        # DynFileFS admits on a small floor; raw requires the full size.
-        assert captured == [sm.DYNFILEFS_INITIAL_MB, 4000]
+        # Thin backends admit on small floors; raw requires the full size.
+        assert captured == [sm.DYNFILEFS_INITIAL_MB, sm.DYNBLK_INITIAL_MB, 4000]
 
     def test_cleanup_rejects_nonpositive_days(self, temp_sessions_dir):
         from minios_session import SessionManager
@@ -1930,3 +1931,174 @@ class TestSquashfsSaveDelegation:
 
         assert success is False
         assert capture is None
+
+
+class TestDynblkSessions:
+    def test_compatible_modes_expose_dynblk_only_on_admitted_backing_fs(self):
+        from minios_session import SessionManager
+
+        sm = SessionManager.__new__(SessionManager)
+        sm._check_dynblk_available = lambda: True
+        sm._check_luks_available = lambda: (False, None)
+        ext4 = {'type': 'ext4', 'is_readonly': False, 'is_posix_compatible': True}
+        xfs = {'type': 'xfs', 'is_readonly': False, 'is_posix_compatible': True}
+        assert 'dynblk' in sm._get_compatible_session_modes(ext4)
+        assert 'dynblk' not in sm._get_compatible_session_modes(xfs)
+
+    def test_dynblk_target_enforces_format_capacity(self):
+        from minios_session import SessionManager
+
+        sm = SessionManager.__new__(SessionManager)
+        filesystem = {'type': 'ext4', 'is_readonly': False,
+                      'is_posix_compatible': True}
+        sm._detect_filesystem_type = lambda: (filesystem, None)
+        sm._check_dynblk_available = lambda: True
+        sm._check_luks_available = lambda: (False, None)
+        assert sm._validate_target_mode('dynblk', 131072) == (True, None)
+        valid, message = sm._validate_target_mode('dynblk', 131073)
+        assert valid is False
+        assert '128 GiB' in message
+
+    def test_dynblk_size_reports_parts_and_virtual_capacity(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager.__new__(SessionManager)
+        session = os.path.join(temp_sessions_dir, '1')
+        os.mkdir(session)
+        with open(os.path.join(session, 'volume000.db'), 'wb') as handle:
+            handle.truncate(12288)
+        with open(os.path.join(session, 'volume001.db'), 'wb') as handle:
+            handle.truncate(4096)
+        info = sm._get_session_size_info(session, {'mode': 'dynblk', 'size': 64})
+        assert info['used_size'] == 16384
+        assert info['total_size'] == 64 * 1024 * 1024
+
+    def test_dynblk_direct_copy_preserves_all_parts(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager.__new__(SessionManager)
+        source = os.path.join(temp_sessions_dir, 'source')
+        target = os.path.join(temp_sessions_dir, 'target')
+        os.mkdir(source)
+        os.mkdir(target)
+        for index, content in ((0, b'header'), (3, b'payload')):
+            with open(os.path.join(source, 'volume{:03d}.db'.format(index)), 'wb') as handle:
+                handle.write(content)
+        assert sm._copy_session_direct(source, target, 'dynblk') is True
+        assert open(os.path.join(target, 'volume000.db'), 'rb').read() == b'header'
+        assert open(os.path.join(target, 'volume003.db'), 'rb').read() == b'payload'
+
+    def test_dynblk_creation_uses_native_cli_and_detaches(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager.__new__(SessionManager)
+        dynblk_calls = []
+        sm._run_dynblk = lambda args: dynblk_calls.append(list(args))
+        completed = SimpleNamespace(returncode=0, stdout=b'', stderr=b'')
+        real_exists = os.path.exists
+
+        def exists(path):
+            if path in ('/sys/module/dynblk', '/dev/dynblk0'):
+                return False
+            return real_exists(path)
+
+        with patch('minios_session.os.path.exists', side_effect=exists), \
+             patch('minios_session.subprocess.run', return_value=completed) as run:
+            success, _message = sm._create_dynblk_session(temp_sessions_dir, 4096)
+        assert success is True
+        assert dynblk_calls == [[
+            'create', os.path.join(temp_sessions_dir, 'volume000.db'),
+            '--size', '4096MiB', '--compression', 'none', '--execute']]
+        commands = [call[0][0] for call in run.call_args_list]
+        assert ['mke2fs', '-F', '-t', 'ext4', '/dev/dynblk0'] in commands
+        assert ['dynblk', 'unload', '/dev/dynblk0', '--execute'] in commands
+
+
+    def test_dynblk_resize_grows_virtual_device_and_filesystem(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager.__new__(SessionManager)
+        volume = os.path.join(temp_sessions_dir, 'volume000.db')
+        open(volume, 'wb').close()
+        calls = []
+
+        def run_dynblk(args):
+            calls.append(list(args))
+            return SimpleNamespace(returncode=0, stdout=b'', stderr=b'')
+
+        sm._run_dynblk = run_dynblk
+        sm._dynblk_status = lambda: {'capacity_bytes': 4096 * 1024 * 1024}
+        sm._write_sessions_metadata = lambda metadata: True
+        metadata = {'sessions': {'7': {'mode': 'dynblk', 'size': 4096}}}
+        completed = SimpleNamespace(returncode=0, stdout=b'', stderr=b'')
+        real_exists = os.path.exists
+
+        def exists(path):
+            if path in ('/sys/module/dynblk', '/dev/dynblk0'):
+                return False
+            return real_exists(path)
+
+        with patch('minios_session.os.path.exists', side_effect=exists), \
+             patch('minios_session.subprocess.run', return_value=completed) as run:
+            success, _message = sm._resize_dynblk_session(
+                temp_sessions_dir, 8192, '7', metadata)
+
+        assert success is True
+        assert ['load', volume, '--execute'] in calls
+        assert ['grow', '/dev/dynblk0', '8192MiB', '--execute'] in calls
+        commands = [call[0][0] for call in run.call_args_list]
+        assert ['e2fsck', '-p', '/dev/dynblk0'] in commands
+        assert ['resize2fs', '-f', '/dev/dynblk0'] in commands
+        assert ['dynblk', 'unload', '/dev/dynblk0', '--execute'] in commands
+        assert metadata['sessions']['7']['size'] == 8192
+
+    def test_dynblk_resize_recovers_after_device_grow_without_growing_twice(self,
+                                                                           temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager.__new__(SessionManager)
+        volume = os.path.join(temp_sessions_dir, 'volume000.db')
+        open(volume, 'wb').close()
+        calls = []
+        sm._run_dynblk = lambda args: (
+            calls.append(list(args)) or
+            SimpleNamespace(returncode=0, stdout=b'', stderr=b''))
+        sm._dynblk_status = lambda: {'capacity_bytes': 8192 * 1024 * 1024}
+        sm._write_sessions_metadata = lambda metadata: True
+        metadata = {'sessions': {'7': {'mode': 'dynblk', 'size': 4096}}}
+        completed = SimpleNamespace(returncode=0, stdout=b'', stderr=b'')
+        real_exists = os.path.exists
+
+        def exists(path):
+            if path in ('/sys/module/dynblk', '/dev/dynblk0'):
+                return False
+            return real_exists(path)
+
+        with patch('minios_session.os.path.exists', side_effect=exists), \
+             patch('minios_session.subprocess.run', return_value=completed) as run:
+            success, _message = sm._resize_dynblk_session(
+                temp_sessions_dir, 8192, '7', metadata)
+
+        assert success is True
+        assert not any(call and call[0] == 'grow' for call in calls)
+        commands = [call[0][0] for call in run.call_args_list]
+        assert ['resize2fs', '-f', '/dev/dynblk0'] in commands
+        assert metadata['sessions']['7']['size'] == 8192
+
+
+def test_dynblk_capability_requires_initrd_marker_and_module(temp_sessions_dir):
+    from minios_session import INITRD_DYNBLK_MARKER, SessionManager
+
+    sm = SessionManager.__new__(SessionManager)
+    completed = SimpleNamespace(returncode=0)
+    with patch('minios_session.shutil.which', side_effect=lambda name: '/usr/bin/' + name), \
+         patch('minios_session.os.path.isfile', side_effect=lambda path: path == INITRD_DYNBLK_MARKER), \
+         patch('minios_session.subprocess.run', return_value=completed) as run:
+        assert sm._check_dynblk_available() is True
+        run.assert_called_once_with(
+            ['modinfo', 'dynblk'], stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL)
+
+    with patch('minios_session.shutil.which', return_value='/usr/bin/tool'), \
+         patch('minios_session.os.path.isfile', return_value=False):
+        assert sm._check_dynblk_available() is False

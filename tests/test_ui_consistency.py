@@ -137,6 +137,19 @@ def test_ram_only_status_explains_missing_persistent_storage():
     assert "Sessions directory not found" not in SOURCE
 
 
+def test_dynblk_gui_is_capability_driven_and_resizable():
+    assert "compatible_modes = ['native', 'dynfilefs', 'raw']" in SOURCE
+    assert "'dynfilefs', 'dynblk', 'raw', 'luks'" in SOURCE
+    assert "131072 if session_mode == 'dynblk'" in SOURCE
+
+
+def test_dynblk_completion_is_capability_gated():
+    completion = (ROOT / "completion/minios-session").read_text(encoding="utf-8")
+    assert 'minios-initramfs-dynblk' in completion
+    assert 'modinfo dynblk >/dev/null 2>&1' in completion
+    assert 'session_modes+=" dynblk"' in completion
+
+
 def test_manpage_versions_match_changelog():
     changelog = (ROOT / "debian/changelog").read_text(encoding="utf-8")
     version = re.search(r'^minios-session-manager \(([^)]+)\)', changelog).group(1)

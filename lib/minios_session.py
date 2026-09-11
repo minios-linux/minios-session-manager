@@ -47,6 +47,7 @@ except Exception:
     pass
 
 INITRD_CRYPTO_MARKER = '/run/initramfs/etc/minios-initramfs-crypt'
+INITRD_DYNBLK_MARKER = '/run/initramfs/etc/minios-initramfs-dynblk'
 
 
 def luks_runtime_available():
@@ -68,6 +69,16 @@ class SessionManager:
     # creation and growth is protected at runtime by the persistence guard, so
     # admission requires only this floor instead of the full logical size.
     DYNFILEFS_INITIAL_MB = 64
+    # dynblk is thin at creation too, but its virtual device is capped by the
+    # format-1 ABI at 128 GiB. Backing parts stay below the FAT32 single-file
+    # limit and kernel admission remains authoritative.
+    DYNBLK_INITIAL_MB = 64
+    DYNBLK_DEFAULT_SIZE_MB = 16 * 1024
+    DYNBLK_MAX_SIZE_MB = 128 * 1024
+    DYNBLK_BACKING_FILESYSTEMS = (
+        'ext2', 'ext3', 'ext4', 'btrfs', 'vfat', 'fat', 'msdos', 'exfat',
+        'ntfs3',
+    )
     SAVECHANGES_COMMAND = '/usr/bin/savechanges'
     SQUASHFS_SAVE_COMMAND = '/usr/bin/minios-squashfs-save'
     BOOT_STATE_FILE = '/run/initramfs/minios-persistence/boot-state'
@@ -744,6 +755,125 @@ class SessionManager:
         except Exception:
             return False
 
+    def _check_dynblk_available(self):
+        """Require dynblk in both the running system and the boot initramfs."""
+        if not shutil.which('dynblk') or not os.path.isfile(INITRD_DYNBLK_MARKER):
+            return False
+        # An already loaded module is sufficient. Otherwise require the module
+        # to be discoverable for the running kernel so Session Manager can
+        # attach detached sessions outside the initramfs.
+        if os.path.isdir('/sys/module/dynblk'):
+            return True
+        if not shutil.which('modinfo'):
+            return False
+        try:
+            result = subprocess.run(
+                ['modinfo', 'dynblk'], stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL)
+            return result.returncode == 0
+        except OSError:
+            return False
+
+    def _run_dynblk(self, arguments):
+        result = subprocess.run(
+            ['dynblk'] + list(arguments), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode:
+            message = result.stderr.decode(errors='replace').strip()
+            raise OSError(message or _('dynblk operation failed'))
+        return result
+
+    def _dynblk_status(self):
+        result = self._run_dynblk(['status', '/dev/dynblk0', '--json'])
+        try:
+            status = json.loads(result.stdout.decode(errors='replace'))
+            capacity = status['capacity_bytes']
+            if not isinstance(capacity, int) or isinstance(capacity, bool) or capacity <= 0:
+                raise ValueError
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            raise OSError(_('Invalid dynblk status response'))
+        return status
+
+    def _create_dynblk_session(self, session_path, size_mb):
+        """Create one detached dynblk/ext4 session without mounting it."""
+        volume = os.path.join(session_path, 'volume000.db')
+        if os.path.exists('/sys/module/dynblk') or os.path.exists('/dev/dynblk0'):
+            return False, _('Another dynblk device is already active.')
+        attached = False
+        success = False
+        message = _('Failed to create dynblk session')
+        try:
+            self._run_dynblk([
+                'create', volume, '--size', '{}MiB'.format(size_mb),
+                '--compression', 'none', '--execute'])
+            attached = True
+            result = subprocess.run(
+                ['mke2fs', '-F', '-t', 'ext4', '/dev/dynblk0'],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if result.returncode:
+                message = _('Failed to format dynblk device: {}').format(
+                    result.stderr.decode(errors='replace').strip())
+            else:
+                subprocess.run(['sync'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                success = True
+                message = _('dynblk session created successfully')
+        except Exception as error:
+            message = _('Failed to create dynblk session: {}').format(str(error))
+        finally:
+            if attached:
+                unload = subprocess.run(
+                    ['dynblk', 'unload', '/dev/dynblk0', '--execute'],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if unload.returncode:
+                    success = False
+                    message = _('dynblk was created but could not be detached: {}').format(
+                        unload.stderr.decode(errors='replace').strip() or
+                        _('module is still active'))
+        return success, message
+
+    @contextlib.contextmanager
+    def _mount_dynblk(self, session_path, writable):
+        """Attach a detached dynblk volume for one Session Manager operation."""
+        volume = os.path.join(session_path, 'volume000.db')
+        if not os.path.exists(volume):
+            raise OSError(_('dynblk volume000.db not found'))
+        if os.path.exists('/sys/module/dynblk') or os.path.exists('/dev/dynblk0'):
+            raise OSError(_('Another dynblk device is already active.'))
+        mount_point = tempfile.mkdtemp(prefix='minios_dynblk_')
+        attached = mounted = False
+        try:
+            self._run_dynblk(['load', volume, '--execute'])
+            attached = True
+            command = ['mount']
+            if not writable:
+                command += ['-o', 'ro']
+            command += ['/dev/dynblk0', mount_point]
+            result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if result.returncode:
+                raise OSError(result.stderr.decode(errors='replace').strip() or
+                              _('Failed to mount dynblk device'))
+            mounted = True
+            yield mount_point
+        finally:
+            active_exception = sys.exc_info()[0] is not None
+            cleanup_error = None
+            if mounted and not self._safe_unmount(mount_point, use_lazy=False):
+                cleanup_error = _('Failed to unmount dynblk session; device was left attached.')
+                attached = False
+            if attached:
+                unload = subprocess.run(
+                    ['dynblk', 'unload', '/dev/dynblk0', '--execute'],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if unload.returncode:
+                    cleanup_error = _('Failed to detach dynblk after session operation: {}').format(
+                        unload.stderr.decode(errors='replace').strip() or
+                        _('module is still active'))
+            self._safe_rmtree(mount_point)
+            if cleanup_error:
+                if active_exception:
+                    print('Warning: {}'.format(cleanup_error), file=sys.stderr)
+                else:
+                    raise OSError(cleanup_error)
+
     def _check_luks_available(self):
         """Check both the userspace tools and the initrd LUKS persistence hook."""
         if not shutil.which('cryptsetup') or not shutil.which('losetup'):
@@ -805,6 +935,11 @@ class SessionManager:
         
         # DynFileFS mode: works on all writable filesystems.
         compatible_modes.append('dynfilefs')
+
+        # dynblk uses the lower-filesystem admission contract enforced again by
+        # the kernel module. Only expose targets covered by that contract.
+        if fs_type in self.DYNBLK_BACKING_FILESYSTEMS and self._check_dynblk_available():
+            compatible_modes.append('dynblk')
         
         # Raw mode: works on ALL writable filesystems (static images)
         compatible_modes.append('raw')
@@ -844,7 +979,7 @@ class SessionManager:
 
     def _validate_target_mode(self, mode, size_mb=None):
         """Validate a requested storage mode against the actual target filesystem."""
-        if mode not in ('native', 'squashfs', 'dynfilefs', 'raw', 'luks'):
+        if mode not in ('native', 'squashfs', 'dynfilefs', 'dynblk', 'raw', 'luks'):
             return False, _("Invalid session mode")
         fs_info, error = self._detect_filesystem_type()
         if error or not fs_info:
@@ -859,6 +994,11 @@ class SessionManager:
             return False, _("SquashFS sessions do not use a fixed container size")
         if mode == 'dynfilefs' and not self._check_dynfilefs_available():
             return False, _("DynFileFS is not available on this system. Please install dynfilefs package.")
+        if mode == 'dynblk':
+            if not self._check_dynblk_available():
+                return False, _("dynblk is not available on this system.")
+            if size_mb is not None and size_mb > self.DYNBLK_MAX_SIZE_MB:
+                return False, _("dynblk virtual size cannot exceed 128 GiB.")
         max_size = self._get_filesystem_limitations(fs_info).get('max_file_size')
         if mode == 'luks':
             luks_available, luks_error = self._check_luks_available()
@@ -1117,6 +1257,11 @@ class SessionManager:
                 else:
                     yield virtual_mount
             
+            elif mode == 'dynblk':
+                with self._mount_dynblk(session_path, writable=False) as dynblk_mount:
+                    changes_dir = os.path.join(dynblk_mount, 'changes')
+                    yield changes_dir if os.path.isdir(changes_dir) else dynblk_mount
+
             elif mode == 'raw':
                 image_file = os.path.join(session_path, 'changes.img')
                 if not os.path.exists(image_file):
@@ -1208,6 +1353,17 @@ class SessionManager:
                 
                 yield virtual_mount
                 
+            elif mode == 'dynblk':
+                if not size_mb:
+                    size_mb = self.DYNBLK_DEFAULT_SIZE_MB
+                volume = os.path.join(session_path, 'volume000.db')
+                if not os.path.exists(volume):
+                    success, message = self._create_dynblk_session(session_path, size_mb)
+                    if not success:
+                        raise OSError(message)
+                with self._mount_dynblk(session_path, writable=True) as dynblk_mount:
+                    yield dynblk_mount
+
             elif mode == 'raw':
                 if not size_mb: size_mb = 4000
                 image_file = os.path.join(session_path, 'changes.img')
@@ -1351,6 +1507,24 @@ class SessionManager:
                     'display': display
                 }
         
+        elif session_mode == 'dynblk':
+            used_size = 0
+            try:
+                for name in os.listdir(session_path):
+                    if re.fullmatch(r'volume[0-9]{3}\.db', name):
+                        path = os.path.join(session_path, name)
+                        if os.path.isfile(path):
+                            used_size += os.path.getsize(path)
+            except OSError:
+                pass
+            result = {'used_size': used_size, 'display': self._format_size(used_size)}
+            if stored_size is not None:
+                total_size = stored_size * 1024 * 1024
+                result['total_size'] = total_size
+                result['display'] = '{}/{}'.format(
+                    self._format_size(used_size), self._format_size(total_size))
+            return result
+
         elif session_mode == 'raw':
             # For raw, show total size (the image file size)
             image_file = os.path.join(session_path, "changes.img")
@@ -2109,7 +2283,7 @@ class SessionManager:
             return False, _("Sessions directory not found")
         
         # Validate session mode
-        valid_modes = ["native", "squashfs", "dynfilefs", "raw", "luks"]
+        valid_modes = ["native", "squashfs", "dynfilefs", "dynblk", "raw", "luks"]
         if session_mode not in valid_modes:
             return False, _("Invalid session mode. Must be one of: {}").format(", ".join(valid_modes))
         squashfs_policy = policy or 'shutdown'
@@ -2145,6 +2319,8 @@ class SessionManager:
             required_mb = size_mb if size_mb else self.DEFAULT_CONTAINER_SIZE_MB
             if session_mode == "dynfilefs":
                 required_mb = min(required_mb, self.DYNFILEFS_INITIAL_MB)
+            elif session_mode == "dynblk":
+                required_mb = min(required_mb, self.DYNBLK_INITIAL_MB)
             has_space, space_error = self._check_free_space(self.sessions_dir, required_mb)
             if not has_space:
                 return False, space_error
@@ -2186,6 +2362,13 @@ class SessionManager:
                         pass
                     return False, message
             
+            elif session_mode == "dynblk":
+                if size_mb is None:
+                    size_mb = self.DYNBLK_DEFAULT_SIZE_MB
+                success, message = self._create_dynblk_session(session_path, size_mb)
+                if not success:
+                    return False, message
+
             elif session_mode == "raw":
                 # Create raw image file
                 if size_mb is None:
@@ -2276,7 +2459,7 @@ class SessionManager:
                     boot_id = self._current_boot_id()
                     if boot_id:
                         session_record['capture_boot_id'] = boot_id
-                elif session_mode in ["dynfilefs", "raw", "luks"] and size_mb:
+                elif session_mode in ["dynfilefs", "dynblk", "raw", "luks"] and size_mb:
                     session_record["size"] = size_mb
                 metadata["sessions"][new_id] = session_record
                 metadata_updated = self._write_sessions_metadata(metadata)
@@ -2293,7 +2476,7 @@ class SessionManager:
                     return True, message
                 except Exception:
                     # Fallback to simple English message if translation fails
-                    if session_mode in ["dynfilefs", "raw", "luks"] and size_mb is not None:
+                    if session_mode in ["dynfilefs", "dynblk", "raw", "luks"] and size_mb is not None:
                         return True, f"Session {new_id} created successfully (mode: {session_mode}, size: {size_mb}MB)"
                     else:
                         return True, f"Session {new_id} created successfully (mode: {session_mode})"
@@ -2435,8 +2618,8 @@ class SessionManager:
             metadata = self._read_sessions_metadata()
             session_data = metadata.get("sessions", {}).get(session_id, {})
             session_mode = session_data.get("mode", "unknown")
-            if session_mode not in ["dynfilefs", "raw", "luks"]:
-                return False, _("Resize is only supported for dynfilefs, raw, and LUKS mode sessions")
+            if session_mode not in ["dynfilefs", "dynblk", "raw", "luks"]:
+                return False, _("Resize is only supported for dynfilefs, dynblk, raw, and LUKS mode sessions")
             valid_target, target_error = self._validate_target_mode(session_mode, new_size_mb)
             if not valid_target:
                 return False, target_error
@@ -2446,6 +2629,8 @@ class SessionManager:
             try:
                 if session_mode == "dynfilefs":
                     return self._resize_dynfilefs_session(session_path, new_size_mb, session_id, metadata)
+                if session_mode == 'dynblk':
+                    return self._resize_dynblk_session(session_path, new_size_mb, session_id, metadata)
                 if session_mode == 'luks':
                     return self._resize_luks_session(session_path, new_size_mb, session_id, metadata, password)
                 return self._resize_raw_session(session_path, new_size_mb, session_id, metadata)
@@ -2528,6 +2713,74 @@ class SessionManager:
             
         except Exception as e:
             return False, _("Failed to resize dynfilefs session: {}").format(str(e))
+
+    def _resize_dynblk_session(self, session_path, new_size_mb, session_id, metadata):
+        """Grow a detached dynblk device and its ext4 filesystem."""
+        volume = os.path.join(session_path, 'volume000.db')
+        if not os.path.exists(volume):
+            return False, _("dynblk volume000.db not found")
+        recorded_size = metadata.get('sessions', {}).get(session_id, {}).get('size', 0)
+        try:
+            recorded_size = int(recorded_size or 0)
+        except (TypeError, ValueError):
+            recorded_size = 0
+        if new_size_mb <= recorded_size:
+            return False, _("New size must be larger than current total size ({}MB)").format(recorded_size)
+        if os.path.exists('/sys/module/dynblk') or os.path.exists('/dev/dynblk0'):
+            return False, _("Another dynblk device is already active.")
+
+        attached = False
+        operation_error = None
+        try:
+            self._run_dynblk(['load', volume, '--execute'])
+            attached = True
+            status = self._dynblk_status()
+            current_size_mb = status['capacity_bytes'] // (1024 * 1024)
+            if new_size_mb < current_size_mb:
+                operation_error = _(
+                    "dynblk device is already {}MB and cannot be shrunk to {}MB").format(
+                        current_size_mb, new_size_mb)
+            else:
+                check = subprocess.run(
+                    ['e2fsck', '-p', '/dev/dynblk0'],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if check.returncode > 1:
+                    operation_error = _("Filesystem check failed before dynblk resize: {}").format(
+                        check.stderr.decode(errors='replace').strip())
+                else:
+                    # A previous interrupted resize may already have grown the
+                    # block device. In that case skip DYNBLK_GROW and finish the
+                    # idempotent filesystem/metadata phase.
+                    if new_size_mb > current_size_mb:
+                        self._run_dynblk([
+                            'grow', '/dev/dynblk0', '{}MiB'.format(new_size_mb), '--execute'])
+                    resize = subprocess.run(
+                        ['resize2fs', '-f', '/dev/dynblk0'],
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    if resize.returncode:
+                        operation_error = _("Failed to resize dynblk filesystem: {}").format(
+                            resize.stderr.decode(errors='replace').strip())
+                    else:
+                        subprocess.run(['sync'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        except Exception as error:
+            operation_error = str(error)
+        finally:
+            if attached:
+                unload = subprocess.run(
+                    ['dynblk', 'unload', '/dev/dynblk0', '--execute'],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if unload.returncode and operation_error is None:
+                    operation_error = _("Failed to detach dynblk after resize: {}").format(
+                        unload.stderr.decode(errors='replace').strip() or
+                        _('module is still active'))
+
+        if operation_error is not None:
+            return False, operation_error
+        metadata['sessions'][session_id]['size'] = new_size_mb
+        if not self._write_sessions_metadata(metadata):
+            return False, _("Failed to update session metadata")
+        return True, _("Session {} resized to {}MB successfully").format(
+            session_id, new_size_mb)
 
     def _resize_raw_session(self, session_path, new_size_mb, session_id, metadata):
         """Resize a raw session"""
@@ -2950,7 +3203,7 @@ class SessionManager:
         if not isinstance(metadata, dict) or not isinstance(metadata.get('session'), dict):
             return False
         session = metadata['session']
-        return (session.get('mode') in ('native', 'dynfilefs', 'raw', 'luks')
+        return (session.get('mode') in ('native', 'dynfilefs', 'dynblk', 'raw', 'luks')
                 and all(isinstance(session.get(key), str) for key in ('version', 'edition', 'union')))
 
     def import_session(self, archive_path, auto_convert=False, force_mode=None,
@@ -3018,7 +3271,7 @@ class SessionManager:
             
             # Determine size for container modes
             size_mb = None
-            if import_mode in ['dynfilefs', 'raw', 'luks']:
+            if import_mode in ['dynfilefs', 'dynblk', 'raw', 'luks']:
                 size_mb = max(100, int(required_mb))
 
             # Import directly using streaming
@@ -3182,7 +3435,7 @@ class SessionManager:
                 'edition': import_metadata['session']['edition'],
                 'union': import_metadata['session']['union']
             }
-            if mode in ['dynfilefs', 'raw', 'luks']:
+            if mode in ['dynfilefs', 'dynblk', 'raw', 'luks']:
                 size = import_metadata['session'].get('size', 4000)
                 if isinstance(size, int):
                     session_data['size'] = max(100, int(size / (1024 * 1024))) if size > 100000 else max(100, size)
@@ -3265,7 +3518,7 @@ class SessionManager:
                     'mode': target_mode, 'version': source_session['version'],
                     'edition': source_session['edition'], 'union': source_session['union']
                 }
-                if target_mode in ['dynfilefs', 'raw', 'luks']:
+                if target_mode in ['dynfilefs', 'dynblk', 'raw', 'luks']:
                     if size_mb:
                         metadata['sessions'][str(new_id)]['size'] = size_mb
                     elif source_mode == target_mode and source_session.get('total_size_mb'):
@@ -3340,6 +3593,15 @@ class SessionManager:
                             os.path.join(source_path, file),
                             os.path.join(target_path, file))
                 return True
+
+            elif mode == 'dynblk':
+                copied = False
+                for name in os.listdir(source_path):
+                    if re.fullmatch(r'volume[0-9]{3}\.db', name):
+                        shutil.copy2(os.path.join(source_path, name),
+                                     os.path.join(target_path, name))
+                        copied = True
+                return copied
 
             elif mode == 'raw':
                 # Copy changes.img
@@ -3443,7 +3705,7 @@ class SessionManager:
             return False, target_error
 
         # Set default size for dynfilefs/raw if not specified
-        if target_mode in ['dynfilefs', 'raw', 'luks'] and not size_mb:
+        if target_mode in ['dynfilefs', 'dynblk', 'raw', 'luks'] and not size_mb:
             # Try to use size from source session if available
             if session_info.get('total_size_mb'):
                 size_mb = session_info['total_size_mb']
@@ -3475,7 +3737,7 @@ class SessionManager:
                     os.rename(backup_path, session_path)
                     raise OSError(_("Session metadata is missing"))
                 metadata['sessions'][session_id]['mode'] = target_mode
-                if target_mode in ['dynfilefs', 'raw', 'luks']:
+                if target_mode in ['dynfilefs', 'dynblk', 'raw', 'luks']:
                     metadata['sessions'][session_id]['size'] = size_mb
                 else:
                     metadata['sessions'][session_id].pop('size', None)
@@ -3536,7 +3798,7 @@ def format_session_list(sessions):
         lines.append(f"  {_('Size:').rstrip(':')} {size_str}")
         
         # Add Total Size for dynfilefs sessions
-        if session['mode'] == 'dynfilefs' and 'total_size_mb' in session and session['total_size_mb']:
+        if session['mode'] in ('dynfilefs', 'dynblk') and 'total_size_mb' in session and session['total_size_mb']:
             total_size_mb = session['total_size_mb']
             # Convert to int if it's a string
             if isinstance(total_size_mb, str):
@@ -3572,7 +3834,7 @@ def format_sessions_json(sessions):
         }
         
         # Add total_size fields right after size_formatted for dynfilefs sessions
-        if session['mode'] == 'dynfilefs' and 'total_size_mb' in session and session['total_size_mb']:
+        if session['mode'] in ('dynfilefs', 'dynblk') and 'total_size_mb' in session and session['total_size_mb']:
             total_size_mb = session['total_size_mb']
             if isinstance(total_size_mb, str):
                 try:
@@ -3619,7 +3881,7 @@ def format_session_json(session):
     }
 
     # Add total_size fields right after size_formatted for dynfilefs sessions
-    if session['mode'] == 'dynfilefs' and 'total_size_mb' in session and session['total_size_mb']:
+    if session['mode'] in ('dynfilefs', 'dynblk') and 'total_size_mb' in session and session['total_size_mb']:
         total_size_mb = session['total_size_mb']
         if isinstance(total_size_mb, str):
             try:
@@ -3703,7 +3965,7 @@ def main():
         sys.exit(1)
 
     luks_available = luks_runtime_available()
-    session_modes = ['native', 'squashfs', 'dynfilefs', 'raw']
+    session_modes = ['native', 'squashfs', 'dynfilefs', 'dynblk', 'raw']
     if luks_available:
         session_modes.append('luks')
 
@@ -3738,6 +4000,7 @@ SESSION MODES:
   native                    Direct filesystem changes (requires POSIX-compatible filesystem)
   squashfs                  Compressed snapshot of the current live changes
   dynfilefs                 Dynamic file system overlay (works on any filesystem)
+  dynblk                    Native format-1 block device (supported lower filesystems)
   raw                       Raw disk image (works on any filesystem, 4000MB default)
 
 COMMAND BEHAVIOR:

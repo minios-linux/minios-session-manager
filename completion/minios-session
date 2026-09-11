@@ -10,6 +10,11 @@ _minios_session() {
     # LUKS is offered only when both userspace and the running initrd support it.
     local session_modes="native squashfs dynfilefs raw"
     local luks_opt=""
+    if command -v dynblk >/dev/null 2>&1 && command -v modinfo >/dev/null 2>&1 &&
+       [[ -f /run/initramfs/etc/minios-initramfs-dynblk ]] &&
+       modinfo dynblk >/dev/null 2>&1; then
+        session_modes+=" dynblk"
+    fi
     if command -v cryptsetup >/dev/null 2>&1 && command -v losetup >/dev/null 2>&1 &&
        [[ -f /run/initramfs/etc/minios-initramfs-crypt ]]; then
         session_modes+=" luks"

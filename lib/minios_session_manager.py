@@ -1102,7 +1102,7 @@ class SessionManagerGUI:
         export_item, copy_item, convert_item = children[4:7]
         delete_item = children[10]
         resize_available = getattr(row, 'mode', 'unknown') in (
-            'dynfilefs', 'raw', 'luks')
+            'dynfilefs', 'dynblk', 'raw', 'luks')
         supported_operations = getattr(row, 'mode', 'unknown') != 'squashfs'
         active = getattr(row, 'is_active', False)
         running = getattr(row, 'is_running', False)
@@ -1181,7 +1181,7 @@ class SessionManagerGUI:
         
         # Filesystem information is refreshed together with the session list.
         fs_info = self._filesystem_info
-        compatible_modes = ['native', 'dynfilefs', 'raw']  # Default
+        compatible_modes = ['native', 'dynfilefs', 'raw']  # Capability-neutral fallback
         filesystem_type = "unknown"
         limitations = {}
 
@@ -1254,6 +1254,15 @@ class SessionManagerGUI:
             if first_radio is None:
                 first_radio = dynfilefs_radio
         
+        if 'dynblk' in compatible_modes:
+            base_radio = first_radio if first_radio else None
+            dynblk_radio = Gtk.RadioButton.new_with_label_from_widget(base_radio, _("Dynblk Mode"))
+            dynblk_radio.set_tooltip_text(_("Native compressed block-device container"))
+            content_area.pack_start(dynblk_radio, False, False, 0)
+            radio_buttons['dynblk'] = dynblk_radio
+            if first_radio is None:
+                first_radio = dynblk_radio
+
         if 'raw' in compatible_modes:
             base_radio = first_radio if first_radio else None
             raw_radio = Gtk.RadioButton.new_with_label_from_widget(base_radio, _("Raw Mode"))
@@ -1327,10 +1336,11 @@ class SessionManagerGUI:
         def on_mode_changed(radio):
             # Check which radio buttons exist and are active
             is_dynfilefs_active = 'dynfilefs' in radio_buttons and radio_buttons['dynfilefs'].get_active()
+            is_dynblk_active = 'dynblk' in radio_buttons and radio_buttons['dynblk'].get_active()
             is_raw_active = 'raw' in radio_buttons and radio_buttons['raw'].get_active()
             is_luks_active = 'luks' in radio_buttons and radio_buttons['luks'].get_active()
             is_squashfs_active = 'squashfs' in radio_buttons and radio_buttons['squashfs'].get_active()
-            is_sized_mode = is_dynfilefs_active or is_raw_active or is_luks_active
+            is_sized_mode = is_dynfilefs_active or is_dynblk_active or is_raw_active or is_luks_active
 
             squashfs_options.set_sensitive(is_squashfs_active)
             policy_description.set_text(
@@ -1353,6 +1363,16 @@ class SessionManagerGUI:
                     size_spinbutton.set_value(max_size)
                 adjustment.set_upper(4000)
                 size_info_label.set_text(_("(Maximum {}MB on FAT32)").format(max_size))
+                size_info_label.set_sensitive(True)
+            elif is_dynblk_active:
+                adjustment.set_upper(131072)
+                # Match the CLI/driver default without preallocating this much
+                # backing storage: dynblk capacity is thin and grows on demand.
+                if int(size_spinbutton.get_value()) == 4000:
+                    size_spinbutton.set_value(16384)
+                elif size_spinbutton.get_value() > 131072:
+                    size_spinbutton.set_value(131072)
+                size_info_label.set_text(_("(Thin virtual size; default 16 GiB, maximum 128 GiB)"))
                 size_info_label.set_sensitive(True)
             else:
                 adjustment.set_upper(1000000)
@@ -1389,7 +1409,7 @@ class SessionManagerGUI:
             password_input = self._prompt_luks_passphrase(confirm=True) if mode == 'luks' else None
             if mode == 'luks' and password_input is None:
                 return
-            if mode in ["dynfilefs", "raw", "luks"]:
+            if mode in ["dynfilefs", "dynblk", "raw", "luks"]:
                 command = ['create', mode, str(size_mb), '--json']
                 if mode == 'luks':
                     command.append('--password-stdin')
@@ -1774,8 +1794,8 @@ class SessionManagerGUI:
 
         try:
             session_mode = session_info.get('mode', 'unknown')
-            if session_mode not in ['dynfilefs', 'raw', 'luks']:
-                self._show_error(_("Resize is only supported for dynfilefs, raw, and LUKS mode sessions"))
+            if session_mode not in ['dynfilefs', 'dynblk', 'raw', 'luks']:
+                self._show_error(_("Resize is only supported for dynfilefs, dynblk, raw, and LUKS mode sessions"))
                 return
             
             # Check if session is running
@@ -1787,8 +1807,8 @@ class SessionManagerGUI:
             # Get current session size in MB
             current_size_mb = 100  # Default minimum
             
-            if session_mode == 'dynfilefs':
-                # For dynfilefs, use total_size (allocated size in bytes)
+            if session_mode in ('dynfilefs', 'dynblk'):
+                # Thin backends report physical use separately from virtual capacity.
                 if 'total_size' in session_info:
                     current_size_mb = session_info['total_size'] // (1024 * 1024)
             elif session_mode in ('raw', 'luks'):
@@ -1831,7 +1851,8 @@ class SessionManagerGUI:
         content_area.pack_start(size_label, False, False, 0)
         
         size_spin = Gtk.SpinButton()
-        size_spin.set_range(current_size_mb, self._fat_size_limit() or 1000000)
+        max_resize_mb = 131072 if session_mode == 'dynblk' else (self._fat_size_limit() or 1000000)
+        size_spin.set_range(current_size_mb, max_resize_mb)
         size_spin.set_increments(100, 1000)
         size_spin.set_value(current_size_mb)  # Set to current size
         content_area.pack_start(size_spin, False, False, 0)
@@ -1969,6 +1990,7 @@ class SessionManagerGUI:
         mode_combo.append("auto", _("Auto (from metadata)"))
         mode_combo.append("native", "Native")
         mode_combo.append("dynfilefs", "DynFileFS")
+        mode_combo.append("dynblk", "Dynblk")
         mode_combo.append("raw", "Raw")
         if self.luks_available:
             mode_combo.append("luks", "LUKS")
@@ -2058,6 +2080,7 @@ class SessionManagerGUI:
         mode_combo = Gtk.ComboBoxText()
         mode_combo.append("native", "Native")
         mode_combo.append("dynfilefs", "DynFileFS")
+        mode_combo.append("dynblk", "Dynblk")
         mode_combo.append("raw", "Raw")
         if self.luks_available:
             mode_combo.append("luks", "LUKS")
@@ -2082,11 +2105,18 @@ class SessionManagerGUI:
         def on_convert_toggled(widget):
             mode_combo.set_sensitive(widget.get_active())
             mode = mode_combo.get_active_id()
-            size_spin.set_sensitive(widget.get_active() and mode in ['dynfilefs', 'raw', 'luks'])
+            size_spin.set_sensitive(widget.get_active() and mode in ['dynfilefs', 'dynblk', 'raw', 'luks'])
 
         def on_mode_changed(widget):
             mode = widget.get_active_id()
-            size_spin.set_sensitive(convert_check.get_active() and mode in ['dynfilefs', 'raw', 'luks'])
+            size_spin.set_sensitive(convert_check.get_active() and mode in ['dynfilefs', 'dynblk', 'raw', 'luks'])
+            if mode == 'dynblk':
+                upper = 131072
+            elif mode in ('raw', 'luks'):
+                upper = self._fat_size_limit() or 1000000
+            else:
+                upper = 1000000
+            size_spin.set_range(100, upper)
 
         convert_check.connect("toggled", on_convert_toggled)
         mode_combo.connect("changed", on_mode_changed)
@@ -2097,7 +2127,7 @@ class SessionManagerGUI:
         if response == Gtk.ResponseType.OK:
             convert = convert_check.get_active()
             target_mode = mode_combo.get_active_id() if convert else None
-            size_mb = int(size_spin.get_value()) if convert and target_mode in ['dynfilefs', 'raw', 'luks'] else None
+            size_mb = int(size_spin.get_value()) if convert and target_mode in ['dynfilefs', 'dynblk', 'raw', 'luks'] else None
             dialog.destroy()
             source_mode = self._get_session_mode(session_id)
             needs_password = source_mode == 'luks' or target_mode == 'luks'
@@ -2223,7 +2253,14 @@ class SessionManagerGUI:
 
         def on_mode_changed(widget):
             mode = widget.get_active_id()
-            size_spin.set_sensitive(mode in ['dynfilefs', 'raw', 'luks'])
+            size_spin.set_sensitive(mode in ['dynfilefs', 'dynblk', 'raw', 'luks'])
+            if mode == 'dynblk':
+                upper = 131072
+            elif mode in ('raw', 'luks'):
+                upper = self._fat_size_limit() or 1000000
+            else:
+                upper = 1000000
+            size_spin.set_range(100, upper)
 
         mode_combo.connect("changed", on_mode_changed)
         on_mode_changed(mode_combo)  # Initialize
@@ -2233,7 +2270,7 @@ class SessionManagerGUI:
         response = dialog.run()
         if response == Gtk.ResponseType.OK:
             target_mode = mode_combo.get_active_id()
-            size_mb = int(size_spin.get_value()) if target_mode in ['dynfilefs', 'raw', 'luks'] else None
+            size_mb = int(size_spin.get_value()) if target_mode in ['dynfilefs', 'dynblk', 'raw', 'luks'] else None
             dialog.destroy()
             needs_password = current_mode == 'luks' or target_mode == 'luks'
             password_input = self._prompt_luks_passphrase(confirm=target_mode == 'luks') if needs_password else None

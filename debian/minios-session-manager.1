@@ -1,4 +1,4 @@
-.TH MINIOS-SESSION-MANAGER 1 "September 2026" "MiniOS Session Manager 1.3.0" "User Commands"
+.TH MINIOS-SESSION-MANAGER 1 "September 2026" "MiniOS Session Manager 1.4.0" "User Commands"
 .SH NAME
 minios-session-manager \- graphical interface for managing MiniOS persistent sessions
 .SH SYNOPSIS
@@ -17,7 +17,7 @@ to perform actual session operations, providing a user-friendly frontend to the 
 .B -h, --help
 Show a short usage message and exit.
 .SH SESSION MODES
-The application supports creation of sessions in four modes:
+The application supports creation of sessions in six modes:
 .TP
 .B Native Mode
 For POSIX-compatible filesystems (ext4, btrfs, etc.). Most efficient option.
@@ -26,8 +26,14 @@ For POSIX-compatible filesystems (ext4, btrfs, etc.). Most efficient option.
 For non-POSIX filesystems including FAT32, NTFS, and exFAT. Uses expandable
 container files and requires the dynfilefs utility.
 .TP
+.B Dynblk Mode
+Uses the format-1 dynblk kernel block device with thin backing files. It is shown only when the running system has the dynblk utility and module and the initramfs advertises dynblk resume support.
+.TP
 .B Raw Mode
 For writable filesystems. Uses fixed-size ext4 image files.
+.TP
+.B SquashFS Mode
+Uses an exact compressed snapshot of the current live changes and supports manual or shutdown/periodic save policy.
 .TP
 .B LUKS Mode
 Uses a LUKS2-encrypted ext4 changes.luks file. It requires cryptsetup, loop
@@ -41,7 +47,7 @@ Additional actions for the selected session, such as activate, resize, export, c
 .PP
 LUKS exports contain decrypted logical files rather than the encrypted
 container. Conversion replaces the source unless a new-session operation is
-selected. Container modes default to 4000MB and can only grow.
+selected. DynFileFS, Raw, and LUKS default to 4000MB; dynblk defaults to 16GiB and is capped at 128GiB. Resizable container modes can only grow.
 .SH EXAMPLES
 .TP
 .B minios-session-manager
