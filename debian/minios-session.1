@@ -1,4 +1,4 @@
-.TH MINIOS-SESSION 1 "September 2026" "MiniOS Session Manager 1.4.0" "User Commands"
+.TH MINIOS-SESSION 1 "September 2026" "MiniOS Session Manager 1.4.1" "User Commands"
 .SH NAME
 minios-session \- command-line interface for managing MiniOS persistent sessions
 .SH SYNOPSIS
@@ -46,7 +46,7 @@ Session mode: native, squashfs, dynfilefs, dynblk, raw, or luks (default: native
 .TP
 \fIsize\fR (optional)
 Decimal size in MB, GB, or TB for container modes. DynFileFS, raw, and LUKS
-default to 4000MB. dynblk defaults to 16GiB and is limited to 128GiB.
+default to 4000MB. dynblk defaults to 16GiB and is limited to 512GiB.
 .RE
 .TP
 .B delete \fIsession_id\fR
@@ -104,7 +104,7 @@ Skip source MiniOS version, edition, and union-filesystem compatibility checks.
 .RE
 .TP
 .B copy \fIsession_id\fR [\-\-to-mode \fIMODE\fR] [\-\-size \fISIZE\fR]
-Copy a session, optionally converting to a different mode.
+Copy a session, optionally converting to a different mode. A direct dynblk-to-dynblk copy requires the source volume to be detached and locks its complete backing namespace while copying.
 .RS
 .TP
 \fIsession_id\fR (required)
@@ -194,7 +194,7 @@ Direct storage on POSIX-compatible filesystems (ext4, btrfs, etc.). This is the 
 Dynamic file-based storage suitable for non-POSIX filesystems (FAT32, NTFS, exFAT). Creates expandable container files.
 .TP
 .B dynblk
-Format-1 kernel block storage backed by thin volumeNNN.db files. The mode is available only when the running system has the dynblk utility and module and the initramfs advertises dynblk resume support. Its virtual size defaults to 16GiB and cannot exceed 128GiB.
+Format-1 kernel block storage backed by thin volumeNNN.db files. The mode is available only when the running system has the dynblk utility and module and the initramfs advertises dynblk resume support. Its virtual size defaults to 16GiB and cannot exceed 512GiB.
 .TP
 .B raw
 Fixed-size image file storage compatible with any filesystem. Requires pre-allocation of storage space.

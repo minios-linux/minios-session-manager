@@ -69,12 +69,12 @@ class SessionManager:
     # creation and growth is protected at runtime by the persistence guard, so
     # admission requires only this floor instead of the full logical size.
     DYNFILEFS_INITIAL_MB = 64
-    # dynblk is thin at creation too, but its virtual device is capped by the
-    # format-1 ABI at 128 GiB. Backing parts stay below the FAT32 single-file
-    # limit and kernel admission remains authoritative.
+    # dynblk is thin at creation too. Format 1 exposes up to 512 GiB of virtual
+    # capacity while backing parts remain below the FAT32 single-file limit;
+    # kernel storage and memory admission remain authoritative.
     DYNBLK_INITIAL_MB = 64
     DYNBLK_DEFAULT_SIZE_MB = 16 * 1024
-    DYNBLK_MAX_SIZE_MB = 128 * 1024
+    DYNBLK_MAX_SIZE_MB = 512 * 1024
     DYNBLK_BACKING_FILESYSTEMS = (
         'ext2', 'ext3', 'ext4', 'btrfs', 'vfat', 'fat', 'msdos', 'exfat',
         'ntfs3',
@@ -782,8 +782,19 @@ class SessionManager:
             raise OSError(message or _('dynblk operation failed'))
         return result
 
-    def _dynblk_status(self):
-        result = self._run_dynblk(['status', '/dev/dynblk0', '--json'])
+    def _dynblk_device_from_result(self, result):
+        """Return the exact /dev/dynblkN allocated by create/load."""
+        try:
+            device = result.stdout.decode(errors='strict').strip()
+        except (AttributeError, UnicodeDecodeError):
+            raise OSError(_('Invalid dynblk device response'))
+        match = re.fullmatch(r'/dev/dynblk([0-9]+)', device)
+        if not match or int(match.group(1)) > 255:
+            raise OSError(_('Invalid dynblk device response'))
+        return device
+
+    def _dynblk_status(self, device):
+        result = self._run_dynblk(['status', device, '--json'])
         try:
             status = json.loads(result.stdout.decode(errors='replace'))
             capacity = status['capacity_bytes']
@@ -793,21 +804,92 @@ class SessionManager:
             raise OSError(_('Invalid dynblk status response'))
         return status
 
+    @contextlib.contextmanager
+    def _lock_dynblk_backing(self, session_path, exclusive=False):
+        """Lock a detached dynblk namespace while copying or deleting it."""
+        def namespace():
+            entries = []
+            for name in os.listdir(session_path):
+                match = re.fullmatch(r'volume([0-9]{3})\.db', name)
+                if not match:
+                    continue
+                if int(match.group(1)) >= 64:
+                    raise OSError(_('Invalid dynblk backing namespace'))
+                entries.append(name)
+            entries.sort()
+            if not entries or entries[0] != 'volume000.db':
+                raise OSError(_('dynblk backing volume is missing'))
+            return entries
+
+        names = namespace()
+        locked = []
+        identities = {}
+        lock_type = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
+        flags = os.O_RDONLY | getattr(os, 'O_CLOEXEC', 0) | getattr(os, 'O_NOFOLLOW', 0)
+        try:
+            for name in names:
+                path = os.path.join(session_path, name)
+                fd = os.open(path, flags)
+                try:
+                    info = os.fstat(fd)
+                    if not stat.S_ISREG(info.st_mode):
+                        raise OSError(_('Invalid dynblk backing file'))
+                    fcntl.flock(fd, lock_type | fcntl.LOCK_NB)
+                except Exception:
+                    os.close(fd)
+                    raise
+                locked.append(fd)
+                identities[name] = (info.st_dev, info.st_ino)
+
+            current = namespace()
+            if current != names:
+                raise OSError(_('dynblk backing namespace changed during operation'))
+            for name in names:
+                info = os.stat(os.path.join(session_path, name), follow_symlinks=False)
+                if (info.st_dev, info.st_ino) != identities[name]:
+                    raise OSError(_('dynblk backing file changed during operation'))
+
+            yield tuple(names)
+
+            # A raw copy must describe one stable detached format-1 namespace.
+            # Deletion intentionally removes the directory while holding an
+            # exclusive lock, so there is nothing left to revalidate then.
+            if os.path.isdir(session_path):
+                current = namespace()
+                if current != names:
+                    raise OSError(_('dynblk backing namespace changed during operation'))
+                for name in names:
+                    info = os.stat(os.path.join(session_path, name), follow_symlinks=False)
+                    if (info.st_dev, info.st_ino) != identities[name]:
+                        raise OSError(_('dynblk backing file changed during operation'))
+        except (BlockingIOError, OSError) as error:
+            if getattr(error, 'errno', None) in (errno.EAGAIN, errno.EACCES, errno.EWOULDBLOCK):
+                raise OSError(_('dynblk session is attached or busy'))
+            raise
+        finally:
+            for fd in reversed(locked):
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+                except OSError:
+                    pass
+                os.close(fd)
+
     def _create_dynblk_session(self, session_path, size_mb):
-        """Create one detached dynblk/ext4 session without mounting it."""
+        """Create one detached dynblk/ext4 session without disturbing other dynblk devices."""
         volume = os.path.join(session_path, 'volume000.db')
-        if os.path.exists('/sys/module/dynblk') or os.path.exists('/dev/dynblk0'):
-            return False, _('Another dynblk device is already active.')
-        attached = False
+        device = None
         success = False
         message = _('Failed to create dynblk session')
         try:
-            self._run_dynblk([
+            result = self._run_dynblk([
                 'create', volume, '--size', '{}MiB'.format(size_mb),
                 '--compression', 'none', '--execute'])
-            attached = True
+            device = self._dynblk_device_from_result(result)
+            # The device was just created and is entirely unmapped. Letting
+            # mke2fs discard the whole thin address space creates needless COW
+            # transactions, so explicitly disable discard during mkfs.
             result = subprocess.run(
-                ['mke2fs', '-F', '-t', 'ext4', '/dev/dynblk0'],
+                ['mke2fs', '-F', '-t', 'ext4', '-E', 'nodiscard', device],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if result.returncode:
                 message = _('Failed to format dynblk device: {}').format(
@@ -819,34 +901,33 @@ class SessionManager:
         except Exception as error:
             message = _('Failed to create dynblk session: {}').format(str(error))
         finally:
-            if attached:
+            if device:
                 unload = subprocess.run(
-                    ['dynblk', 'unload', '/dev/dynblk0', '--execute'],
+                    ['dynblk', 'unload', device, '--execute'],
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 if unload.returncode:
                     success = False
                     message = _('dynblk was created but could not be detached: {}').format(
                         unload.stderr.decode(errors='replace').strip() or
-                        _('module is still active'))
+                        _('device is still active'))
         return success, message
 
     @contextlib.contextmanager
     def _mount_dynblk(self, session_path, writable):
-        """Attach a detached dynblk volume for one Session Manager operation."""
+        """Attach one dynblk volume without requiring the module/device namespace to be idle."""
         volume = os.path.join(session_path, 'volume000.db')
         if not os.path.exists(volume):
             raise OSError(_('dynblk volume000.db not found'))
-        if os.path.exists('/sys/module/dynblk') or os.path.exists('/dev/dynblk0'):
-            raise OSError(_('Another dynblk device is already active.'))
         mount_point = tempfile.mkdtemp(prefix='minios_dynblk_')
-        attached = mounted = False
+        device = None
+        mounted = False
         try:
-            self._run_dynblk(['load', volume, '--execute'])
-            attached = True
+            result = self._run_dynblk(['load', volume, '--execute'])
+            device = self._dynblk_device_from_result(result)
             command = ['mount']
             if not writable:
                 command += ['-o', 'ro']
-            command += ['/dev/dynblk0', mount_point]
+            command += [device, mount_point]
             result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if result.returncode:
                 raise OSError(result.stderr.decode(errors='replace').strip() or
@@ -858,15 +939,15 @@ class SessionManager:
             cleanup_error = None
             if mounted and not self._safe_unmount(mount_point, use_lazy=False):
                 cleanup_error = _('Failed to unmount dynblk session; device was left attached.')
-                attached = False
-            if attached:
+                device = None
+            if device:
                 unload = subprocess.run(
-                    ['dynblk', 'unload', '/dev/dynblk0', '--execute'],
+                    ['dynblk', 'unload', device, '--execute'],
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 if unload.returncode:
                     cleanup_error = _('Failed to detach dynblk after session operation: {}').format(
                         unload.stderr.decode(errors='replace').strip() or
-                        _('module is still active'))
+                        _('device is still active'))
             self._safe_rmtree(mount_point)
             if cleanup_error:
                 if active_exception:
@@ -998,7 +1079,7 @@ class SessionManager:
             if not self._check_dynblk_available():
                 return False, _("dynblk is not available on this system.")
             if size_mb is not None and size_mb > self.DYNBLK_MAX_SIZE_MB:
-                return False, _("dynblk virtual size cannot exceed 128 GiB.")
+                return False, _("dynblk virtual size cannot exceed 512 GiB.")
         max_size = self._get_filesystem_limitations(fs_info).get('max_file_size')
         if mode == 'luks':
             luks_available, luks_error = self._check_luks_available()
@@ -2090,7 +2171,7 @@ class SessionManager:
                     if key not in (
                             'boot_id', 'boot_level', 'mode', 'session', 'durable',
                             'writable', 'sessions_device', 'sessions_inode',
-                            'active_generation') or key in state:
+                            'active_generation', 'dynblk_device') or key in state:
                         return False, _("Persistence runtime state is malformed")
                     state[key] = value
             with open(self.BOOT_ID_FILE, 'r', encoding='ascii') as boot_id_file:
@@ -2098,7 +2179,7 @@ class SessionManager:
             required_state = {
                 'boot_id': boot_id, 'boot_level': 'ok', 'mode': 'squashfs',
                 'session': session_id, 'durable': '1', 'writable': '1',
-                'active_generation': 'current',
+                'active_generation': 'current', 'dynblk_device': 'none',
             }
             if any(state.get(key) != value for key, value in required_state.items()):
                 return False, _("The requested SquashFS session is not active in this boot")
@@ -2367,6 +2448,18 @@ class SessionManager:
                     size_mb = self.DYNBLK_DEFAULT_SIZE_MB
                 success, message = self._create_dynblk_session(session_path, size_mb)
                 if not success:
+                    # Do not infer ownership from /sys/module/dynblk or dynblk0:
+                    # other volumes may legitimately be attached. Preserve any
+                    # dynblk namespace files left by a partial create/detach
+                    # failure; remove only an unused reserved session directory.
+                    try:
+                        has_volume_parts = any(
+                            re.fullmatch(r'volume[0-9]{3}\.db', name)
+                            for name in os.listdir(session_path))
+                    except OSError:
+                        has_volume_parts = True
+                    if not has_volume_parts:
+                        shutil.rmtree(session_path, ignore_errors=True)
                     return False, message
 
             elif session_mode == "raw":
@@ -2529,8 +2622,19 @@ class SessionManager:
         
         try:
             with self._mutation_lock():
-                shutil.rmtree(session_path)
                 metadata = self._read_sessions_metadata()
+                session_data = metadata.get("sessions", {}).get(session_id, {})
+                is_dynblk = (
+                    session_data.get('mode') == 'dynblk' or
+                    os.path.isfile(os.path.join(session_path, 'volume000.db')))
+                if is_dynblk:
+                    # Hold exclusive backing-file locks through removal. This
+                    # rejects an attached volume and also prevents a concurrent
+                    # raw dynblk copy from racing deletion.
+                    with self._lock_dynblk_backing(session_path, exclusive=True):
+                        shutil.rmtree(session_path)
+                else:
+                    shutil.rmtree(session_path)
                 if session_id in metadata.get("sessions", {}):
                     del metadata["sessions"][session_id]
                     if not self._write_sessions_metadata(metadata):
@@ -2726,15 +2830,13 @@ class SessionManager:
             recorded_size = 0
         if new_size_mb <= recorded_size:
             return False, _("New size must be larger than current total size ({}MB)").format(recorded_size)
-        if os.path.exists('/sys/module/dynblk') or os.path.exists('/dev/dynblk0'):
-            return False, _("Another dynblk device is already active.")
 
-        attached = False
+        device = None
         operation_error = None
         try:
-            self._run_dynblk(['load', volume, '--execute'])
-            attached = True
-            status = self._dynblk_status()
+            result = self._run_dynblk(['load', volume, '--execute'])
+            device = self._dynblk_device_from_result(result)
+            status = self._dynblk_status(device)
             current_size_mb = status['capacity_bytes'] // (1024 * 1024)
             if new_size_mb < current_size_mb:
                 operation_error = _(
@@ -2742,7 +2844,7 @@ class SessionManager:
                         current_size_mb, new_size_mb)
             else:
                 check = subprocess.run(
-                    ['e2fsck', '-p', '/dev/dynblk0'],
+                    ['e2fsck', '-p', device],
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 if check.returncode > 1:
                     operation_error = _("Filesystem check failed before dynblk resize: {}").format(
@@ -2753,9 +2855,9 @@ class SessionManager:
                     # idempotent filesystem/metadata phase.
                     if new_size_mb > current_size_mb:
                         self._run_dynblk([
-                            'grow', '/dev/dynblk0', '{}MiB'.format(new_size_mb), '--execute'])
+                            'grow', device, '{}MiB'.format(new_size_mb), '--execute'])
                     resize = subprocess.run(
-                        ['resize2fs', '-f', '/dev/dynblk0'],
+                        ['resize2fs', '-f', device],
                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     if resize.returncode:
                         operation_error = _("Failed to resize dynblk filesystem: {}").format(
@@ -2765,14 +2867,14 @@ class SessionManager:
         except Exception as error:
             operation_error = str(error)
         finally:
-            if attached:
+            if device:
                 unload = subprocess.run(
-                    ['dynblk', 'unload', '/dev/dynblk0', '--execute'],
+                    ['dynblk', 'unload', device, '--execute'],
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 if unload.returncode and operation_error is None:
                     operation_error = _("Failed to detach dynblk after resize: {}").format(
                         unload.stderr.decode(errors='replace').strip() or
-                        _('module is still active'))
+                        _('device is still active'))
 
         if operation_error is not None:
             return False, operation_error
@@ -3453,7 +3555,7 @@ class SessionManager:
         Args:
             session_id: Source session ID
             to_mode: Target mode (None = same as source)
-            size_mb: Size for dynfilefs/raw modes
+            size_mb: Size for container target modes
 
         Returns:
             (success, message) tuple
@@ -3475,22 +3577,40 @@ class SessionManager:
         if source_mode == 'squashfs':
             return False, _("SquashFS copy is unavailable until save support is complete")
 
-        # Determine target mode
+        # Determine target mode and normalize the target capacity before any
+        # admission or copy work. dynblk capacity is virtual/thin, so its 16 GiB
+        # default must not be confused with required physical free space.
         target_mode = to_mode if to_mode else source_mode
+        if target_mode == 'dynblk' and size_mb is None and source_mode != 'dynblk':
+            size_mb = self.DYNBLK_DEFAULT_SIZE_MB
+        elif target_mode == 'luks' and size_mb is None and source_mode != 'luks':
+            size_mb = self.DEFAULT_CONTAINER_SIZE_MB
         valid_target, target_error = self._validate_target_mode(target_mode, size_mb)
         if not valid_target:
             return False, target_error
-        if target_mode == 'luks' and size_mb is None and source_mode != 'luks':
-            size_mb = self.DEFAULT_CONTAINER_SIZE_MB
 
         # Check if running
         running = self.get_running_session()
         if running and running['id'] == session_id:
             return False, _("Cannot copy currently running session")
 
-        # Check free disk space
+        # Check physical free space. A new dynblk target is thin, so admission
+        # uses its initial backing footprint rather than the virtual capacity.
+        # A same-mode dynblk copy is different: all existing backing bytes are
+        # copied, so reserve enough room for the current physical namespace.
         source_size = source_session.get('size', 0)
-        required_mb = size_mb if size_mb else (source_size / (1024 * 1024) if source_size > 100000 else 4000)
+        if target_mode == 'dynblk':
+            if source_mode == 'dynblk':
+                size_info = self._get_session_size_info(source_path, source_session)
+                used_bytes = int(size_info.get('used_size', 0) or 0)
+                required_mb = max(
+                    self.DYNBLK_INITIAL_MB,
+                    (used_bytes + (1024 * 1024) - 1) // (1024 * 1024))
+            else:
+                required_mb = self.DYNBLK_INITIAL_MB
+        else:
+            required_mb = size_mb if size_mb else (
+                source_size / (1024 * 1024) if source_size > 100000 else 4000)
         has_space, space_error = self._check_free_space(self.sessions_dir, required_mb)
         if not has_space:
             return False, space_error
@@ -3595,13 +3715,15 @@ class SessionManager:
                 return True
 
             elif mode == 'dynblk':
-                copied = False
-                for name in os.listdir(source_path):
-                    if re.fullmatch(r'volume[0-9]{3}\.db', name):
+                # A format-1 volume is a coordinated namespace, not a set of
+                # independently copyable files. Shared BSD locks conflict with
+                # the kernel driver's exclusive locks, so attached or resizing
+                # volumes are rejected instead of producing a torn snapshot.
+                with self._lock_dynblk_backing(source_path, exclusive=False) as names:
+                    for name in names:
                         shutil.copy2(os.path.join(source_path, name),
                                      os.path.join(target_path, name))
-                        copied = True
-                return copied
+                return True
 
             elif mode == 'raw':
                 # Copy changes.img

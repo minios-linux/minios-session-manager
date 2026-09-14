@@ -89,7 +89,7 @@ use `--new-session` to preserve it.
   private exact-capture staging must preserve links, ownership, modes, xattrs,
   ACLs, capabilities, and whiteouts. FAT32/NTFS/exFAT activation remains gated
   until a metadata-capable bounded workspace is implemented.
-- DynFileFS, raw, and LUKS default to 4000 MB. dynblk defaults to a 16 GiB virtual device and is capped at 128 GiB. CLI sizes accept decimal
+- DynFileFS, raw, and LUKS default to 4000 MB. dynblk defaults to a 16 GiB virtual device and is capped at 512 GiB. CLI sizes accept decimal
   `MB`/`GB`/`TB` units; raw and LUKS are capped at 4000 MB on FAT32.
 - DynFileFS and dynblk expose thin virtual capacity: their configured logical size does not require that much free space up front. Both can grow later; shrinking is unsupported.
 

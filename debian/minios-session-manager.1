@@ -1,4 +1,4 @@
-.TH MINIOS-SESSION-MANAGER 1 "September 2026" "MiniOS Session Manager 1.4.0" "User Commands"
+.TH MINIOS-SESSION-MANAGER 1 "September 2026" "MiniOS Session Manager 1.4.1" "User Commands"
 .SH NAME
 minios-session-manager \- graphical interface for managing MiniOS persistent sessions
 .SH SYNOPSIS
@@ -47,7 +47,7 @@ Additional actions for the selected session, such as activate, resize, export, c
 .PP
 LUKS exports contain decrypted logical files rather than the encrypted
 container. Conversion replaces the source unless a new-session operation is
-selected. DynFileFS, Raw, and LUKS default to 4000MB; dynblk defaults to 16GiB and is capped at 128GiB. Resizable container modes can only grow.
+selected. DynFileFS, Raw, and LUKS default to 4000MB; dynblk defaults to 16GiB and is capped at 512GiB. Resizable container modes can only grow.
 .SH EXAMPLES
 .TP
 .B minios-session-manager

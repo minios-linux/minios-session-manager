@@ -103,6 +103,13 @@ def test_package_requires_minios_gui_1_4_api():
     assert control.count("python3-minios-gui (>= 1.4.0)") == 2
 
 
+def test_backend_recommends_optional_dynblk_stack():
+    control = (ROOT / "debian/control").read_text(encoding="utf-8")
+    backend_stanza = control.split("Package: minios-session\n", 1)[1].split("\nPackage: ", 1)[0]
+    assert "Recommends: dynblk (>= 1.0.0), dynblk-dkms (>= 1.0.0)," in backend_stanza
+    assert "dynblk" not in backend_stanza.split("Recommends:", 1)[0].split("Depends:", 1)[1]
+
+
 def test_split_packages_have_disjoint_payloads_and_exact_backend_dependency():
     backend = set((ROOT / "debian/minios-session.install").read_text(
         encoding="utf-8").splitlines())
@@ -140,7 +147,12 @@ def test_ram_only_status_explains_missing_persistent_storage():
 def test_dynblk_gui_is_capability_driven_and_resizable():
     assert "compatible_modes = ['native', 'dynfilefs', 'raw']" in SOURCE
     assert "'dynfilefs', 'dynblk', 'raw', 'luks'" in SOURCE
-    assert "131072 if session_mode == 'dynblk'" in SOURCE
+    assert "524288 if session_mode == 'dynblk'" in SOURCE
+    assert '_("Dynblk Mode")' in SOURCE
+    assert "add_class('field-description')" in SOURCE
+    assert 'Thin container: default 16 GiB, maximum 512 GiB' in SOURCE
+    assert 'Thin container: backing storage grows on demand' in SOURCE
+    assert 'size_info_label.set_sensitive(' not in SOURCE
 
 
 def test_dynblk_completion_is_capability_gated():

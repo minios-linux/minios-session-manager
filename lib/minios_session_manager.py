@@ -1328,8 +1328,9 @@ class SessionManagerGUI:
         size_spinbutton.set_value(4000)
         size_box.pack_start(size_spinbutton, False, False, 0)
         
-        size_info_label = Gtk.Label(label=_("(Only used for container modes)"))
-        size_info_label.set_sensitive(False)
+        size_info_label = Gtk.Label(label=_("Available for container modes"))
+        size_info_label.set_halign(Gtk.Align.START)
+        size_info_label.get_style_context().add_class('field-description')
         size_box.pack_start(size_info_label, False, False, 0)
         
         # Enable/disable size controls based on mode selection
@@ -1353,30 +1354,40 @@ class SessionManagerGUI:
                 autosave_warning.hide()
             size_label.set_sensitive(is_sized_mode)
             size_spinbutton.set_sensitive(is_sized_mode)
-            size_info_label.set_sensitive(not is_sized_mode)
-            
-            # Raw and LUKS are single files and therefore share FAT32's cap.
+
+            # Keep helper text visually secondary rather than disabling it. A
+            # disabled label looks unavailable even when it describes the
+            # currently selected container mode.
             if (is_raw_active or is_luks_active) and 'max_file_size' in limitations:
                 max_size = limitations['max_file_size']
                 current_size = int(size_spinbutton.get_value())
                 if current_size > max_size:
                     size_spinbutton.set_value(max_size)
-                adjustment.set_upper(4000)
-                size_info_label.set_text(_("(Maximum {}MB on FAT32)").format(max_size))
-                size_info_label.set_sensitive(True)
+                adjustment.set_upper(max_size)
+                size_info_label.set_text(_("Maximum {} MB on FAT32").format(max_size))
             elif is_dynblk_active:
-                adjustment.set_upper(131072)
+                adjustment.set_upper(524288)
                 # Match the CLI/driver default without preallocating this much
                 # backing storage: dynblk capacity is thin and grows on demand.
                 if int(size_spinbutton.get_value()) == 4000:
                     size_spinbutton.set_value(16384)
-                elif size_spinbutton.get_value() > 131072:
-                    size_spinbutton.set_value(131072)
-                size_info_label.set_text(_("(Thin virtual size; default 16 GiB, maximum 128 GiB)"))
-                size_info_label.set_sensitive(True)
+                elif size_spinbutton.get_value() > 524288:
+                    size_spinbutton.set_value(524288)
+                size_info_label.set_text(_(
+                    "Thin container: default 16 GiB, maximum 512 GiB"))
+            elif is_dynfilefs_active:
+                adjustment.set_upper(1000000)
+                size_info_label.set_text(_(
+                    "Thin container: backing storage grows on demand"))
+            elif is_raw_active:
+                adjustment.set_upper(1000000)
+                size_info_label.set_text(_("Fixed-size image"))
+            elif is_luks_active:
+                adjustment.set_upper(1000000)
+                size_info_label.set_text(_("Fixed-size encrypted image"))
             else:
                 adjustment.set_upper(1000000)
-                size_info_label.set_text(_("(Only used for container modes)"))
+                size_info_label.set_text(_("Available for container modes"))
         
         # Connect signals only for existing radio buttons
         for mode, radio in radio_buttons.items():
@@ -1653,17 +1664,28 @@ class SessionManagerGUI:
         return progress_dialog
 
     def _on_session_creation_complete(self, success, output, error, progress_dialog):
-        """Handle session creation completion"""
+        """Handle session creation completion."""
         # Hide loading overlay if no progress_dialog (using overlay)
         if progress_dialog is None:
             self._show_loading(False)
         else:
             progress_dialog.destroy()
-        
+
         if success:
             self.refresh_session_list()
         else:
-            self._show_error(_("Failed to create session: {}").format(error))
+            detail = error.strip() if error else ''
+            if output:
+                try:
+                    result = _strict_json_loads(output)
+                    if isinstance(result, dict):
+                        detail = result.get('message') or result.get('error') or detail
+                except (TypeError, ValueError):
+                    pass
+            message = _("Failed to create session")
+            if detail:
+                message = "{}: {}".format(message, detail)
+            self._show_error(message)
 
     def _on_session_operation_complete(self, success, output, error, progress_dialog, success_prefix, error_prefix):
         """Handle generic session operation completion"""
@@ -1851,7 +1873,7 @@ class SessionManagerGUI:
         content_area.pack_start(size_label, False, False, 0)
         
         size_spin = Gtk.SpinButton()
-        max_resize_mb = 131072 if session_mode == 'dynblk' else (self._fat_size_limit() or 1000000)
+        max_resize_mb = 524288 if session_mode == 'dynblk' else (self._fat_size_limit() or 1000000)
         size_spin.set_range(current_size_mb, max_resize_mb)
         size_spin.set_increments(100, 1000)
         size_spin.set_value(current_size_mb)  # Set to current size
@@ -2111,7 +2133,7 @@ class SessionManagerGUI:
             mode = widget.get_active_id()
             size_spin.set_sensitive(convert_check.get_active() and mode in ['dynfilefs', 'dynblk', 'raw', 'luks'])
             if mode == 'dynblk':
-                upper = 131072
+                upper = 524288
             elif mode in ('raw', 'luks'):
                 upper = self._fat_size_limit() or 1000000
             else:
@@ -2255,7 +2277,7 @@ class SessionManagerGUI:
             mode = widget.get_active_id()
             size_spin.set_sensitive(mode in ['dynfilefs', 'dynblk', 'raw', 'luks'])
             if mode == 'dynblk':
-                upper = 131072
+                upper = 524288
             elif mode in ('raw', 'luks'):
                 upper = self._fat_size_limit() or 1000000
             else:
