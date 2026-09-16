@@ -1,4 +1,4 @@
-.TH MINIOS-SESSION 1 "September 2026" "MiniOS Session Manager 1.4.1" "User Commands"
+.TH MINIOS-SESSION 1 "September 2026" "MiniOS Session Manager 2.0.0" "User Commands"
 .SH NAME
 minios-session \- command-line interface for managing MiniOS persistent sessions
 .SH SYNOPSIS
@@ -37,16 +37,21 @@ Activate the specified session by setting it as the default session. This change
 ID of the session to activate
 .RE
 .TP
-.B create [\fImode\fR] [\fIsize\fR]
+.B create [\fImode\fR] [\fIsize\fR] [\-\-encryption none|luks]
 Create a new session with the specified mode and optional size. The new session will be automatically assigned the next available ID. The tool automatically detects the filesystem type and only allows compatible session modes.
 .RS
 .TP
 \fImode\fR (optional)
-Session mode: native, squashfs, dynfilefs, dynblk, raw, or luks (default: native). dynblk is exposed only when its userspace utility, kernel module, and initrd capability marker are available. LUKS creates a LUKS2/ext4 changes.luks file and requires initrd support for perchmode=luks.
+Session mode: native, squashfs, dynfilefs, dynblk, or raw (default: native). dynblk is exposed only when its userspace utility, kernel module, and initrd capability marker are available.
 .TP
 \fIsize\fR (optional)
-Decimal size in MB, GB, or TB for container modes. DynFileFS, raw, and LUKS
+Decimal size in MB, GB, or TB for container modes. DynFileFS and raw
 default to 4000MB. dynblk defaults to 16GiB and is limited to 512GiB.
+.TP
+\fB\-\-encryption\fR none|luks (optional)
+Encrypt Raw, DynFileFS, or Dynblk storage with LUKS2. Encrypted creation reads
+the passphrase and confirmation interactively or from standard input with
+\fB\-\-password-stdin\fR.
 .RE
 .TP
 .B delete \fIsession_id\fR
@@ -58,7 +63,7 @@ ID of the session to delete
 .RE
 .TP
 .B resize \fIsession_id\fR \fIsize\fR
-Resize the specified session to a larger size in MB, GB, or TB. Works for dynfilefs, dynblk, raw, and LUKS sessions. dynblk growth expands the virtual block device and then its ext4 filesystem without preallocating the new virtual capacity. Cannot resize currently running sessions.
+Resize the specified session to a larger size in MB, GB, or TB. Works for dynfilefs, dynblk, and raw sessions, including their encrypted forms. dynblk growth expands the virtual block device and then its ext4 filesystem without preallocating the new virtual capacity. Cannot resize currently running sessions.
 .RS
 .TP
 \fIsession_id\fR (required)
@@ -69,7 +74,7 @@ New decimal size in MB, GB, or TB. Must be larger than current size.
 .RE
 .TP
 .B export \fIsession_id\fR \fIoutput_path\fR [\-\-no-verify]
-Export a session to a .tar.zst archive. LUKS sessions are decrypted and exported
+Export a session to a .tar.zst archive. Encrypted sessions are decrypted and exported
 as logical files; the encrypted container is not copied into the archive.
 .RS
 .TP
@@ -83,7 +88,7 @@ Path to output file or directory. If directory is provided, filename is auto-gen
 Skip archive verification after creation
 .RE
 .TP
-.B import \fIarchive_path\fR [\-\-auto-convert] [\-\-force-mode \fIMODE\fR] [\-\-skip-compatibility-check] [\-\-no-verify]
+.B import \fIarchive_path\fR [\-\-auto-convert] [\-\-force-mode \fIMODE\fR] [\-\-force-encryption none|luks] [\-\-skip-compatibility-check] [\-\-no-verify]
 Import a session from a .tar.zst archive file. Supports automatic mode conversion.
 .RS
 .TP
@@ -94,7 +99,11 @@ Path to the archive file (.tar.zst)
 Automatically convert to compatible mode for current filesystem
 .TP
 \fB\-\-force-mode\fR \fIMODE\fR (optional)
-Force import as specific mode (native/dynfilefs/dynblk/raw/luks)
+Force import as a specific storage mode (native/dynfilefs/dynblk/raw)
+.TP
+\fB\-\-force-encryption\fR none|luks (optional)
+Force target encryption. A LUKS target receives a fresh LUKS header and ext4
+identity.
 .TP
 \fB\-\-no-verify\fR (optional)
 Skip session integrity verification after import
@@ -103,22 +112,30 @@ Skip session integrity verification after import
 Skip source MiniOS version, edition, and union-filesystem compatibility checks.
 .RE
 .TP
-.B copy \fIsession_id\fR [\-\-to-mode \fIMODE\fR] [\-\-size \fISIZE\fR]
-Copy a session, optionally converting to a different mode. A direct dynblk-to-dynblk copy requires the source volume to be detached and locks its complete backing namespace while copying.
+.B copy \fIsession_id\fR [\-\-to-mode \fIMODE\fR] [\-\-to-encryption none|luks] [\-\-size \fISIZE\fR]
+Logically copy a session through its filesystem, optionally changing storage,
+capacity, or encryption. The target receives fresh filesystem and LUKS identities.
 .RS
 .TP
 \fIsession_id\fR (required)
 ID of the session to copy
 .TP
 \fB\-\-to-mode\fR \fIMODE\fR (optional)
-Convert to different mode: native, dynfilefs, dynblk, raw, or luks
+Convert to a different storage mode: native, dynfilefs, dynblk, or raw
+.TP
+\fB\-\-to-encryption\fR none|luks (optional)
+Select target encryption.
 .TP
 \fB\-\-size\fR \fISIZE\fR (optional)
-Decimal size in MB, GB, or TB for dynfilefs, dynblk, raw, or LUKS targets.
+Decimal size in MB, GB, or TB for dynfilefs, dynblk, or raw targets.
 dynblk defaults to 16GiB; the other container modes default to 4000MB when no source size is inferred.
 .RE
 .TP
-.B convert \fIsession_id\fR \fItarget_mode\fR [\-\-size \fISIZE\fR] [\-\-new-session]
+.B clone \fIsession_id\fR
+Physically clone a detached session backend. The clone preserves LUKS headers,
+keyslots, LUKS UUID, and ext4 UUID and does not require a passphrase.
+.TP
+.B convert \fIsession_id\fR \fItarget_mode\fR [\-\-to-encryption none|luks] [\-\-size \fISIZE\fR] [\-\-new-session]
 Convert an existing session to a different mode in-place.
 .RS
 .TP
@@ -126,10 +143,13 @@ Convert an existing session to a different mode in-place.
 ID of the session to convert
 .TP
 \fItarget_mode\fR (required)
-Target mode: native, dynfilefs, dynblk, raw, or luks
+Target storage mode: native, dynfilefs, dynblk, or raw
+.TP
+\fB\-\-to-encryption\fR none|luks (optional)
+Select target encryption.
 .TP
 \fB\-\-size\fR \fISIZE\fR (optional)
-Decimal size in MB, GB, or TB for dynfilefs, dynblk, raw, or LUKS targets.
+Decimal size in MB, GB, or TB for dynfilefs, dynblk, or raw targets.
 .TP
 \fB\-\-new-session\fR (optional)
 Create a converted session with a new ID and preserve the source. Without this
@@ -162,7 +182,7 @@ command automatically detects the filesystem type and validates mode compatibili
 .TP
 - With dynblk mode but no matching initrd/kernel capability: Returns an availability error
 .TP
-- With oversized raw or LUKS images on FAT32: Returns an error with the 4000MB limit
+- With an oversized raw image on FAT32: Returns an error with the 4000MB limit
 .RE
 .TP
 .B Default Parameter Behavior
@@ -174,7 +194,7 @@ without mode: Uses native mode, may fail on non-POSIX filesystems
 .TP
 - 
 .B create
-without size: Uses 16GiB for dynblk and 4000MB for dynfilefs, raw, and LUKS modes
+without size: Uses 16GiB for dynblk and 4000MB for dynfilefs and raw modes
 .TP
 - 
 .B cleanup
@@ -185,7 +205,7 @@ without days: Uses 30-day threshold for session deletion
 Active sessions are protected from deletion and in-place conversion. Running
 sessions are protected from deletion, export, copy, resize, and conversion.
 .SH SESSION MODES
-MiniOS supports six persistence modes for different storage scenarios:
+MiniOS supports five persistence storage modes:
 .TP
 .B native
 Direct storage on POSIX-compatible filesystems (ext4, btrfs, etc.). This is the default and most efficient mode for compatible filesystems.
@@ -199,22 +219,26 @@ Format-1 kernel block storage backed by thin volumeNNN.db files. The mode is ava
 .B raw
 Fixed-size image file storage compatible with any filesystem. Requires pre-allocation of storage space.
 .TP
-.B luks
-LUKS2-encrypted ext4 storage in a per-session changes.luks file. Passphrases are read interactively for creation or from standard input with \fB--password-stdin\fR and are never recorded in metadata.
+.B Encryption
+Raw, DynFileFS, and Dynblk may optionally use LUKS2 encryption. Passphrases are
+read interactively or from standard input with \fB--password-stdin\fR and are
+never recorded in metadata. Encrypted-to-encrypted logical copy and conversion
+read the source passphrase first, followed by the target passphrase twice.
 .PP
-LUKS choices and --password-stdin are shown only when cryptsetup, losetup, and
-/run/initramfs/etc/minios-initramfs-crypt are available in the running system.
+LUKS choices and --password-stdin are shown only when the selected backend tools
+are available and /run/initramfs/etc/minios-initramfs-crypt contains
+luks-layer-v1.
 .SH FILESYSTEM COMPATIBILITY
 The tool automatically detects your media's filesystem type and restricts session creation to compatible modes:
 .TP
 .B POSIX Filesystems (ext2/3/4, btrfs, xfs, f2fs)
-Native mode and available container modes are supported. dynblk is admitted on ext2/3/4 and Btrfs when its capability check succeeds; XFS/f2fs are not dynblk backing targets. LUKS additionally
-requires cryptsetup, loop support, and the initrd LUKS capability marker.
+Native mode and available container modes are supported. dynblk is admitted on ext2/3/4 and Btrfs when its capability check succeeds; XFS/f2fs are not dynblk backing targets. Encryption additionally
+requires cryptsetup and the backend-specific initrd capabilities.
 .TP
 .B FAT32, NTFS, and exFAT
-DynFileFS and Raw are supported on writable media. dynblk is also offered on vfat, exFAT, and ntfs3 when its capability check succeeds. LUKS is supported when
-its capability check succeeds; fixed Raw and LUKS files are limited to 4000MB
-on FAT32. Native mode is unsupported.
+DynFileFS and Raw are supported on writable media. dynblk is also offered on vfat, exFAT, and ntfs3 when its capability check succeeds. Encryption is supported
+when its backend-specific capability check succeeds; fixed Raw files are limited
+to 4000MB on FAT32 whether encrypted or not. Native mode is unsupported.
 .TP
 .B Read-only Media
 No session creation possible. Sessions can only be activated or listed.

@@ -1152,7 +1152,9 @@ class TestAuditRegressions:
         with patch.object(sm, 'copy_session', return_value=(True, 'copied')) as copy:
             assert sm.convert_session('1', 'raw', size_mb=100, in_place=False) == (True, 'copied')
 
-        copy.assert_called_once_with('1', to_mode='raw', size_mb=100)
+        copy.assert_called_once_with(
+            '1', to_mode='raw', size_mb=100, source_password=None,
+            target_password=None, to_encryption='none')
 
     def test_lock_rejects_symlink(self, temp_sessions_dir):
         from minios_session import SessionManager
@@ -1641,7 +1643,8 @@ class TestSquashfsSave:
             state_file.write(
                 'boot_id=test-boot\nboot_level=ok\nmode=squashfs\nsession=1\n'
                 'durable=1\nwritable=1\nsessions_device={}\nsessions_inode={}\n'
-                'active_generation=current\ndynblk_device=none\n'.format(
+                'active_generation=current\ndynblk_device=none\n'
+                'encryption=none\ncrypt_mapper=none\nloop_device=none\n'.format(
                     sessions_stat.st_dev, sessions_stat.st_ino))
         with open(boot_id_path, 'w') as boot_id_file:
             boot_id_file.write('test-boot\n')
@@ -1667,7 +1670,7 @@ class TestSquashfsSave:
 
 
 
-class TestLuksMode:
+class TestLuksLayer:
     def test_perchsize_uses_decimal_units_and_one_tb_limit(self):
         from minios_session import parse_perch_size
 
@@ -1677,32 +1680,219 @@ class TestLuksMode:
         with pytest.raises(Exception):
             parse_perch_size('1001TB')
 
-    def test_luks_capability_requires_initrd_marker(self, temp_sessions_dir):
+    def test_luks_capability_requires_versioned_initrd_marker(self, temp_sessions_dir,
+                                                              monkeypatch):
+        import minios_session
         from minios_session import SessionManager
 
         sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
-        with patch('shutil.which', return_value='/usr/bin/tool'), \
-             patch('os.path.isfile', side_effect=lambda path: path == '/run/initramfs/etc/minios-initramfs-crypt'):
+        marker = os.path.join(temp_sessions_dir, 'crypt-marker')
+        monkeypatch.setattr(minios_session, 'INITRD_CRYPTO_MARKER', marker)
+        with patch('shutil.which', return_value='/usr/bin/tool'):
+            open(marker, 'w').close()
+            assert sm._check_luks_available()[0] is False
+            with open(marker, 'w') as marker_file:
+                marker_file.write('luks-layer-v1\n')
             assert sm._check_luks_available() == (True, None)
 
-    def test_luks_is_not_exposed_without_initrd_marker(self, temp_sessions_dir):
+    def test_luks_is_an_encryption_not_a_storage_mode(self, temp_sessions_dir):
         from minios_session import SessionManager
 
         sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
         filesystem = {'type': 'ext4', 'is_readonly': False, 'is_posix_compatible': True}
-        with patch('shutil.which', return_value='/usr/bin/tool'), \
-             patch('os.path.isfile', return_value=False):
-            assert 'luks' not in sm._get_compatible_session_modes(filesystem)
+        assert 'luks' not in sm._get_compatible_session_modes(filesystem)
+
+    def test_luks_support_is_backend_specific(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        with patch.object(sm, '_check_luks_available',
+                          side_effect=lambda mode: (mode in ('raw', 'dynfilefs', 'dynblk'), None)):
+            assert sm._get_compatible_encryptions('raw') == ['none', 'luks']
+            assert sm._get_compatible_encryptions('native') == ['none']
+
+    @pytest.mark.parametrize('mode', ('raw', 'dynfilefs', 'dynblk'))
+    def test_encrypted_creation_preserves_backend_metadata(self, temp_sessions_dir,
+                                                           mode):
+        from minios_session import SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        sm.check_sessions_directory_status = lambda: {'writable': True}
+        sm._validate_target_mode = lambda backend, size, encryption: (True, None)
+        sm._check_free_space = lambda path, required: (True, None)
+        sm._check_dynfilefs_available = lambda: True
+        sm._get_current_union_fs = lambda: 'overlayfs'
+        sm._create_dynfilefs_session = MagicMock(return_value=(True, 'created'))
+        sm._create_dynblk_session = MagicMock(return_value=(True, 'created'))
+        sm._format_luks_source = MagicMock()
+        with patch('subprocess.run', return_value=MagicMock(
+                returncode=1, stdout=b'', stderr=b'')):
+            success, message = sm.create_session(
+                mode, 64, password=b'secret', encryption='luks')
+
+        assert success, message
+        metadata = sm._read_sessions_metadata()['sessions']['1']
+        assert metadata['mode'] == mode
+        assert metadata['encryption'] == 'luks'
+        if mode == 'raw':
+            assert os.path.isfile(os.path.join(temp_sessions_dir, '1', 'changes.img'))
+            sm._format_luks_source.assert_called_once()
+        elif mode == 'dynfilefs':
+            sm._create_dynfilefs_session.assert_called_once_with(
+                os.path.join(temp_sessions_dir, '1'), 64,
+                encryption='luks', password=b'secret')
+        else:
+            sm._create_dynblk_session.assert_called_once_with(
+                os.path.join(temp_sessions_dir, '1'), 64,
+                encryption='luks', password=b'secret')
+
+    def test_unsupported_metadata_remains_listed_for_recovery(self,
+                                                               temp_sessions_dir):
+        from minios_session import SessionManager
+
+        for session_id in ('1', '2'):
+            os.mkdir(os.path.join(temp_sessions_dir, session_id))
+        with open(os.path.join(temp_sessions_dir, 'session.json'), 'w') as metadata:
+            json.dump({'sessions': {
+                '1': {'mode': 'native', 'encryption': 'luks'},
+                '2': {'mode': 'luks'},
+            }}, metadata)
+
+        sessions = SessionManager(
+            custom_sessions_dir=temp_sessions_dir).list_sessions(
+                include_running_check=False)
+        assert [session['id'] for session in sessions] == ['1', '2']
+        assert all(not session['configuration_supported'] for session in sessions)
+
+    @pytest.mark.parametrize('operation', ('export', 'copy', 'convert'))
+    def test_logical_operations_reject_unsupported_metadata(
+            self, temp_sessions_dir, operation):
+        from minios_session import SessionManager
+
+        os.mkdir(os.path.join(temp_sessions_dir, '1'))
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        sm._get_session_info = lambda _session_id: {
+            'id': '1', 'mode': 'native', 'encryption': 'luks',
+            'configuration_supported': False,
+        }
+
+        if operation == 'export':
+            success, message = sm.export_session('1', temp_sessions_dir)
+        elif operation == 'copy':
+            success, message = sm.copy_session('1')
+        else:
+            success, message = sm.convert_session('1', 'raw')
+
+        assert not success
+        assert 'unsupported persistence metadata' in message
+
+    def test_logical_import_defaults_to_unencrypted_target(self,
+                                                            temp_sessions_dir):
+        from minios_session import SessionManager
+
+        archive = os.path.join(temp_sessions_dir, 'encrypted.tar.zst')
+        open(archive, 'wb').close()
+        target = os.path.join(temp_sessions_dir, '1')
+        os.mkdir(target)
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        sm._validate_archive = lambda path: (True, None)
+        sm._extract_metadata = lambda path: {'session': {
+            'mode': 'raw', 'encryption': 'luks', 'version': '6.0',
+            'edition': 'standard', 'union': 'overlayfs', 'size': 100,
+        }}
+        sm._check_import_compatibility = lambda metadata: {
+            'compatible': True, 'issues': []}
+        sm._validate_target_mode = lambda *args, **kwargs: (True, None)
+        sm._check_free_space = lambda path, size: (True, None)
+        sm._reserve_session = lambda: ('1', target)
+        mount_context = MagicMock()
+        mount_context.__enter__.return_value = target
+        mount_context.__exit__.return_value = False
+        sm._mount_session_write = MagicMock(return_value=mount_context)
+        sm._create_session_metadata = MagicMock(return_value=True)
+
+        with patch('subprocess.run', return_value=MagicMock(
+                returncode=0, stdout=b'', stderr=b'')):
+            success, message = sm.import_session(archive, verify=False)
+
+        assert success, message
+        assert sm._mount_session_write.call_args[0][1] == 'raw'
+        assert 'encryption' not in sm._mount_session_write.call_args[1]
+        assert 'encryption' not in sm._create_session_metadata.call_args[1]
+
+    def test_copy_is_logical_and_uses_independent_luks_passwords(self,
+                                                                 temp_sessions_dir):
+        from minios_session import SessionManager
+
+        source_path = os.path.join(temp_sessions_dir, '1')
+        os.mkdir(source_path)
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        sm._get_session_info = lambda _session_id: {
+            'mode': 'raw', 'encryption': 'luks', 'version': '6.0',
+            'edition': 'standard', 'union': 'overlayfs', 'size': 64,
+            'total_size_mb': 64,
+        }
+        sm._validate_target_mode = lambda mode, size, encryption: (True, None)
+        sm.get_running_session = lambda: None
+        sm._check_free_space = lambda path, size: (True, None)
+        sm._copy_session_direct = MagicMock(
+            side_effect=AssertionError('copy must not clone'))
+        sm._copy_session_with_conversion = MagicMock(return_value=True)
+        sm._read_sessions_metadata = lambda: {'sessions': {
+            '1': {'mode': 'raw', 'encryption': 'luks'}}}
+        published = []
+        sm._write_sessions_metadata = lambda metadata: (
+            published.append(metadata) or True)
+
+        success, message = sm.copy_session(
+            '1', source_password=b'source', target_password=b'target')
+
+        assert success, message
+        sm._copy_session_direct.assert_not_called()
+        call = sm._copy_session_with_conversion.call_args
+        assert call[1]['source_encryption'] == 'luks'
+        assert call[1]['target_encryption'] == 'luks'
+        assert call[1]['source_password'] == b'source'
+        assert call[1]['target_password'] == b'target'
+        target = published[-1]['sessions']['2']
+        assert target['mode'] == 'raw'
+        assert target['encryption'] == 'luks'
+
+    def test_clone_physically_copies_backend_and_metadata(self,
+                                                          temp_sessions_dir):
+        from minios_session import SessionManager
+
+        source_path = os.path.join(temp_sessions_dir, '1')
+        os.mkdir(source_path)
+        metadata = {'sessions': {'1': {
+            'mode': 'raw', 'encryption': 'luks', 'size': '64',
+            'version': '6.0', 'edition': 'standard', 'union': 'overlayfs'}}}
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        sm._get_session_info = lambda _session_id: dict(metadata['sessions']['1'])
+        sm.get_running_session = lambda: None
+        sm._copy_session_direct = MagicMock(return_value=True)
+        sm._read_sessions_metadata = lambda: metadata
+        published = []
+        sm._write_sessions_metadata = lambda value: (
+            published.append(value) or True)
+
+        success, message = sm.clone_session('1')
+
+        assert success, message
+        sm._copy_session_direct.assert_called_once_with(
+            source_path, os.path.join(temp_sessions_dir, '2'), 'raw')
+        assert published[-1]['sessions']['2'] == metadata['sessions']['1']
+        assert published[-1]['sessions']['2'] is not metadata['sessions']['1']
 
     def test_luks_creation_uses_loop_mapper_and_stdin_password(self, temp_sessions_dir):
         from minios_session import SessionManager
 
         sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
-        image = os.path.join(temp_sessions_dir, 'changes.luks')
+        image = os.path.join(temp_sessions_dir, 'changes.img')
         loop = MagicMock(returncode=0, stdout=b'/dev/loop7\n', stderr=b'')
         ok = MagicMock(returncode=0, stdout=b'', stderr=b'')
-        with patch('subprocess.run', side_effect=[ok, loop, ok, ok, ok, ok, ok, ok]) as run:
-            sm._create_luks_container(temp_sessions_dir, 4000, b'secret')
+        with patch('subprocess.run', side_effect=[loop, ok, ok, ok, ok, ok, ok]) as run:
+            sm._format_luks_source(image, b'secret')
 
         commands = [call[0][0] for call in run.call_args_list]
         assert ['losetup', '--find', '--show', '--', image] in commands
@@ -1712,14 +1902,14 @@ class TestLuksMode:
         assert all(call[1].get('input') == b'secret\n' for call in crypt_calls[:2])
         assert any(command[:2] == ['cryptsetup', 'close'] for command in commands)
 
-    def test_luks_target_observes_fat32_limit(self, temp_sessions_dir):
+    def test_encrypted_raw_target_observes_fat32_limit(self, temp_sessions_dir):
         from minios_session import SessionManager
 
         sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
         with patch.object(sm, '_detect_filesystem_type', return_value=({'type': 'vfat', 'is_readonly': False,
                                                                          'is_posix_compatible': False}, None)), \
              patch.object(sm, '_check_luks_available', return_value=(True, None)):
-            valid, message = sm._validate_target_mode('luks', 4096)
+            valid, message = sm._validate_target_mode('raw', 4096, 'luks')
         assert not valid
         assert 'FAT32' in message
 
@@ -1728,12 +1918,13 @@ class TestLuksMode:
 
         session_path = os.path.join(temp_sessions_dir, '1')
         os.mkdir(session_path)
-        open(os.path.join(session_path, 'changes.luks'), 'wb').close()
+        open(os.path.join(session_path, 'changes.img'), 'wb').close()
         journal_path = os.path.join(session_path, '.luks-resize.json')
         with open(journal_path, 'w') as journal:
             json.dump({'size': 6000}, journal)
         sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
-        metadata = {'sessions': {'1': {'mode': 'luks', 'size': 4000}}}
+        metadata = {'sessions': {'1': {
+            'mode': 'raw', 'encryption': 'luks', 'size': 4000}}}
         with patch('os.path.getsize', return_value=6000 * 1024 * 1024), \
              patch.object(sm, '_write_sessions_metadata', return_value=True):
             success, message = sm._resize_luks_session(session_path, 7000, '1', metadata, b'password')

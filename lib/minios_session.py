@@ -48,11 +48,30 @@ except Exception:
 
 INITRD_CRYPTO_MARKER = '/run/initramfs/etc/minios-initramfs-crypt'
 INITRD_DYNBLK_MARKER = '/run/initramfs/etc/minios-initramfs-dynblk'
+LUKS_LAYER_CAPABILITY = 'luks-layer-v1'
 
 
-def luks_runtime_available():
-    return bool(shutil.which('cryptsetup') and shutil.which('losetup') and
-                os.path.isfile(INITRD_CRYPTO_MARKER))
+def initrd_has_capability(marker, capability):
+    """Return whether an initrd marker advertises one exact capability."""
+    try:
+        with open(marker, 'r', encoding='utf-8') as marker_file:
+            return capability in {
+                line.strip() for line in marker_file if line.strip()
+            }
+    except OSError:
+        return False
+
+
+def luks_runtime_available(backend='raw'):
+    """Check the compositional userspace/initrd requirements for one backend."""
+    if backend not in ('raw', 'dynfilefs', 'dynblk'):
+        return False
+    if not shutil.which('cryptsetup') or not initrd_has_capability(
+            INITRD_CRYPTO_MARKER, LUKS_LAYER_CAPABILITY):
+        return False
+    if backend in ('raw', 'dynfilefs') and not shutil.which('losetup'):
+        return False
+    return True
 
 
 class MetadataCommitUncertain(OSError):
@@ -439,6 +458,10 @@ class SessionManager:
             'sessions_dir': self.sessions_dir,
             'filesystem_type': fs_type
         }
+        result['capabilities'] = {
+            'luks_layer_v1': luks_runtime_available('raw'),
+            'dynblk': self._check_dynblk_available(),
+        }
         if error_msg:
             result['error'] = error_msg
         
@@ -636,6 +659,18 @@ class SessionManager:
         except OSError:
             return None
 
+    @staticmethod
+    def _session_configuration_supported(session_data):
+        """Validate the normalized backend/encryption metadata combination."""
+        mode = session_data.get('mode')
+        encryption = session_data.get('encryption', 'none')
+        return (mode, encryption) in {
+            ('native', 'none'), ('squashfs', 'none'),
+            ('raw', 'none'), ('raw', 'luks'),
+            ('dynfilefs', 'none'), ('dynfilefs', 'luks'),
+            ('dynblk', 'none'), ('dynblk', 'luks'),
+        }
+
     def list_sessions(self, include_running_check=True):
         """List all available sessions"""
         if not self.sessions_dir:
@@ -667,6 +702,9 @@ class SessionManager:
                     'id': session_id,
                     'path': path,
                     'mode': session_data.get('mode', 'unknown'),
+                    'encryption': session_data.get('encryption', 'none'),
+                    'configuration_supported': self._session_configuration_supported(
+                        session_data),
                     'version': session_data.get('version', 'unknown'),
                     'edition': session_data.get('edition', 'unknown'),
                     'union': session_data.get('union', 'unknown'),
@@ -874,7 +912,8 @@ class SessionManager:
                     pass
                 os.close(fd)
 
-    def _create_dynblk_session(self, session_path, size_mb):
+    def _create_dynblk_session(self, session_path, size_mb, encryption='none',
+                               password=None):
         """Create one detached dynblk/ext4 session without disturbing other dynblk devices."""
         volume = os.path.join(session_path, 'volume000.db')
         device = None
@@ -888,10 +927,14 @@ class SessionManager:
             # The device was just created and is entirely unmapped. Letting
             # mke2fs discard the whole thin address space creates needless COW
             # transactions, so explicitly disable discard during mkfs.
-            result = subprocess.run(
-                ['mke2fs', '-F', '-t', 'ext4', '-E', 'nodiscard', device],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            if result.returncode:
+            if encryption == 'luks':
+                self._format_luks_source(device, password, nodiscard=True)
+                result = None
+            else:
+                result = subprocess.run(
+                    ['mke2fs', '-F', '-t', 'ext4', '-E', 'nodiscard', device],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if result is not None and result.returncode:
                 message = _('Failed to format dynblk device: {}').format(
                     result.stderr.decode(errors='replace').strip())
             else:
@@ -913,7 +956,8 @@ class SessionManager:
         return success, message
 
     @contextlib.contextmanager
-    def _mount_dynblk(self, session_path, writable):
+    def _mount_dynblk(self, session_path, writable, encryption='none',
+                      password=None):
         """Attach one dynblk volume without requiring the module/device namespace to be idle."""
         volume = os.path.join(session_path, 'volume000.db')
         if not os.path.exists(volume):
@@ -924,16 +968,20 @@ class SessionManager:
         try:
             result = self._run_dynblk(['load', volume, '--execute'])
             device = self._dynblk_device_from_result(result)
-            command = ['mount']
-            if not writable:
-                command += ['-o', 'ro']
-            command += [device, mount_point]
-            result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            if result.returncode:
-                raise OSError(result.stderr.decode(errors='replace').strip() or
-                              _('Failed to mount dynblk device'))
-            mounted = True
-            yield mount_point
+            if encryption == 'luks':
+                with self._mount_luks(device, password, writable) as encrypted_mount:
+                    yield encrypted_mount
+            else:
+                command = ['mount']
+                if not writable:
+                    command += ['-o', 'ro']
+                command += [device, mount_point]
+                result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if result.returncode:
+                    raise OSError(result.stderr.decode(errors='replace').strip() or
+                                  _('Failed to mount dynblk device'))
+                mounted = True
+                yield mount_point
         finally:
             active_exception = sys.exc_info()[0] is not None
             cleanup_error = None
@@ -955,13 +1003,17 @@ class SessionManager:
                 else:
                     raise OSError(cleanup_error)
 
-    def _check_luks_available(self):
-        """Check both the userspace tools and the initrd LUKS persistence hook."""
-        if not shutil.which('cryptsetup') or not shutil.which('losetup'):
-            return False, _("LUKS mode requires cryptsetup and util-linux.")
-        if luks_runtime_available():
+    def _check_luks_available(self, backend='raw'):
+        """Check userspace and versioned initrd support for layered LUKS."""
+        if backend not in ('raw', 'dynfilefs', 'dynblk'):
+            return False, _("LUKS encryption is not supported with {} persistence.").format(backend)
+        if not shutil.which('cryptsetup'):
+            return False, _("LUKS encryption requires cryptsetup.")
+        if backend in ('raw', 'dynfilefs') and not shutil.which('losetup'):
+            return False, _("LUKS encryption for {} requires util-linux.").format(backend)
+        if luks_runtime_available(backend):
             return True, None
-        return False, _("This MiniOS initrd does not support perchmode=luks. Boot an image with the LUKS persistence hook before creating or activating LUKS sessions.")
+        return False, _("This MiniOS initrd does not advertise the luks-layer-v1 persistence capability.")
 
     def _detect_filesystem_type(self):
         """Detect the filesystem type of the MiniOS media"""
@@ -1024,11 +1076,15 @@ class SessionManager:
         
         # Raw mode: works on ALL writable filesystems (static images)
         compatible_modes.append('raw')
-        luks_available, _luks_error = self._check_luks_available()
-        if luks_available:
-            compatible_modes.append('luks')
-        
         return compatible_modes
+
+    def _get_compatible_encryptions(self, mode):
+        """Return encryption layers available for one storage backend."""
+        encryptions = ['none']
+        available, _error = self._check_luks_available(mode)
+        if available:
+            encryptions.append('luks')
+        return encryptions
 
     def _get_filesystem_limitations(self, filesystem_info):
         """Get filesystem-specific limitations"""
@@ -1058,10 +1114,16 @@ class SessionManager:
         
         return limitations
 
-    def _validate_target_mode(self, mode, size_mb=None):
-        """Validate a requested storage mode against the actual target filesystem."""
-        if mode not in ('native', 'squashfs', 'dynfilefs', 'dynblk', 'raw', 'luks'):
+    def _validate_target_mode(self, mode, size_mb=None, encryption='none'):
+        """Validate a backend and encryption layer against the target."""
+        if mode not in ('native', 'squashfs', 'dynfilefs', 'dynblk', 'raw'):
             return False, _("Invalid session mode")
+        if encryption not in ('none', 'luks'):
+            return False, _("Invalid session encryption")
+        if encryption == 'luks':
+            luks_available, luks_error = self._check_luks_available(mode)
+            if not luks_available:
+                return False, luks_error
         fs_info, error = self._detect_filesystem_type()
         if error or not fs_info:
             return False, error or _("Failed to determine filesystem information")
@@ -1081,13 +1143,9 @@ class SessionManager:
             if size_mb is not None and size_mb > self.DYNBLK_MAX_SIZE_MB:
                 return False, _("dynblk virtual size cannot exceed 512 GiB.")
         max_size = self._get_filesystem_limitations(fs_info).get('max_file_size')
-        if mode == 'luks':
-            luks_available, luks_error = self._check_luks_available()
-            if not luks_available:
-                return False, luks_error
-        if mode in ('raw', 'luks') and max_size and size_mb and size_mb > max_size:
+        if mode == 'raw' and max_size and size_mb and size_mb > max_size:
             return False, _("Container size {}MB exceeds FAT32 file size limit ({}MB).").format(size_mb, max_size)
-        if mode in ('raw', 'luks') and size_mb and size_mb > self.MAX_CONTAINER_SIZE_MB:
+        if mode == 'raw' and size_mb and size_mb > self.MAX_CONTAINER_SIZE_MB:
             return False, _("Container size exceeds the 1TB limit.")
         return True, None
 
@@ -1102,62 +1160,89 @@ class SessionManager:
             raise OSError(result.stderr.decode(errors='replace').strip() or 'cryptsetup failed')
 
     @contextlib.contextmanager
-    def _mount_luks(self, image_file, password, writable):
-        """Expose one LUKS file through an owned loop and mapper, then clean both."""
+    def _open_luks_source(self, source, password, create=False):
+        """Open LUKS over a backing file or block device with exact cleanup."""
         if not password:
             raise ValueError(_("A LUKS passphrase is required."))
-        loop_device = mapper_name = mount_point = None
+        loop_device = None
+        mapper_name = None
+        cleanup_error = None
         try:
-            loop_result = subprocess.run(['losetup', '--find', '--show', '--', image_file],
-                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            if loop_result.returncode:
-                raise OSError(loop_result.stderr.decode(errors='replace').strip() or 'failed to attach loop device')
-            loop_device = loop_result.stdout.decode().strip()
+            luks_source = source
+            if source.startswith('/dev/'):
+                if not re.fullmatch(r'/dev/dynblk(?:[0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])', source):
+                    raise OSError(_('Invalid LUKS backend device'))
+            else:
+                loop_result = subprocess.run(
+                    ['losetup', '--find', '--show', '--', source],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if loop_result.returncode:
+                    raise OSError(loop_result.stderr.decode(errors='replace').strip() or
+                                  _('Failed to attach loop device'))
+                candidate = loop_result.stdout.decode(errors='strict').strip()
+                if not re.fullmatch(r'/dev/loop[0-9]+', candidate):
+                    raise OSError(_('Invalid loop device response'))
+                loop_device = candidate
+                luks_source = loop_device
+            if create:
+                self._cryptsetup([
+                    'cryptsetup', 'luksFormat', '--type', 'luks2',
+                    '--batch-mode', '--key-file', '-', luks_source,
+                ], password)
             mapper_name = self._luks_mapper_name()
-            self._cryptsetup(['cryptsetup', 'open', '--type', 'luks', '--key-file', '-',
-                              loop_device, mapper_name], password)
-            mount_point = tempfile.mkdtemp(prefix='minios_luks_')
-            options = [] if writable else ['-o', 'ro']
-            subprocess.run(['mount'] + options + ['/dev/mapper/' + mapper_name, mount_point], check=True)
-            yield mount_point
+            self._cryptsetup([
+                'cryptsetup', 'open', '--type', 'luks', '--key-file', '-',
+                luks_source, mapper_name,
+            ], password)
+            yield '/dev/mapper/' + mapper_name
         finally:
-            if mount_point:
+            active_exception = sys.exc_info()[0] is not None
+            if mapper_name:
+                close = subprocess.run(
+                    ['cryptsetup', 'close', mapper_name], stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE)
+                if close.returncode:
+                    cleanup_error = close.stderr.decode(errors='replace').strip() or _(
+                        'Failed to close LUKS mapper')
+            if loop_device:
+                detach = subprocess.run(
+                    ['losetup', '--detach', loop_device], stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE)
+                if detach.returncode and cleanup_error is None:
+                    cleanup_error = detach.stderr.decode(errors='replace').strip() or _(
+                        'Failed to detach loop device')
+            if cleanup_error:
+                if active_exception:
+                    print('Warning: {}'.format(cleanup_error), file=sys.stderr)
+                else:
+                    raise OSError(cleanup_error)
+
+    def _format_luks_source(self, source, password, nodiscard=False):
+        """Create LUKS2 and ext4 on an existing backend source."""
+        with self._open_luks_source(source, password, create=True) as mapper_device:
+            command = ['mke2fs', '-F', '-t', 'ext4']
+            if nodiscard:
+                command += ['-E', 'nodiscard']
+            command.append(mapper_device)
+            result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if result.returncode:
+                raise OSError(result.stderr.decode(errors='replace').strip() or
+                              _('Failed to create encrypted ext4 filesystem'))
+            subprocess.run(['sync'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    @contextlib.contextmanager
+    def _mount_luks(self, source, password, writable):
+        """Mount ext4 from a LUKS layer over a file or block source."""
+        with self._open_luks_source(source, password) as mapper_device:
+            mount_point = tempfile.mkdtemp(prefix='minios_luks_')
+            try:
+                options = [] if writable else ['-o', 'ro']
+                subprocess.run(
+                    ['mount'] + options + [mapper_device, mount_point], check=True)
+                yield mount_point
+            finally:
                 self._safe_unmount(mount_point)
                 self._safe_rmtree(mount_point)
-            if mapper_name:
-                subprocess.run(['cryptsetup', 'close', mapper_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            if loop_device:
-                subprocess.run(['losetup', '--detach', loop_device], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-    def _create_luks_container(self, session_path, size_mb, password):
-        """Create exactly one LUKS2/ext4 file, without a partition table or nesting."""
-        image_file = os.path.join(session_path, 'changes.luks')
-        size_bytes = size_mb * 1024 * 1024
-        result = subprocess.run(['fallocate', '-l', str(size_bytes), image_file],
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if result.returncode:
-            with open(image_file, 'wb') as image:
-                image.truncate(size_bytes)
-        loop_device = mapper_name = None
-        try:
-            loop_result = subprocess.run(['losetup', '--find', '--show', '--', image_file],
-                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            if loop_result.returncode:
-                raise OSError(loop_result.stderr.decode(errors='replace').strip() or 'failed to attach loop device')
-            loop_device = loop_result.stdout.decode().strip()
-            self._cryptsetup(['cryptsetup', 'luksFormat', '--type', 'luks2', '--batch-mode',
-                              '--key-file', '-', loop_device], password)
-            mapper_name = self._luks_mapper_name()
-            self._cryptsetup(['cryptsetup', 'open', '--type', 'luks', '--key-file', '-',
-                              loop_device, mapper_name], password)
-            subprocess.run(['mke2fs', '-F', '-t', 'ext4', '/dev/mapper/' + mapper_name], check=True,
-                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            subprocess.run(['sync'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        finally:
-            if mapper_name:
-                subprocess.run(['cryptsetup', 'close', mapper_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            if loop_device:
-                subprocess.run(['losetup', '--detach', loop_device], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     def _wait_for_mount(self, path, timeout=10):
         """Wait for a file or directory to appear (polling)"""
@@ -1296,7 +1381,8 @@ class SessionManager:
             return False
 
     @contextlib.contextmanager
-    def _mount_session_read(self, session_path, mode, password=None):
+    def _mount_session_read(self, session_path, mode, password=None,
+                            encryption='none'):
         """Context manager to mount a session for reading"""
         mount_point = None
         virtual_mount = None
@@ -1327,19 +1413,23 @@ class SessionManager:
                 if not self._wait_for_mount(virtual_file):
                     raise Exception(_("Failed to mount dynfilefs (timeout)"))
                     
-                # Mount virtual file
-                virtual_mount = tempfile.mkdtemp(prefix="minios_virt_read_")
-                subprocess.run(['mount', '-o', 'loop,ro', virtual_file, virtual_mount], check=True)
-                
-                # Check for OverlayFS structure inside
-                changes_dir = os.path.join(virtual_mount, 'changes')
-                if os.path.exists(changes_dir) and os.path.isdir(changes_dir):
-                    yield changes_dir
+                if encryption == 'luks':
+                    with self._mount_luks(virtual_file, password, writable=False) as encrypted_mount:
+                        changes_dir = os.path.join(encrypted_mount, 'changes')
+                        yield changes_dir if os.path.isdir(changes_dir) else encrypted_mount
                 else:
-                    yield virtual_mount
+                    virtual_mount = tempfile.mkdtemp(prefix="minios_virt_read_")
+                    subprocess.run(['mount', '-o', 'loop,ro', virtual_file, virtual_mount], check=True)
+                    changes_dir = os.path.join(virtual_mount, 'changes')
+                    if os.path.exists(changes_dir) and os.path.isdir(changes_dir):
+                        yield changes_dir
+                    else:
+                        yield virtual_mount
             
             elif mode == 'dynblk':
-                with self._mount_dynblk(session_path, writable=False) as dynblk_mount:
+                with self._mount_dynblk(
+                        session_path, writable=False, encryption=encryption,
+                        password=password) as dynblk_mount:
                     changes_dir = os.path.join(dynblk_mount, 'changes')
                     yield changes_dir if os.path.isdir(changes_dir) else dynblk_mount
 
@@ -1348,22 +1438,18 @@ class SessionManager:
                 if not os.path.exists(image_file):
                     raise Exception(_("Raw image not found"))
                 
-                mount_point = tempfile.mkdtemp(prefix="minios_raw_read_")
-                subprocess.run(['mount', '-o', 'loop,ro', image_file, mount_point], check=True)
-                
-                changes_dir = os.path.join(mount_point, 'changes')
-                if os.path.exists(changes_dir) and os.path.isdir(changes_dir):
-                    yield changes_dir
+                if encryption == 'luks':
+                    with self._mount_luks(image_file, password, writable=False) as encrypted_mount:
+                        changes_dir = os.path.join(encrypted_mount, 'changes')
+                        yield changes_dir if os.path.isdir(changes_dir) else encrypted_mount
                 else:
-                    yield mount_point
-
-            elif mode == 'luks':
-                image_file = os.path.join(session_path, 'changes.luks')
-                if not os.path.exists(image_file):
-                    raise Exception(_("LUKS container not found"))
-                with self._mount_luks(image_file, password, writable=False) as luks_mount:
-                    changes_dir = os.path.join(luks_mount, 'changes')
-                    yield changes_dir if os.path.isdir(changes_dir) else luks_mount
+                    mount_point = tempfile.mkdtemp(prefix="minios_raw_read_")
+                    subprocess.run(['mount', '-o', 'loop,ro', image_file, mount_point], check=True)
+                    changes_dir = os.path.join(mount_point, 'changes')
+                    if os.path.exists(changes_dir) and os.path.isdir(changes_dir):
+                        yield changes_dir
+                    else:
+                        yield mount_point
             
             else:
                 raise Exception(_("Unknown session mode: {}").format(mode))
@@ -1379,7 +1465,7 @@ class SessionManager:
                 if mount_point:
                     self._safe_fusermount(mount_point)
                 self._cleanup_process(process)
-            elif mode == 'raw' and mount_point:
+            elif mode == 'raw' and encryption == 'none' and mount_point:
                 # Raw mode unmount
                 self._safe_unmount(mount_point)
             
@@ -1388,7 +1474,8 @@ class SessionManager:
                 self._safe_rmtree(mount_point)
 
     @contextlib.contextmanager
-    def _mount_session_write(self, session_path, mode, size_mb=None, password=None):
+    def _mount_session_write(self, session_path, mode, size_mb=None, password=None,
+                             encryption='none'):
         """Context manager to mount a session for writing"""
         mount_point = None
         virtual_mount = None
@@ -1406,6 +1493,7 @@ class SessionManager:
             elif mode == 'dynfilefs':
                 if not size_mb: size_mb = 4000
                 changes_file = os.path.join(session_path, 'changes.dat')
+                new_container = not os.path.exists(changes_file)
                 mount_point = tempfile.mkdtemp(prefix="minios_dyn_write_")
                 
                 cmd = ['dynfilefs', '-f', changes_file, '-m', mount_point, '-s', str(size_mb), '-p', '4000']
@@ -1423,26 +1511,35 @@ class SessionManager:
                 # If it's a new session creation, we need to format.
                 # Let's check if we can mount it first.
                 
-                virtual_mount = tempfile.mkdtemp(prefix="minios_virt_write_")
-                mount_result = subprocess.run(['mount', '-o', 'loop', virtual_file, virtual_mount], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                
-                if mount_result.returncode != 0:
-                    # Not formatted, format it
-                    subprocess.run(['mke2fs', '-F', '-t', 'ext4', virtual_file], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                    subprocess.run(['sync'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                    subprocess.run(['mount', '-o', 'loop', virtual_file, virtual_mount], check=True)
-                
-                yield virtual_mount
+                if encryption == 'luks':
+                    if new_container:
+                        self._format_luks_source(virtual_file, password)
+                    with self._mount_luks(virtual_file, password, writable=True) as encrypted_mount:
+                        yield encrypted_mount
+                else:
+                    virtual_mount = tempfile.mkdtemp(prefix="minios_virt_write_")
+                    mount_result = subprocess.run(['mount', '-o', 'loop', virtual_file, virtual_mount], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+                    if mount_result.returncode != 0:
+                        subprocess.run(['mke2fs', '-F', '-t', 'ext4', virtual_file], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        subprocess.run(['sync'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        subprocess.run(['mount', '-o', 'loop', virtual_file, virtual_mount], check=True)
+
+                    yield virtual_mount
                 
             elif mode == 'dynblk':
                 if not size_mb:
                     size_mb = self.DYNBLK_DEFAULT_SIZE_MB
                 volume = os.path.join(session_path, 'volume000.db')
                 if not os.path.exists(volume):
-                    success, message = self._create_dynblk_session(session_path, size_mb)
+                    success, message = self._create_dynblk_session(
+                        session_path, size_mb, encryption=encryption,
+                        password=password)
                     if not success:
                         raise OSError(message)
-                with self._mount_dynblk(session_path, writable=True) as dynblk_mount:
+                with self._mount_dynblk(
+                        session_path, writable=True, encryption=encryption,
+                        password=password) as dynblk_mount:
                     yield dynblk_mount
 
             elif mode == 'raw':
@@ -1454,21 +1551,18 @@ class SessionManager:
                     subprocess.run(['fallocate', '-l', str(size_bytes), image_file], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     if not os.path.exists(image_file) or os.path.getsize(image_file) < size_bytes:
                          with open(image_file, 'wb') as f: f.truncate(size_bytes)
-                    # Format new image
-                    subprocess.run(['mke2fs', '-F', '-t', 'ext4', image_file], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    if encryption == 'luks':
+                        self._format_luks_source(image_file, password)
+                    else:
+                        subprocess.run(['mke2fs', '-F', '-t', 'ext4', image_file], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     subprocess.run(['sync'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                
-                mount_point = tempfile.mkdtemp(prefix="minios_raw_write_")
-                subprocess.run(['mount', '-o', 'loop', image_file, mount_point], check=True)
-                
-                yield mount_point
-
-            elif mode == 'luks':
-                image_file = os.path.join(session_path, 'changes.luks')
-                if not os.path.exists(image_file):
-                    self._create_luks_container(session_path, size_mb or self.DEFAULT_CONTAINER_SIZE_MB, password)
-                with self._mount_luks(image_file, password, writable=True) as luks_mount:
-                    yield luks_mount
+                if encryption == 'luks':
+                    with self._mount_luks(image_file, password, writable=True) as encrypted_mount:
+                        yield encrypted_mount
+                else:
+                    mount_point = tempfile.mkdtemp(prefix="minios_raw_write_")
+                    subprocess.run(['mount', '-o', 'loop', image_file, mount_point], check=True)
+                    yield mount_point
                 
         finally:
             # Cleanup virtual mount first (if exists)
@@ -1481,7 +1575,7 @@ class SessionManager:
                 if mount_point:
                     self._safe_fusermount(mount_point)
                 self._cleanup_process(process)
-            elif mode == 'raw' and mount_point:
+            elif mode == 'raw' and encryption == 'none' and mount_point:
                 # Raw mode unmount
                 self._safe_unmount(mount_point)
             
@@ -1489,7 +1583,8 @@ class SessionManager:
             if mount_point:
                 self._safe_rmtree(mount_point)
 
-    def _create_dynfilefs_session(self, session_path, initial_size_mb=1000):
+    def _create_dynfilefs_session(self, session_path, initial_size_mb=1000,
+                                  encryption='none', password=None):
         """Create a dynfilefs session structure"""
         temp_mount = None
         process = None
@@ -1503,10 +1598,14 @@ class SessionManager:
             virtual_file = os.path.join(temp_mount, "virtual.dat")
             if not self._wait_for_mount(virtual_file):
                 return False, _("Failed to create dynfilefs virtual file (timeout)")
-            format_result = subprocess.run(
-                ['mke2fs', '-F', '-t', 'ext4', virtual_file],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            if format_result.returncode != 0:
+            if encryption == 'luks':
+                self._format_luks_source(virtual_file, password)
+                format_result = None
+            else:
+                format_result = subprocess.run(
+                    ['mke2fs', '-F', '-t', 'ext4', virtual_file],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if format_result is not None and format_result.returncode != 0:
                 return False, _("Failed to format dynfilefs virtual file: {}").format(format_result.stderr.decode())
             subprocess.run(['sync'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             return True, _("DynFileFS session created successfully")
@@ -1617,23 +1716,6 @@ class SessionManager:
                     'display': display
                 }
 
-        elif session_mode == 'luks':
-            image_file = os.path.join(session_path, 'changes.luks')
-            if os.path.exists(image_file):
-                size = os.path.getsize(image_file)
-                return {'used_size': size, 'display': self._format_size(size), 'total_size': size}
-            if stored_size:
-                size = stored_size * 1024 * 1024
-                return {'used_size': size, 'display': self._format_size(size), 'total_size': size}
-            elif stored_size:
-                # Fallback to stored size if image not found
-                size_bytes = stored_size * 1024 * 1024
-                display = self._format_size(size_bytes)
-                return {
-                    'used_size': size_bytes,
-                    'display': display
-                }
-        
         # For native mode or fallback, calculate directory size
         size = self._get_directory_size(session_path)
         display = self._format_size(size)
@@ -1786,6 +1868,13 @@ class SessionManager:
                 session_data = metadata.get("sessions", {}).get(session_id)
                 if session_data is None:
                     return False, _("Session {} does not exist").format(session_id)
+                if not self._session_configuration_supported(session_data):
+                    return False, _("Session has unsupported persistence metadata")
+                if session_data.get('encryption', 'none') == 'luks':
+                    available, error = self._check_luks_available(
+                        session_data.get('mode'))
+                    if not available:
+                        return False, error
                 if session_data.get("mode") == "squashfs":
                     valid, error = self._validate_squashfs_activation(
                         session_id, session_data)
@@ -2171,7 +2260,8 @@ class SessionManager:
                     if key not in (
                             'boot_id', 'boot_level', 'mode', 'session', 'durable',
                             'writable', 'sessions_device', 'sessions_inode',
-                            'active_generation', 'dynblk_device') or key in state:
+                            'active_generation', 'dynblk_device', 'encryption',
+                            'crypt_mapper', 'loop_device') or key in state:
                         return False, _("Persistence runtime state is malformed")
                     state[key] = value
             with open(self.BOOT_ID_FILE, 'r', encoding='ascii') as boot_id_file:
@@ -2180,6 +2270,7 @@ class SessionManager:
                 'boot_id': boot_id, 'boot_level': 'ok', 'mode': 'squashfs',
                 'session': session_id, 'durable': '1', 'writable': '1',
                 'active_generation': 'current', 'dynblk_device': 'none',
+                'encryption': 'none', 'crypt_mapper': 'none', 'loop_device': 'none',
             }
             if any(state.get(key) != value for key, value in required_state.items()):
                 return False, _("The requested SquashFS session is not active in this boot")
@@ -2347,26 +2438,30 @@ class SessionManager:
         return success, str(message), capture
 
     def create_session(self, session_mode="native", size_mb=None, password=None,
-                       policy=None, autosave=0):
+                       policy=None, autosave=0, encryption='none'):
         """Create a session while serializing its tree and metadata publication."""
         try:
             with self._mutation_lock():
                 return self._create_session_locked(
                     session_mode=session_mode, size_mb=size_mb, password=password,
-                    policy=policy, autosave=autosave)
+                    policy=policy, autosave=autosave, encryption=encryption)
         except Exception as error:
             return False, _("Error creating session: {}").format(str(error))
 
     def _create_session_locked(self, session_mode="native", size_mb=None, password=None,
-                               policy=None, autosave=0):
+                               policy=None, autosave=0, encryption='none'):
         """Create a new session."""
         if not self.sessions_dir:
             return False, _("Sessions directory not found")
         
         # Validate session mode
-        valid_modes = ["native", "squashfs", "dynfilefs", "dynblk", "raw", "luks"]
+        valid_modes = ["native", "squashfs", "dynfilefs", "dynblk", "raw"]
         if session_mode not in valid_modes:
             return False, _("Invalid session mode. Must be one of: {}").format(", ".join(valid_modes))
+        if encryption not in ('none', 'luks'):
+            return False, _("Invalid session encryption")
+        if encryption == 'luks' and not password:
+            return False, _("A LUKS passphrase is required.")
         squashfs_policy = policy or 'shutdown'
         if session_mode == 'squashfs' and squashfs_policy not in ('manual', 'shutdown'):
             return False, _("SquashFS save policy must be manual or shutdown")
@@ -2385,7 +2480,12 @@ class SessionManager:
             error_msg = dir_status.get('error', _("Sessions directory is not writable"))
             return False, error_msg
         
-        valid_target, target_error = self._validate_target_mode(session_mode, size_mb)
+        if encryption == 'none':
+            valid_target, target_error = self._validate_target_mode(
+                session_mode, size_mb)
+        else:
+            valid_target, target_error = self._validate_target_mode(
+                session_mode, size_mb, encryption)
         if not valid_target:
             return False, target_error
         
@@ -2434,7 +2534,13 @@ class SessionManager:
                 if size_mb is None:
                     size_mb = self.DEFAULT_CONTAINER_SIZE_MB
 
-                success, message = self._create_dynfilefs_session(session_path, size_mb)
+                if encryption == 'luks':
+                    success, message = self._create_dynfilefs_session(
+                        session_path, size_mb, encryption=encryption,
+                        password=password)
+                else:
+                    success, message = self._create_dynfilefs_session(
+                        session_path, size_mb)
                 if not success:
                     # Clean up on failure
                     try:
@@ -2446,7 +2552,13 @@ class SessionManager:
             elif session_mode == "dynblk":
                 if size_mb is None:
                     size_mb = self.DYNBLK_DEFAULT_SIZE_MB
-                success, message = self._create_dynblk_session(session_path, size_mb)
+                if encryption == 'luks':
+                    success, message = self._create_dynblk_session(
+                        session_path, size_mb, encryption=encryption,
+                        password=password)
+                else:
+                    success, message = self._create_dynblk_session(
+                        session_path, size_mb)
                 if not success:
                     # Do not infer ownership from /sys/module/dynblk or dynblk0:
                     # other volumes may legitimately be attached. Preserve any
@@ -2478,13 +2590,16 @@ class SessionManager:
                         with open(image_file, 'wb') as f:
                             f.truncate(size_bytes)
 
-                    # Format with ext4
-                    format_cmd = ['mke2fs', '-F', '-t', 'ext4', image_file]
-                    format_result = subprocess.run(format_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    if encryption == 'luks':
+                        self._format_luks_source(image_file, password)
+                        format_result = None
+                    else:
+                        format_cmd = ['mke2fs', '-F', '-t', 'ext4', image_file]
+                        format_result = subprocess.run(format_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     # Sync to ensure filesystem is written (important for FAT32/NTFS)
                     subprocess.run(['sync'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-                    if format_result.returncode != 0:
+                    if format_result is not None and format_result.returncode != 0:
                         shutil.rmtree(session_path)
                         return False, _("Failed to format raw image file: {}").format(format_result.stderr.decode())
                         
@@ -2492,19 +2607,6 @@ class SessionManager:
                     shutil.rmtree(session_path)
                     return False, _("Failed to create raw image file: {}").format(str(e))
 
-            elif session_mode == 'luks':
-                size_mb = size_mb or self.DEFAULT_CONTAINER_SIZE_MB
-                # Build outside the reserved directory, then atomically publish it.
-                staging_path = self._make_temp_dir()
-                try:
-                    self._create_luks_container(staging_path, size_mb, password)
-                    os.rmdir(session_path)
-                    os.rename(staging_path, session_path)
-                except Exception:
-                    shutil.rmtree(staging_path, ignore_errors=True)
-                    shutil.rmtree(session_path, ignore_errors=True)
-                    raise
-            
             # For native mode, just create empty directory (no special initialization needed)
             
             # Get system version and edition
@@ -2533,6 +2635,8 @@ class SessionManager:
                     "mode": session_mode, "version": version, "edition": edition,
                     "union": union
                 }
+                if encryption == 'luks':
+                    session_record['encryption'] = 'luks'
                 if session_mode == "squashfs":
                     session_record.update({
                         "policy": squashfs_policy,
@@ -2552,7 +2656,7 @@ class SessionManager:
                     boot_id = self._current_boot_id()
                     if boot_id:
                         session_record['capture_boot_id'] = boot_id
-                elif session_mode in ["dynfilefs", "dynblk", "raw", "luks"] and size_mb:
+                elif session_mode in ["dynfilefs", "dynblk", "raw"] and size_mb:
                     session_record["size"] = size_mb
                 metadata["sessions"][new_id] = session_record
                 metadata_updated = self._write_sessions_metadata(metadata)
@@ -2562,14 +2666,14 @@ class SessionManager:
                 try:
                     if session_mode == "dynfilefs":
                         message = _("Session {} created successfully (mode: {}, size: {}MB)").format(new_id, session_mode, size_mb)
-                    elif session_mode in ("raw", "luks"):
+                    elif session_mode == "raw":
                         message = _("Session {} created successfully (mode: {}, size: {}MB)").format(new_id, session_mode, size_mb)
                     else:
                         message = _("Session {} created successfully (mode: {})").format(new_id, session_mode)
                     return True, message
                 except Exception:
                     # Fallback to simple English message if translation fails
-                    if session_mode in ["dynfilefs", "dynblk", "raw", "luks"] and size_mb is not None:
+                    if session_mode in ["dynfilefs", "dynblk", "raw"] and size_mb is not None:
                         return True, f"Session {new_id} created successfully (mode: {session_mode}, size: {size_mb}MB)"
                     else:
                         return True, f"Session {new_id} created successfully (mode: {session_mode})"
@@ -2722,9 +2826,11 @@ class SessionManager:
             metadata = self._read_sessions_metadata()
             session_data = metadata.get("sessions", {}).get(session_id, {})
             session_mode = session_data.get("mode", "unknown")
-            if session_mode not in ["dynfilefs", "dynblk", "raw", "luks"]:
-                return False, _("Resize is only supported for dynfilefs, dynblk, raw, and LUKS mode sessions")
-            valid_target, target_error = self._validate_target_mode(session_mode, new_size_mb)
+            encryption = session_data.get('encryption', 'none')
+            if session_mode not in ["dynfilefs", "dynblk", "raw"]:
+                return False, _("Resize is only supported for DynFileFS, DynBlk, and Raw sessions")
+            valid_target, target_error = self._validate_target_mode(
+                session_mode, new_size_mb, encryption)
             if not valid_target:
                 return False, target_error
             running = self.get_running_session()
@@ -2732,16 +2838,23 @@ class SessionManager:
                 return False, _("Cannot resize currently running session")
             try:
                 if session_mode == "dynfilefs":
-                    return self._resize_dynfilefs_session(session_path, new_size_mb, session_id, metadata)
+                    return self._resize_dynfilefs_session(
+                        session_path, new_size_mb, session_id, metadata,
+                        encryption=encryption, password=password)
                 if session_mode == 'dynblk':
-                    return self._resize_dynblk_session(session_path, new_size_mb, session_id, metadata)
-                if session_mode == 'luks':
-                    return self._resize_luks_session(session_path, new_size_mb, session_id, metadata, password)
+                    return self._resize_dynblk_session(
+                        session_path, new_size_mb, session_id, metadata,
+                        encryption=encryption, password=password)
+                if encryption == 'luks':
+                    return self._resize_luks_session(
+                        session_path, new_size_mb, session_id, metadata,
+                        password)
                 return self._resize_raw_session(session_path, new_size_mb, session_id, metadata)
             except Exception as e:
                 return False, _("Error resizing session: {}").format(str(e))
 
-    def _resize_dynfilefs_session(self, session_path, new_size_mb, session_id, metadata):
+    def _resize_dynfilefs_session(self, session_path, new_size_mb, session_id,
+                                  metadata, encryption='none', password=None):
         """Resize a dynfilefs session"""
         changes_file = os.path.join(session_path, "changes.dat")
         if not os.path.exists(changes_file):
@@ -2763,6 +2876,10 @@ class SessionManager:
             
             if new_size_mb <= used_size_mb:
                 return False, _("New size must be larger than used size ({}MB)").format(used_size_mb)
+
+            if encryption == 'luks':
+                return self._resize_encrypted_dynfilefs_session(
+                    session_path, new_size_mb, session_id, metadata, password)
             
             # Create temporary mount point for resizing
             temp_mount = f"/tmp/dynfilefs_resize_{session_id}_{os.getpid()}"
@@ -2818,7 +2935,60 @@ class SessionManager:
         except Exception as e:
             return False, _("Failed to resize dynfilefs session: {}").format(str(e))
 
-    def _resize_dynblk_session(self, session_path, new_size_mb, session_id, metadata):
+    @contextlib.contextmanager
+    def _expose_dynfilefs_virtual(self, session_path, size_mb=None):
+        """Expose virtual.dat for one bounded DynFileFS operation."""
+        changes_file = os.path.join(session_path, 'changes.dat')
+        mount_point = tempfile.mkdtemp(prefix='minios_dyn_resize_')
+        command = ['dynfilefs', '-f', changes_file, '-m', mount_point]
+        if size_mb is not None:
+            command += ['-s', str(size_mb)]
+        command += ['-p', '4000', '-d']
+        process = subprocess.Popen(
+            command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            virtual_file = os.path.join(mount_point, 'virtual.dat')
+            if not self._wait_for_mount(virtual_file):
+                raise OSError(_("Failed to expose DynFileFS virtual image"))
+            yield virtual_file
+        finally:
+            self._safe_fusermount(mount_point)
+            self._cleanup_process(process)
+            self._safe_rmtree(mount_point)
+
+    def _resize_encrypted_dynfilefs_session(self, session_path, new_size_mb,
+                                            session_id, metadata, password):
+        """Authenticate, grow DynFileFS, then reopen and grow encrypted ext4."""
+        try:
+            with self._expose_dynfilefs_virtual(session_path) as virtual_file:
+                with self._open_luks_source(virtual_file, password):
+                    pass
+            with self._expose_dynfilefs_virtual(
+                    session_path, size_mb=new_size_mb) as virtual_file:
+                with self._open_luks_source(virtual_file, password) as device:
+                    check = subprocess.run(
+                        ['e2fsck', '-p', device], stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE)
+                    if check.returncode > 1:
+                        raise OSError(check.stderr.decode(errors='replace'))
+                    resize = subprocess.run(
+                        ['resize2fs', '-f', device], stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE)
+                    if resize.returncode:
+                        raise OSError(resize.stderr.decode(errors='replace'))
+                    subprocess.run(
+                        ['sync'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            metadata['sessions'][session_id]['size'] = new_size_mb
+            if not self._write_sessions_metadata(metadata):
+                return False, _("Failed to update session metadata")
+            return True, _("Session {} resized to {}MB successfully").format(
+                session_id, new_size_mb)
+        except Exception as error:
+            return False, _("Failed to resize encrypted DynFileFS session: {}").format(
+                str(error))
+
+    def _resize_dynblk_session(self, session_path, new_size_mb, session_id,
+                               metadata, encryption='none', password=None):
         """Grow a detached dynblk device and its ext4 filesystem."""
         volume = os.path.join(session_path, 'volume000.db')
         if not os.path.exists(volume):
@@ -2842,6 +3012,29 @@ class SessionManager:
                 operation_error = _(
                     "dynblk device is already {}MB and cannot be shrunk to {}MB").format(
                         current_size_mb, new_size_mb)
+            elif encryption == 'luks':
+                # Authenticate while the old backend geometry is still intact.
+                with self._open_luks_source(device, password):
+                    pass
+                if new_size_mb > current_size_mb:
+                    self._run_dynblk([
+                        'grow', device, '{}MiB'.format(new_size_mb), '--execute'])
+                with self._open_luks_source(device, password) as target_device:
+                    check = subprocess.run(
+                        ['e2fsck', '-p', target_device],
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    if check.returncode > 1:
+                        operation_error = _("Filesystem check failed before dynblk resize: {}").format(
+                            check.stderr.decode(errors='replace').strip())
+                    else:
+                        resize = subprocess.run(
+                            ['resize2fs', '-f', target_device],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        if resize.returncode:
+                            operation_error = _("Failed to resize dynblk filesystem: {}").format(
+                                resize.stderr.decode(errors='replace').strip())
+                        else:
+                            subprocess.run(['sync'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             else:
                 check = subprocess.run(
                     ['e2fsck', '-p', device],
@@ -2939,7 +3132,7 @@ class SessionManager:
 
     def _resize_luks_session(self, session_path, new_size_mb, session_id, metadata, password):
         """Grow a LUKS file and its ext4 filesystem; shrinking is deliberately unsupported."""
-        image_file = os.path.join(session_path, 'changes.luks')
+        image_file = os.path.join(session_path, 'changes.img')
         journal_path = os.path.join(session_path, '.luks-resize.json')
         if not os.path.exists(image_file):
             return False, _("LUKS container not found")
@@ -2972,6 +3165,9 @@ class SessionManager:
         filesystem_grown = False
         temporary_journal = None
         try:
+            # Reject a wrong password before changing the backing-file length.
+            with self._open_luks_source(image_file, password):
+                pass
             fd, temporary_journal = tempfile.mkstemp(prefix='.luks-resize-', dir=session_path)
             with os.fdopen(fd, 'w') as journal_file:
                 json.dump({'size': new_size_mb}, journal_file)
@@ -2982,10 +3178,12 @@ class SessionManager:
                 image.truncate(new_size_mb * 1024 * 1024)
                 image.flush()
                 os.fsync(image.fileno())
-            with self._mount_luks(image_file, password, writable=True) as mount_point:
-                # The mapper is mounted, so resize its filesystem device directly.
-                device = subprocess.run(['findmnt', '-no', 'SOURCE', '--target', mount_point],
-                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True).stdout.decode().strip()
+            with self._open_luks_source(image_file, password) as device:
+                check = subprocess.run(
+                    ['e2fsck', '-p', device], stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE)
+                if check.returncode > 1:
+                    raise OSError(check.stderr.decode(errors='replace'))
                 result = subprocess.run(['resize2fs', '-f', device], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 if result.returncode:
                     raise OSError(result.stderr.decode(errors='replace'))
@@ -3030,6 +3228,8 @@ class SessionManager:
         session_info = self._get_session_info(session_id)
         if not session_info:
             return False, _("Session #{} not found").format(session_id)
+        if not session_info.get('configuration_supported', True):
+            return False, _("Session has unsupported persistence metadata")
         if session_info.get('mode') == 'squashfs':
             return False, _("SquashFS export is unavailable until save support is complete")
 
@@ -3086,7 +3286,15 @@ class SessionManager:
                 self._create_session_info_file(session_info, info_file)
 
                 # Mount session and stream to archive
-                with self._mount_session_read(session_path, session_info['mode'], password=password) as source_dir:
+                encryption = session_info.get('encryption', 'none')
+                if encryption == 'luks':
+                    mount_context = self._mount_session_read(
+                        session_path, session_info['mode'], password=password,
+                        encryption=encryption)
+                else:
+                    mount_context = self._mount_session_read(
+                        session_path, session_info['mode'], password=password)
+                with mount_context as source_dir:
                     # Exclude list
                     excludes = [
                         '--exclude=workdir',
@@ -3144,6 +3352,7 @@ class SessionManager:
             "date": datetime.now().isoformat() + 'Z',
             "session": {
                 "mode": session_info['mode'],
+                "encryption": session_info.get('encryption', 'none'),
                 "version": session_info['version'],
                 "edition": session_info['edition'],
                 "union": session_info['union'],
@@ -3305,11 +3514,15 @@ class SessionManager:
         if not isinstance(metadata, dict) or not isinstance(metadata.get('session'), dict):
             return False
         session = metadata['session']
-        return (session.get('mode') in ('native', 'dynfilefs', 'dynblk', 'raw', 'luks')
+        encryption = session.get('encryption', 'none')
+        return (session.get('mode') in ('native', 'dynfilefs', 'dynblk', 'raw')
+                and encryption in ('none', 'luks')
+                and self._session_configuration_supported(session)
                 and all(isinstance(session.get(key), str) for key in ('version', 'edition', 'union')))
 
     def import_session(self, archive_path, auto_convert=False, force_mode=None,
-                       verify=True, skip_compatibility_check=False, password=None):
+                       verify=True, skip_compatibility_check=False, password=None,
+                       force_encryption=None):
         """Import session from TAR.ZSTD archive (streaming)
 
         Args:
@@ -3349,12 +3562,18 @@ class SessionManager:
 
             # Determine import mode
             import_mode = metadata['session']['mode']
+            # Archives contain logical files, so importing them does not retain
+            # the source storage encryption unless explicitly requested.
+            import_encryption = 'none'
             if force_mode:
                 import_mode = force_mode
             elif auto_convert:
                 import_mode = self._select_compatible_mode(metadata)
+            if force_encryption is not None:
+                import_encryption = force_encryption
 
-            valid_target, target_error = self._validate_target_mode(import_mode)
+            valid_target, target_error = self._validate_target_mode(
+                import_mode, encryption=import_encryption)
             if not valid_target:
                 return False, target_error
 
@@ -3373,12 +3592,19 @@ class SessionManager:
             
             # Determine size for container modes
             size_mb = None
-            if import_mode in ['dynfilefs', 'dynblk', 'raw', 'luks']:
+            if import_mode in ['dynfilefs', 'dynblk', 'raw']:
                 size_mb = max(100, int(required_mb))
 
             # Import directly using streaming
             try:
-                with self._mount_session_write(session_path, import_mode, size_mb, password=password) as target_dir:
+                if import_encryption == 'luks':
+                    mount_context = self._mount_session_write(
+                        session_path, import_mode, size_mb, password=password,
+                        encryption=import_encryption)
+                else:
+                    mount_context = self._mount_session_write(
+                        session_path, import_mode, size_mb, password=password)
+                with mount_context as target_dir:
                     # The validated archive may only write data/ members.
                     cmd = [
                         'tar', '-xf', archive_path,
@@ -3406,7 +3632,14 @@ class SessionManager:
                     shutil.rmtree(session_path)
                     return False, _("Imported session failed verification")
 
-            if not self._create_session_metadata(new_id, import_mode, metadata):
+            if import_encryption == 'luks':
+                metadata_created = self._create_session_metadata(
+                    new_id, import_mode, metadata,
+                    encryption=import_encryption)
+            else:
+                metadata_created = self._create_session_metadata(
+                    new_id, import_mode, metadata)
+            if not metadata_created:
                 shutil.rmtree(session_path, ignore_errors=True)
                 return False, _("Failed to update session metadata")
 
@@ -3527,7 +3760,8 @@ class SessionManager:
 
         return max(existing_ids) + 1
 
-    def _create_session_metadata(self, session_id, mode, import_metadata):
+    def _create_session_metadata(self, session_id, mode, import_metadata,
+                                 encryption='none'):
         """Create metadata entry for imported session"""
         with self._mutation_lock():
             metadata = self._read_sessions_metadata()
@@ -3537,7 +3771,9 @@ class SessionManager:
                 'edition': import_metadata['session']['edition'],
                 'union': import_metadata['session']['union']
             }
-            if mode in ['dynfilefs', 'dynblk', 'raw', 'luks']:
+            if encryption == 'luks':
+                session_data['encryption'] = 'luks'
+            if mode in ['dynfilefs', 'dynblk', 'raw']:
                 size = import_metadata['session'].get('size', 4000)
                 if isinstance(size, int):
                     session_data['size'] = max(100, int(size / (1024 * 1024))) if size > 100000 else max(100, size)
@@ -3549,7 +3785,9 @@ class SessionManager:
         session_path = os.path.join(self.sessions_dir, str(session_id))
         return os.path.exists(session_path) and os.path.isdir(session_path)
 
-    def copy_session(self, session_id, to_mode=None, size_mb=None, password=None):
+    def copy_session(self, session_id, to_mode=None, size_mb=None,
+                     source_password=None, target_password=None,
+                     to_encryption=None):
         """Copy session, optionally converting mode
 
         Args:
@@ -3568,12 +3806,15 @@ class SessionManager:
         source_session = self._get_session_info(session_id)
         if not source_session:
             return False, _("Source session not found")
+        if not source_session.get('configuration_supported', True):
+            return False, _("Session has unsupported persistence metadata")
 
         try:
             source_path = self._session_path(session_id, require_exists=True)
         except ValueError as e:
             return False, str(e)
         source_mode = source_session['mode']
+        source_encryption = source_session.get('encryption', 'none')
         if source_mode == 'squashfs':
             return False, _("SquashFS copy is unavailable until save support is complete")
 
@@ -3581,11 +3822,16 @@ class SessionManager:
         # admission or copy work. dynblk capacity is virtual/thin, so its 16 GiB
         # default must not be confused with required physical free space.
         target_mode = to_mode if to_mode else source_mode
+        target_encryption = (source_encryption if to_encryption is None
+                             else to_encryption)
         if target_mode == 'dynblk' and size_mb is None and source_mode != 'dynblk':
             size_mb = self.DYNBLK_DEFAULT_SIZE_MB
-        elif target_mode == 'luks' and size_mb is None and source_mode != 'luks':
-            size_mb = self.DEFAULT_CONTAINER_SIZE_MB
-        valid_target, target_error = self._validate_target_mode(target_mode, size_mb)
+        if target_encryption == 'none':
+            valid_target, target_error = self._validate_target_mode(
+                target_mode, size_mb)
+        else:
+            valid_target, target_error = self._validate_target_mode(
+                target_mode, size_mb, target_encryption)
         if not valid_target:
             return False, target_error
 
@@ -3618,13 +3864,16 @@ class SessionManager:
         new_id, target_path = self._reserve_session()
 
         try:
-            if source_mode == target_mode:
-                # Direct copy
-                success = self._copy_session_direct(source_path, target_path, source_mode)
-            else:
-                # Copy with conversion
+            if source_encryption == target_encryption == 'none':
                 success = self._copy_session_with_conversion(
-                    source_path, target_path, source_mode, target_mode, size_mb, password)
+                    source_path, target_path, source_mode, target_mode, size_mb)
+            else:
+                success = self._copy_session_with_conversion(
+                    source_path, target_path, source_mode, target_mode, size_mb,
+                    source_encryption=source_encryption,
+                    target_encryption=target_encryption,
+                    source_password=source_password,
+                    target_password=target_password)
 
             if not success:
                 if os.path.exists(target_path):
@@ -3638,7 +3887,9 @@ class SessionManager:
                     'mode': target_mode, 'version': source_session['version'],
                     'edition': source_session['edition'], 'union': source_session['union']
                 }
-                if target_mode in ['dynfilefs', 'dynblk', 'raw', 'luks']:
+                if target_encryption == 'luks':
+                    metadata['sessions'][str(new_id)]['encryption'] = 'luks'
+                if target_mode in ['dynfilefs', 'dynblk', 'raw']:
                     if size_mb:
                         metadata['sessions'][str(new_id)]['size'] = size_mb
                     elif source_mode == target_mode and source_session.get('total_size_mb'):
@@ -3652,6 +3903,39 @@ class SessionManager:
             if os.path.exists(target_path):
                 shutil.rmtree(target_path)
             return False, _("Copy failed: {}").format(str(e))
+
+    def clone_session(self, session_id):
+        """Create a detached physical copy preserving backend identities."""
+        try:
+            session_id = self._validate_session_id(session_id)
+            source_session = self._get_session_info(session_id)
+            if not source_session:
+                return False, _("Source session not found")
+            if not source_session.get('configuration_supported', True):
+                return False, _("Session has unsupported persistence metadata")
+            if source_session.get('mode') == 'squashfs':
+                return False, _("SquashFS clone is not supported")
+            running = self.get_running_session()
+            if running and running['id'] == session_id:
+                return False, _("Cannot clone currently running session")
+            source_path = self._session_path(session_id, require_exists=True)
+            new_id, target_path = self._reserve_session()
+            if not self._copy_session_direct(
+                    source_path, target_path, source_session['mode']):
+                raise OSError(_("Failed to clone session data"))
+            with self._mutation_lock():
+                metadata = self._read_sessions_metadata()
+                source_record = metadata.get('sessions', {}).get(session_id)
+                if not isinstance(source_record, dict):
+                    raise OSError(_("Source session metadata is missing"))
+                metadata.setdefault('sessions', {})[new_id] = dict(source_record)
+                if not self._write_sessions_metadata(metadata):
+                    raise OSError(_("Failed to update session metadata"))
+            return True, _("Session cloned successfully to #{}").format(new_id)
+        except Exception as error:
+            if 'target_path' in locals() and os.path.exists(target_path):
+                shutil.rmtree(target_path, ignore_errors=True)
+            return False, _("Clone failed: {}").format(str(error))
 
     def _copy_session_direct(self, source_path, target_path, mode):
         """Direct copy of session without conversion"""
@@ -3732,11 +4016,6 @@ class SessionManager:
                     os.path.join(target_path, 'changes.img'))
                 return True
 
-            elif mode == 'luks':
-                shutil.copy2(os.path.join(source_path, 'changes.luks'),
-                             os.path.join(target_path, 'changes.luks'))
-                return True
-
             return False
         except Exception as e:
             print(f"DEBUG: _copy_session_direct failed: {e}")
@@ -3745,12 +4024,21 @@ class SessionManager:
             return False
 
     def _copy_session_with_conversion(self, source_path, target_path,
-                                      source_mode, target_mode, size_mb=None, password=None):
+                                      source_mode, target_mode, size_mb=None,
+                                      source_encryption='none',
+                                      target_encryption='none',
+                                      source_password=None,
+                                      target_password=None):
         """Copy session with mode conversion"""
         try:
             # Direct copy using mounts
-            with self._mount_session_read(source_path, source_mode, password=password) as source_dir:
-                with self._mount_session_write(target_path, target_mode, size_mb, password=password) as target_dir:
+            with self._mount_session_read(
+                    source_path, source_mode, password=source_password,
+                    encryption=source_encryption) as source_dir:
+                with self._mount_session_write(
+                        target_path, target_mode, size_mb,
+                        password=target_password,
+                        encryption=target_encryption) as target_dir:
                     # Copy files using rsync
                     cmd = [
                         'rsync', '-aH',
@@ -3776,7 +4064,8 @@ class SessionManager:
             return False
 
     def convert_session(self, session_id, target_mode, size_mb=None,
-                       in_place=True, password=None):
+                       in_place=True, source_password=None,
+                       target_password=None, target_encryption='none'):
         """Convert session storage mode
 
         Args:
@@ -3794,22 +4083,27 @@ class SessionManager:
             return False, str(e)
         # --new-session must leave the original untouched and create a new ID.
         if not in_place:
-            if password is None:
-                return self.copy_session(session_id, to_mode=target_mode, size_mb=size_mb)
-            return self.copy_session(session_id, to_mode=target_mode, size_mb=size_mb, password=password)
+            return self.copy_session(
+                session_id, to_mode=target_mode, size_mb=size_mb,
+                source_password=source_password,
+                target_password=target_password,
+                to_encryption=target_encryption)
 
         # Get session
         session_info = self._get_session_info(session_id)
         if not session_info:
             return False, _("Session not found")
+        if not session_info.get('configuration_supported', True):
+            return False, _("Session has unsupported persistence metadata")
 
         source_mode = session_info['mode']
+        source_encryption = session_info.get('encryption', 'none')
         if source_mode == 'squashfs':
             return False, _("SquashFS conversion is unavailable until save support is complete")
 
         # Check if conversion needed
-        if source_mode == target_mode:
-            return False, _("Session is already in {} mode").format(target_mode)
+        if (source_mode, source_encryption) == (target_mode, target_encryption):
+            return False, _("Session already uses the requested storage and encryption")
 
         # Check if session is running
         running = self.get_running_session()
@@ -3822,12 +4116,13 @@ class SessionManager:
             return False, _("Cannot convert currently active session. "
                            "Please activate another session first.")
 
-        valid_target, target_error = self._validate_target_mode(target_mode, size_mb)
+        valid_target, target_error = self._validate_target_mode(
+            target_mode, size_mb, target_encryption)
         if not valid_target:
             return False, target_error
 
         # Set default size for dynfilefs/raw if not specified
-        if target_mode in ['dynfilefs', 'dynblk', 'raw', 'luks'] and not size_mb:
+        if target_mode in ['dynfilefs', 'dynblk', 'raw'] and not size_mb:
             # Try to use size from source session if available
             if session_info.get('total_size_mb'):
                 size_mb = session_info['total_size_mb']
@@ -3843,8 +4138,12 @@ class SessionManager:
         new_session_path = self._make_temp_dir()
 
         try:
-            if not self._copy_session_with_conversion(session_path, new_session_path,
-                                                       source_mode, target_mode, size_mb, password):
+            if not self._copy_session_with_conversion(
+                    session_path, new_session_path, source_mode, target_mode,
+                    size_mb, source_encryption=source_encryption,
+                    target_encryption=target_encryption,
+                    source_password=source_password,
+                    target_password=target_password):
                 raise OSError(_("Failed to copy session data"))
 
             # Keep a rollback copy until the durable metadata update succeeds.
@@ -3859,7 +4158,11 @@ class SessionManager:
                     os.rename(backup_path, session_path)
                     raise OSError(_("Session metadata is missing"))
                 metadata['sessions'][session_id]['mode'] = target_mode
-                if target_mode in ['dynfilefs', 'dynblk', 'raw', 'luks']:
+                if target_encryption == 'luks':
+                    metadata['sessions'][session_id]['encryption'] = 'luks'
+                else:
+                    metadata['sessions'][session_id].pop('encryption', None)
+                if target_mode in ['dynfilefs', 'dynblk', 'raw']:
                     metadata['sessions'][session_id]['size'] = size_mb
                 else:
                     metadata['sessions'][session_id].pop('size', None)
@@ -3891,6 +4194,10 @@ class SessionManager:
         return {
             'filesystem': filesystem_info,
             'compatible_modes': compatible_modes,
+            'compatible_encryptions': {
+                mode: self._get_compatible_encryptions(mode)
+                for mode in compatible_modes
+            },
             'limitations': limitations
         }, None
 
@@ -3914,6 +4221,7 @@ def format_session_list(sessions):
         
         lines.append(f"{_('Session')} #{session['id']}{status}")
         lines.append(f"  {_('Mode:').rstrip(':')} {session['mode']}")
+        lines.append(f"  {_('Encryption:').rstrip(':')} {session.get('encryption', 'none')}")
         lines.append(f"  {_('Version:').rstrip(':')} {session['version']}")
         lines.append(f"  {_('Edition:').rstrip(':')} {session['edition']}")
         lines.append(f"  {_('Union FS:').rstrip(':')} {session['union']}")
@@ -3945,6 +4253,9 @@ def format_sessions_json(sessions):
         json_session = {
             'id': session['id'],
             'mode': session['mode'],
+            'encryption': session.get('encryption', 'none'),
+            'configuration_supported': session.get(
+                'configuration_supported', True),
             'version': session['version'],
             'edition': session['edition'],
             'union': session['union'],
@@ -3992,6 +4303,9 @@ def format_session_json(session):
     json_session = {
         'id': session['id'],
         'mode': session['mode'],
+        'encryption': session.get('encryption', 'none'),
+        'configuration_supported': session.get(
+            'configuration_supported', True),
         'version': session['version'],
         'edition': session['edition'],
         'union': session['union'],
@@ -4068,6 +4382,34 @@ def luks_password_from_args(args, confirm=False):
     return password
 
 
+def luks_copy_passwords_from_args(args, source_encrypted, target_encrypted):
+    """Read independent source and target passphrases in a fixed stdin order."""
+    if not getattr(args, 'password_stdin', False):
+        source = (getpass.getpass(_('Source LUKS passphrase: ')).encode()
+                  if source_encrypted else None)
+        target = None
+        if target_encrypted:
+            target = getpass.getpass(_('Target LUKS passphrase: ')).encode()
+            confirmation = getpass.getpass(
+                _('Confirm target LUKS passphrase: ')).encode()
+            if target != confirmation:
+                raise ValueError(_('LUKS passphrases do not match.'))
+    else:
+        source = (sys.stdin.buffer.readline().rstrip(b'\r\n')
+                  if source_encrypted else None)
+        target = None
+        if target_encrypted:
+            target = sys.stdin.buffer.readline().rstrip(b'\r\n')
+            confirmation = sys.stdin.buffer.readline().rstrip(b'\r\n')
+            if target != confirmation:
+                raise ValueError(_('LUKS passphrases do not match.'))
+    if source_encrypted and not source:
+        raise ValueError(_('Source LUKS passphrase must not be empty.'))
+    if target_encrypted and not target:
+        raise ValueError(_('Target LUKS passphrase must not be empty.'))
+    return source, target
+
+
 
 def main():
     """Main application entry point"""
@@ -4088,8 +4430,6 @@ def main():
 
     luks_available = luks_runtime_available()
     session_modes = ['native', 'squashfs', 'dynfilefs', 'dynblk', 'raw']
-    if luks_available:
-        session_modes.append('luks')
 
     parser = argparse.ArgumentParser(
         description=_('MiniOS Session Manager - Command line tool for managing persistent sessions'),
@@ -4228,6 +4568,8 @@ EXAMPLES:
                               default='native', help=_('Session mode (default: native)'))
     create_parser.add_argument('size', nargs='?', type=parse_perch_size, metavar='SIZE',
                               help=_('Size in MB, GB, or TB for container modes (default: 4000MB)'))
+    create_parser.add_argument('--encryption', choices=('none', 'luks'), default='none',
+                              help=_('Optional encryption layer (default: none)'))
     create_parser.add_argument('--policy', choices=('manual', 'shutdown'),
                               help=_('SquashFS shutdown save policy (default: shutdown)'))
     create_parser.add_argument('--autosave', type=int,
@@ -4281,6 +4623,8 @@ EXAMPLES:
                                help=_('Automatically convert to compatible mode'))
     import_parser.add_argument('--force-mode', choices=session_modes,
                                help=_('Force specific session mode'))
+    import_parser.add_argument('--force-encryption', choices=('none', 'luks'),
+                               help=_('Force target encryption'))
     import_parser.add_argument('--no-verify', action='store_true', help=_('Skip integrity verification'))
     import_parser.add_argument('--skip-compatibility-check', action='store_true',
                                help=_('Skip compatibility checks'))
@@ -4290,8 +4634,15 @@ EXAMPLES:
     copy_parser.add_argument('session_id', help=_('Session ID to copy'))
     copy_parser.add_argument('--to-mode', choices=session_modes,
                             help=_('Convert to different mode (optional)'))
+    copy_parser.add_argument('--to-encryption', choices=('none', 'luks'),
+                            help=_('Target encryption (default: preserve source)'))
     copy_parser.add_argument('--size', type=parse_perch_size, metavar='SIZE',
                             help=_('Size for a container target, in MB, GB, or TB'))
+
+    clone_parser = subparsers.add_parser(
+        'clone', help=_('Physically clone a detached session'),
+        parents=[parent_parser])
+    clone_parser.add_argument('session_id', help=_('Session ID to clone'))
 
     # Convert command
     convert_parser = subparsers.add_parser('convert', help=_('Convert session mode'), parents=[parent_parser])
@@ -4300,6 +4651,8 @@ EXAMPLES:
                                help=_('Target mode'))
     convert_parser.add_argument('--size', type=parse_perch_size, metavar='SIZE',
                                help=_('Size for a container target, in MB, GB, or TB'))
+    convert_parser.add_argument('--to-encryption', choices=('none', 'luks'),
+                               default='none', help=_('Target encryption'))
     convert_parser.add_argument('--new-session', action='store_true',
                                help=_('Create new session instead of in-place conversion'))
 
@@ -4452,13 +4805,14 @@ EXAMPLES:
 
     elif args.command == 'create':
         try:
-            password = luks_password_from_args(args, confirm=args.mode == 'luks')
+            password = luks_password_from_args(
+                args, confirm=args.encryption == 'luks')
         except ValueError as error:
             success, message = False, str(error)
         else:
             success, message = manager.create_session(
                 args.mode, args.size, password=password, policy=args.policy,
-                autosave=args.autosave)
+                autosave=args.autosave, encryption=args.encryption)
         if args.json:
             result = {"success": success, "message": message}
             print(json.dumps(result))
@@ -4601,7 +4955,9 @@ EXAMPLES:
             force_mode=args.force_mode,
             verify=verify,
             skip_compatibility_check=args.skip_compatibility_check,
-            password=luks_password_from_args(args)
+            password=luks_password_from_args(
+                args, confirm=args.force_encryption == 'luks'),
+            force_encryption=args.force_encryption
         )
         if args.json:
             result = {"success": success, "message": message}
@@ -4611,12 +4967,20 @@ EXAMPLES:
         sys.exit(0 if success else 1)
 
     elif args.command == 'copy':
-        success, message = manager.copy_session(
-            args.session_id,
-            to_mode=args.to_mode,
-            size_mb=args.size,
-            password=luks_password_from_args(args)
-        )
+        source = manager._get_session_info(args.session_id)
+        source_encryption = source.get('encryption', 'none') if source else 'none'
+        target_encryption = args.to_encryption or source_encryption
+        try:
+            source_password, target_password = luks_copy_passwords_from_args(
+                args, source_encryption == 'luks',
+                target_encryption == 'luks')
+            success, message = manager.copy_session(
+                args.session_id, to_mode=args.to_mode, size_mb=args.size,
+                source_password=source_password,
+                target_password=target_password,
+                to_encryption=args.to_encryption)
+        except ValueError as error:
+            success, message = False, str(error)
         if args.json:
             result = {"success": success, "message": message}
             print(json.dumps(result))
@@ -4624,15 +4988,30 @@ EXAMPLES:
             print(message)
         sys.exit(0 if success else 1)
 
+    elif args.command == 'clone':
+        success, message = manager.clone_session(args.session_id)
+        if args.json:
+            print(json.dumps({"success": success, "message": message}))
+        else:
+            print(message)
+        sys.exit(0 if success else 1)
+
     elif args.command == 'convert':
         in_place = not args.new_session
-        success, message = manager.convert_session(
-            args.session_id,
-            args.target_mode,
-            size_mb=args.size,
-            in_place=in_place,
-            password=luks_password_from_args(args)
-        )
+        source = manager._get_session_info(args.session_id)
+        source_encryption = source.get('encryption', 'none') if source else 'none'
+        target_encryption = args.to_encryption or source_encryption
+        try:
+            source_password, target_password = luks_copy_passwords_from_args(
+                args, source_encryption == 'luks',
+                target_encryption == 'luks')
+            success, message = manager.convert_session(
+                args.session_id, args.target_mode, size_mb=args.size,
+                in_place=in_place, source_password=source_password,
+                target_password=target_password,
+                target_encryption=target_encryption)
+        except ValueError as error:
+            success, message = False, str(error)
         if args.json:
             result = {"success": success, "message": message}
             print(json.dumps(result))

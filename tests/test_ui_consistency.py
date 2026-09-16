@@ -59,7 +59,7 @@ def test_squashfs_create_policies_and_save_progress_are_exposed():
     assert 'Gtk.Button(label=_("Save Now"))' in SOURCE
     assert "getattr(row, 'mode', 'unknown') == 'squashfs'" in SOURCE
     assert "getattr(row, 'is_running', False)" in SOURCE
-    assert "self.sessions_writable and not active)" in SOURCE
+    assert "getattr(row, 'configuration_supported', True)" in SOURCE
     assert "'save', session_id, '--json', '--progress'" in SOURCE
     assert 'GLib.timeout_add(500, show_progress_if_needed)' in SOURCE
     assert '_("Saving Session")' in SOURCE
@@ -146,8 +146,10 @@ def test_ram_only_status_explains_missing_persistent_storage():
 
 def test_dynblk_gui_is_capability_driven_and_resizable():
     assert "compatible_modes = ['native', 'dynfilefs', 'raw']" in SOURCE
-    assert "'dynfilefs', 'dynblk', 'raw', 'luks'" in SOURCE
-    assert "524288 if session_mode == 'dynblk'" in SOURCE
+    assert "for mode in ('raw', 'dynfilefs', 'dynblk')" in SOURCE
+    assert "if session_mode == 'dynblk':" in SOURCE
+    assert "encryption_combo.append('luks', _(\"LUKS2\"))" in SOURCE
+    assert '_(' + '"LUKS Mode"' + ')' not in SOURCE
     assert '_("Dynblk Mode")' in SOURCE
     assert "add_class('field-description')" in SOURCE
     assert 'Thin container: default 16 GiB, maximum 512 GiB' in SOURCE
@@ -160,6 +162,28 @@ def test_dynblk_completion_is_capability_gated():
     assert 'minios-initramfs-dynblk' in completion
     assert 'modinfo dynblk >/dev/null 2>&1' in completion
     assert 'session_modes+=" dynblk"' in completion
+    assert "grep -Fqx 'luks-layer-v1'" in completion
+    assert 'session_modes+=" luks"' not in completion
+
+
+def test_luks_is_documented_as_layered_encryption():
+    documentation = "\n".join(
+        (ROOT / name).read_text(encoding="utf-8")
+        for name in (
+            "README.md",
+            "debian/minios-session.1",
+            "debian/minios-session-manager.1",
+        )
+    )
+    assert "changes.luks" not in documentation
+    assert "perchmode=luks" not in documentation
+    assert "luks-layer-v1" in documentation
+    assert "clone" in documentation.lower()
+
+
+def test_gui_exposes_physical_clone_separately_from_copy():
+    assert 'C_lone Session' in SOURCE
+    assert "args = ['clone', self.selected_session_id, '--json']" in SOURCE
 
 
 def test_manpage_versions_match_changelog():

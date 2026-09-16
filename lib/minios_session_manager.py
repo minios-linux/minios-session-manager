@@ -76,10 +76,10 @@ class SessionManagerGUI:
         self._snapshot_time = None
         self._sessions_by_id = {}
         self._filesystem_info = {}
-        self.luks_available = bool(
-            shutil.which('cryptsetup') and shutil.which('losetup') and
-            os.path.isfile('/run/initramfs/etc/minios-initramfs-crypt')
-        )
+        self.luks_backends = {
+            mode: False
+            for mode in ('raw', 'dynfilefs', 'dynblk')
+        }
         
         self.sessions_status = {
             'success': False, 'found': False, 'writable': False,
@@ -747,14 +747,24 @@ class SessionManagerGUI:
         filesystem = info.get('filesystem')
         compatible_modes = info.get('compatible_modes')
         limitations = info.get('limitations')
+        encryptions = info.get('compatible_encryptions')
+        if encryptions is None:
+            encryptions = {mode: ['none'] for mode in compatible_modes or []}
         if (not isinstance(filesystem, dict) or
                 not isinstance(filesystem.get('type'), str) or
                 not filesystem['type'] or
                 not isinstance(compatible_modes, list) or
                 any(not isinstance(mode, str) or not mode
                     for mode in compatible_modes) or
-                not isinstance(limitations, dict)):
+                not isinstance(limitations, dict) or
+                not isinstance(encryptions, dict)):
             return False
+        for mode in compatible_modes:
+            values = encryptions.get(mode)
+            if (not isinstance(values, list) or not values or
+                    values[0] != 'none' or
+                    any(value not in ('none', 'luks') for value in values)):
+                return False
         max_file_size = limitations.get('max_file_size')
         if (max_file_size is not None and
                 (not isinstance(max_file_size, int) or
@@ -770,6 +780,10 @@ class SessionManagerGUI:
                       'size_formatted', 'path'):
             if not isinstance(session.get(field), str) or not session[field]:
                 return False
+        if session.get('encryption', 'none') not in ('none', 'luks'):
+            return False
+        if not isinstance(session.get('configuration_supported', True), bool):
+            return False
         size = session.get('size')
         if not isinstance(size, int) or isinstance(size, bool) or size < 0:
             return False
@@ -812,6 +826,12 @@ class SessionManagerGUI:
                 session['id']: session for session in sessions
             }
             self._filesystem_info = filesystem_info or {}
+            available_encryptions = self._filesystem_info.get(
+                'compatible_encryptions', {})
+            self.luks_backends = {
+                mode: 'luks' in available_encryptions.get(mode, [])
+                for mode in ('raw', 'dynfilefs', 'dynblk')
+            }
             self._snapshot_time = time.monotonic()
             self.create_btn.set_sensitive(
                 self.sessions_writable and bool(self._filesystem_info))
@@ -830,6 +850,9 @@ class SessionManagerGUI:
                 is_active = (session_id == active_session_id)
                 is_running = (session_id == running_session_id)
                 mode = session.get('mode', 'unknown')
+                encryption = session.get('encryption', 'none')
+                configuration_supported = session.get(
+                    'configuration_supported', True)
                 version = session.get('version', 'unknown')
                 edition = session.get('edition', 'unknown')
                 union = session.get('union', 'unknown')
@@ -860,7 +883,8 @@ class SessionManagerGUI:
                 # Create session row
                 self._create_session_row(
                     session_id, is_active, is_running, mode, version,
-                    edition, union, size, modified)
+                    edition, union, size, modified, encryption,
+                    configuration_supported)
             
             if not sessions_found:
                 # Show "no sessions" message
@@ -877,7 +901,9 @@ class SessionManagerGUI:
             # Hide loading indicator
             self._show_loading(False)
 
-    def _create_session_row(self, session_id, is_active, is_running, mode, version, edition, union, size, modified):
+    def _create_session_row(self, session_id, is_active, is_running, mode,
+                            version, edition, union, size, modified,
+                            encryption='none', configuration_supported=True):
         """Create a session row"""
         row = Gtk.ListBoxRow()
         
@@ -918,7 +944,8 @@ class SessionManagerGUI:
         # Row 1: Mode and Version
         mode_label = Gtk.Label()
         mode_text = _("Mode:")
-        mode_label.set_markup(f'<span size="small"><b>{mode_text}</b> {GLib.markup_escape_text(mode)}</span>')
+        mode_display = mode if encryption == 'none' else '{} + LUKS2'.format(mode)
+        mode_label.set_markup(f'<span size="small"><b>{mode_text}</b> {GLib.markup_escape_text(mode_display)}</span>')
         mode_label.set_halign(Gtk.Align.START)
         details_grid.attach(mode_label, 0, 0, 1, 1)
         
@@ -992,6 +1019,8 @@ class SessionManagerGUI:
         row.is_active = is_active
         row.is_running = is_running
         row.mode = mode
+        row.encryption = encryption
+        row.configuration_supported = configuration_supported
         
         self.sessions_list.add(row)
 
@@ -1043,6 +1072,11 @@ class SessionManagerGUI:
         copy_item.get_style_context().add_class('context-menu-copy')
         copy_item.connect("activate", self._on_context_copy)
         self.context_menu.append(copy_item)
+
+        clone_item = Gtk.MenuItem.new_with_mnemonic(_("C_lone Session"))
+        clone_item.get_style_context().add_class('context-menu-clone')
+        clone_item.connect("activate", self._on_context_clone)
+        self.context_menu.append(clone_item)
 
         # Convert menu item
         convert_item = Gtk.MenuItem.new_with_mnemonic(_("Con_vert Session"))
@@ -1099,22 +1133,28 @@ class SessionManagerGUI:
     def _prepare_context_menu(self, row):
         children = self.context_menu.get_children()
         activate_item, save_settings_item, resize_item = children[0:3]
-        export_item, copy_item, convert_item = children[4:7]
-        delete_item = children[10]
+        export_item, copy_item, clone_item, convert_item = children[4:8]
+        delete_item = children[11]
         resize_available = getattr(row, 'mode', 'unknown') in (
-            'dynfilefs', 'dynblk', 'raw', 'luks')
+            'dynfilefs', 'dynblk', 'raw')
         supported_operations = getattr(row, 'mode', 'unknown') != 'squashfs'
+        supported_operations = (
+            supported_operations and
+            getattr(row, 'configuration_supported', True))
         active = getattr(row, 'is_active', False)
         running = getattr(row, 'is_running', False)
 
         activate_item.set_sensitive(
-            self.sessions_writable and not active)
+            self.sessions_writable and not active and
+            getattr(row, 'configuration_supported', True))
         save_settings_item.set_sensitive(
             self.sessions_writable and getattr(row, 'mode', 'unknown') == 'squashfs')
         resize_item.set_sensitive(
             self.sessions_writable and not running and resize_available)
         export_item.set_sensitive(not running and supported_operations)
         copy_item.set_sensitive(
+            self.sessions_writable and not running and supported_operations)
+        clone_item.set_sensitive(
             self.sessions_writable and not running and supported_operations)
         convert_item.set_sensitive(
             self.sessions_writable and not running and supported_operations)
@@ -1151,6 +1191,27 @@ class SessionManagerGUI:
         """Handle copy from context menu"""
         if self.selected_session_id:
             self._show_copy_dialog(self.selected_session_id)
+
+    def _on_context_clone(self, menu_item):
+        """Create a detached physical clone of the selected session."""
+        if not self.selected_session_id:
+            return
+        self._show_loading(True, _("Cloning session, please wait..."))
+        args = ['clone', self.selected_session_id, '--json']
+        self._start_cli_task(args, self._on_clone_complete)
+
+    def _on_clone_complete(self, success, output, error):
+        self._show_loading(False)
+        if success:
+            self._show_info(_("Session cloned successfully"))
+            self.refresh_session_list()
+            return
+        try:
+            result = _strict_json_loads(output) if output else {}
+            message = result.get('message', error or _("Clone failed"))
+        except (TypeError, ValueError):
+            message = error or _("Clone failed")
+        self._show_error(message)
 
     def _on_context_convert(self, menu_item):
         """Handle convert from context menu"""
@@ -1272,14 +1333,15 @@ class SessionManagerGUI:
             if first_radio is None:
                 first_radio = raw_radio
 
-        if 'luks' in compatible_modes:
-            base_radio = first_radio if first_radio else None
-            luks_radio = Gtk.RadioButton.new_with_label_from_widget(base_radio, _("LUKS Mode"))
-            luks_radio.set_tooltip_text(_("Encrypted LUKS2/ext4 container"))
-            content_area.pack_start(luks_radio, False, False, 0)
-            radio_buttons['luks'] = luks_radio
-            if first_radio is None:
-                first_radio = luks_radio
+        encryption_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        encryption_box.pack_start(Gtk.Label(label=_("Encryption:")), False, False, 0)
+        encryption_combo = Gtk.ComboBoxText()
+        encryption_combo.append('none', _("None"))
+        if any(self.luks_backends.values()):
+            encryption_combo.append('luks', _("LUKS2"))
+        encryption_combo.set_active_id('none')
+        encryption_box.pack_start(encryption_combo, False, False, 0)
+        content_area.pack_start(encryption_box, False, False, 0)
 
         # SquashFS save policy and optional periodic saving.
         squashfs_options = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
@@ -1339,9 +1401,16 @@ class SessionManagerGUI:
             is_dynfilefs_active = 'dynfilefs' in radio_buttons and radio_buttons['dynfilefs'].get_active()
             is_dynblk_active = 'dynblk' in radio_buttons and radio_buttons['dynblk'].get_active()
             is_raw_active = 'raw' in radio_buttons and radio_buttons['raw'].get_active()
-            is_luks_active = 'luks' in radio_buttons and radio_buttons['luks'].get_active()
             is_squashfs_active = 'squashfs' in radio_buttons and radio_buttons['squashfs'].get_active()
-            is_sized_mode = is_dynfilefs_active or is_dynblk_active or is_raw_active or is_luks_active
+            is_sized_mode = is_dynfilefs_active or is_dynblk_active or is_raw_active
+            selected_mode = next((
+                name for name, button in radio_buttons.items()
+                if button.get_active()), None)
+            encryption_supported = self.luks_backends.get(
+                selected_mode, False)
+            encryption_box.set_sensitive(encryption_supported)
+            if not encryption_supported:
+                encryption_combo.set_active_id('none')
 
             squashfs_options.set_sensitive(is_squashfs_active)
             policy_description.set_text(
@@ -1358,7 +1427,7 @@ class SessionManagerGUI:
             # Keep helper text visually secondary rather than disabling it. A
             # disabled label looks unavailable even when it describes the
             # currently selected container mode.
-            if (is_raw_active or is_luks_active) and 'max_file_size' in limitations:
+            if is_raw_active and 'max_file_size' in limitations:
                 max_size = limitations['max_file_size']
                 current_size = int(size_spinbutton.get_value())
                 if current_size > max_size:
@@ -1382,9 +1451,6 @@ class SessionManagerGUI:
             elif is_raw_active:
                 adjustment.set_upper(1000000)
                 size_info_label.set_text(_("Fixed-size image"))
-            elif is_luks_active:
-                adjustment.set_upper(1000000)
-                size_info_label.set_text(_("Fixed-size encrypted image"))
             else:
                 adjustment.set_upper(1000000)
                 size_info_label.set_text(_("Available for container modes"))
@@ -1414,16 +1480,17 @@ class SessionManagerGUI:
             size_mb = int(size_spinbutton.get_value())
             squashfs_policy = 'shutdown' if shutdown_check.get_active() else 'manual'
             squashfs_autosave = int(autosave_combo.get_active_id() or '0')
+            encryption = encryption_combo.get_active_id() or 'none'
 
             dialog.destroy()
             
-            password_input = self._prompt_luks_passphrase(confirm=True) if mode == 'luks' else None
-            if mode == 'luks' and password_input is None:
+            password_input = self._prompt_luks_passphrase(confirm=True) if encryption == 'luks' else None
+            if encryption == 'luks' and password_input is None:
                 return
-            if mode in ["dynfilefs", "dynblk", "raw", "luks"]:
+            if mode in ["dynfilefs", "dynblk", "raw"]:
                 command = ['create', mode, str(size_mb), '--json']
-                if mode == 'luks':
-                    command.append('--password-stdin')
+                if encryption == 'luks':
+                    command.extend(['--encryption', 'luks', '--password-stdin'])
             elif mode == 'squashfs':
                 command = [
                     'create', mode, '--policy', squashfs_policy,
@@ -1816,8 +1883,9 @@ class SessionManagerGUI:
 
         try:
             session_mode = session_info.get('mode', 'unknown')
-            if session_mode not in ['dynfilefs', 'dynblk', 'raw', 'luks']:
-                self._show_error(_("Resize is only supported for dynfilefs, dynblk, raw, and LUKS mode sessions"))
+            session_encryption = session_info.get('encryption', 'none')
+            if session_mode not in ['dynfilefs', 'dynblk', 'raw']:
+                self._show_error(_("Resize is only supported for DynFileFS, DynBlk, and Raw sessions"))
                 return
             
             # Check if session is running
@@ -1833,7 +1901,7 @@ class SessionManagerGUI:
                 # Thin backends report physical use separately from virtual capacity.
                 if 'total_size' in session_info:
                     current_size_mb = session_info['total_size'] // (1024 * 1024)
-            elif session_mode in ('raw', 'luks'):
+            elif session_mode == 'raw':
                 # For raw sessions, the 'size' field is the total allocated size in bytes
                 if 'size' in session_info:
                     current_size_mb = session_info['size'] // (1024 * 1024)
@@ -1865,7 +1933,8 @@ class SessionManagerGUI:
         
         # Session info
         info_label = Gtk.Label()
-        info_label.set_markup(f"<b>{_('Session:')} {session_id} ({session_mode})</b>")
+        mode_display = session_mode if session_encryption == 'none' else '{} + LUKS2'.format(session_mode)
+        info_label.set_markup(f"<b>{_('Session:')} {session_id} ({mode_display})</b>")
         content_area.pack_start(info_label, False, False, 0)
         
         # Size input
@@ -1873,7 +1942,12 @@ class SessionManagerGUI:
         content_area.pack_start(size_label, False, False, 0)
         
         size_spin = Gtk.SpinButton()
-        max_resize_mb = 524288 if session_mode == 'dynblk' else (self._fat_size_limit() or 1000000)
+        if session_mode == 'dynblk':
+            max_resize_mb = 524288
+        elif session_mode == 'raw':
+            max_resize_mb = self._fat_size_limit() or 1000000
+        else:
+            max_resize_mb = 1000000
         size_spin.set_range(current_size_mb, max_resize_mb)
         size_spin.set_increments(100, 1000)
         size_spin.set_value(current_size_mb)  # Set to current size
@@ -1885,8 +1959,8 @@ class SessionManagerGUI:
         if response == Gtk.ResponseType.OK:
             new_size = int(size_spin.get_value())
             dialog.destroy()
-            password_input = self._prompt_luks_passphrase() if session_mode == 'luks' else None
-            if session_mode == 'luks' and password_input is None:
+            password_input = self._prompt_luks_passphrase() if session_encryption == 'luks' else None
+            if session_encryption == 'luks' and password_input is None:
                 return
             
             # Show loading overlay
@@ -1928,9 +2002,10 @@ class SessionManagerGUI:
             accept_label=_("Export"))
         if output_path is None:
             return
-        session_mode = self._get_session_mode(session_id)
-        password_input = self._prompt_luks_passphrase() if session_mode == 'luks' else None
-        if session_mode == 'luks' and password_input is None:
+        session_encryption = self._sessions_by_id.get(
+            session_id, {}).get('encryption', 'none')
+        password_input = self._prompt_luks_passphrase() if session_encryption == 'luks' else None
+        if session_encryption == 'luks' and password_input is None:
             return
 
         self._show_loading(True, _("Exporting session, please wait..."))
@@ -2010,16 +2085,36 @@ class SessionManagerGUI:
         mode_label = Gtk.Label(label=_("Force import to mode:"))
         mode_combo = Gtk.ComboBoxText()
         mode_combo.append("auto", _("Auto (from metadata)"))
-        mode_combo.append("native", "Native")
-        mode_combo.append("dynfilefs", "DynFileFS")
-        mode_combo.append("dynblk", "Dynblk")
-        mode_combo.append("raw", "Raw")
-        if self.luks_available:
-            mode_combo.append("luks", "LUKS")
+        import_modes = [mode for mode in self._filesystem_info.get(
+            'compatible_modes', ['native', 'dynfilefs', 'raw'])
+                        if mode != 'squashfs']
+        for mode in import_modes:
+            mode_combo.append(mode, mode.capitalize())
         mode_combo.set_active_id("auto")
         mode_box.pack_start(mode_label, False, False, 0)
         mode_box.pack_start(mode_combo, True, True, 0)
         content_area.pack_start(mode_box, False, False, 0)
+
+        encryption_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        encryption_box.pack_start(Gtk.Label(label=_("Target encryption:")), False, False, 0)
+        encryption_combo = Gtk.ComboBoxText()
+        encryption_combo.append('none', _("None"))
+        if any(self.luks_backends.values()):
+            encryption_combo.append('luks', _("LUKS2"))
+        encryption_combo.set_active_id('none')
+        encryption_box.pack_start(encryption_combo, True, True, 0)
+        content_area.pack_start(encryption_box, False, False, 0)
+
+        def on_import_mode_changed(widget):
+            mode = widget.get_active_id()
+            supported = (any(self.luks_backends.values()) if mode == 'auto'
+                         else self.luks_backends.get(mode, False))
+            encryption_box.set_sensitive(supported)
+            if not supported:
+                encryption_combo.set_active_id('none')
+
+        mode_combo.connect('changed', on_import_mode_changed)
+        on_import_mode_changed(mode_combo)
 
         dialog.show_all()
 
@@ -2029,9 +2124,10 @@ class SessionManagerGUI:
             force_mode = mode_combo.get_active_id()
             if force_mode == "auto":
                 force_mode = None
+            force_encryption = encryption_combo.get_active_id() or 'none'
             dialog.destroy()
-            password_input = self._prompt_luks_passphrase(confirm=True) if force_mode == 'luks' else None
-            if force_mode == 'luks' and password_input is None:
+            password_input = self._prompt_luks_passphrase(confirm=True) if force_encryption == 'luks' else None
+            if force_encryption == 'luks' and password_input is None:
                 return
 
             # Show loading overlay
@@ -2042,6 +2138,7 @@ class SessionManagerGUI:
                 args.append('--auto-convert')
             if force_mode:
                 args.extend(['--force-mode', force_mode])
+            args.extend(['--force-encryption', force_encryption])
             if password_input is not None:
                 args.append('--password-stdin')
             self._start_cli_task(args, self._on_import_complete, password_input)
@@ -2069,6 +2166,9 @@ class SessionManagerGUI:
 
     def _show_copy_dialog(self, session_id):
         """Show copy dialog for a session"""
+        source_session = self._sessions_by_id.get(session_id, {})
+        source_mode = source_session.get('mode', 'native')
+        source_encryption = source_session.get('encryption', 'none')
         # Create copy dialog
         dialog = Gtk.Dialog(
             title=_("Copy Session {}").format(session_id),
@@ -2100,17 +2200,25 @@ class SessionManagerGUI:
         mode_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         mode_label = Gtk.Label(label=_("Target mode:"))
         mode_combo = Gtk.ComboBoxText()
-        mode_combo.append("native", "Native")
-        mode_combo.append("dynfilefs", "DynFileFS")
-        mode_combo.append("dynblk", "Dynblk")
-        mode_combo.append("raw", "Raw")
-        if self.luks_available:
-            mode_combo.append("luks", "LUKS")
-        mode_combo.set_active_id("native")
+        copy_modes = [mode for mode in self._filesystem_info.get(
+            'compatible_modes', ['native', 'dynfilefs', 'raw'])
+                      if mode != 'squashfs']
+        for mode in copy_modes:
+            mode_combo.append(mode, mode.capitalize())
+        mode_combo.set_active_id(source_mode if source_mode in copy_modes else copy_modes[0])
         mode_combo.set_sensitive(False)
         mode_box.pack_start(mode_label, False, False, 0)
         mode_box.pack_start(mode_combo, True, True, 0)
         content_area.pack_start(mode_box, False, False, 0)
+
+        encryption_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        encryption_box.pack_start(Gtk.Label(label=_("Target encryption:")), False, False, 0)
+        encryption_combo = Gtk.ComboBoxText()
+        encryption_combo.append('none', _("None"))
+        encryption_combo.append('luks', _("LUKS2"))
+        encryption_combo.set_active_id(source_encryption)
+        encryption_box.pack_start(encryption_combo, True, True, 0)
+        content_area.pack_start(encryption_box, False, False, 0)
 
         # Size input (for container targets)
         size_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
@@ -2127,14 +2235,18 @@ class SessionManagerGUI:
         def on_convert_toggled(widget):
             mode_combo.set_sensitive(widget.get_active())
             mode = mode_combo.get_active_id()
-            size_spin.set_sensitive(widget.get_active() and mode in ['dynfilefs', 'dynblk', 'raw', 'luks'])
+            size_spin.set_sensitive(widget.get_active() and mode in ['dynfilefs', 'dynblk', 'raw'])
 
         def on_mode_changed(widget):
             mode = widget.get_active_id()
-            size_spin.set_sensitive(convert_check.get_active() and mode in ['dynfilefs', 'dynblk', 'raw', 'luks'])
+            size_spin.set_sensitive(convert_check.get_active() and mode in ['dynfilefs', 'dynblk', 'raw'])
+            encryption_supported = self.luks_backends.get(mode, False)
+            encryption_box.set_sensitive(encryption_supported)
+            if not encryption_supported:
+                encryption_combo.set_active_id('none')
             if mode == 'dynblk':
                 upper = 524288
-            elif mode in ('raw', 'luks'):
+            elif mode == 'raw':
                 upper = self._fat_size_limit() or 1000000
             else:
                 upper = 1000000
@@ -2142,6 +2254,7 @@ class SessionManagerGUI:
 
         convert_check.connect("toggled", on_convert_toggled)
         mode_combo.connect("changed", on_mode_changed)
+        on_mode_changed(mode_combo)
 
         dialog.show_all()
 
@@ -2149,13 +2262,21 @@ class SessionManagerGUI:
         if response == Gtk.ResponseType.OK:
             convert = convert_check.get_active()
             target_mode = mode_combo.get_active_id() if convert else None
-            size_mb = int(size_spin.get_value()) if convert and target_mode in ['dynfilefs', 'dynblk', 'raw', 'luks'] else None
+            target_encryption = encryption_combo.get_active_id() or 'none'
+            size_mb = int(size_spin.get_value()) if convert and target_mode in ['dynfilefs', 'dynblk', 'raw'] else None
             dialog.destroy()
-            source_mode = self._get_session_mode(session_id)
-            needs_password = source_mode == 'luks' or target_mode == 'luks'
-            password_input = self._prompt_luks_passphrase(confirm=target_mode == 'luks') if needs_password else None
-            if needs_password and password_input is None:
-                return
+            password_parts = []
+            if source_encryption == 'luks':
+                source_input = self._prompt_luks_passphrase()
+                if source_input is None:
+                    return
+                password_parts.append(source_input)
+            if target_encryption == 'luks':
+                target_input = self._prompt_luks_passphrase(confirm=True)
+                if target_input is None:
+                    return
+                password_parts.append(target_input)
+            password_input = ''.join(password_parts) or None
 
             # Show loading overlay
             self._show_loading(True, _("Copying session, please wait..."))
@@ -2163,6 +2284,8 @@ class SessionManagerGUI:
             args = ['copy', session_id, '--json']
             if target_mode:
                 args.extend(['--to-mode', target_mode])
+            if target_encryption != source_encryption or target_mode:
+                args.extend(['--to-encryption', target_encryption])
             if size_mb:
                 args.extend(['--size', str(size_mb)])
             if password_input is not None:
@@ -2199,6 +2322,7 @@ class SessionManagerGUI:
 
         try:
             current_mode = session_info.get('mode', 'unknown')
+            current_encryption = session_info.get('encryption', 'none')
 
         except (json.JSONDecodeError, KeyError):
             self._show_error(_("Failed to parse session information"))
@@ -2227,7 +2351,9 @@ class SessionManagerGUI:
         info_label.set_markup(f"<b>{_('Convert session:')} {session_id}</b>")
         content_area.pack_start(info_label, False, False, 0)
 
-        current_label = Gtk.Label(label=_("Current mode: {}").format(current_mode))
+        current_display = (current_mode if current_encryption == 'none' else
+                           '{} + LUKS2'.format(current_mode))
+        current_label = Gtk.Label(label=_("Current mode: {}").format(current_display))
         content_area.pack_start(current_label, False, False, 0)
 
         # Target mode selection
@@ -2235,14 +2361,22 @@ class SessionManagerGUI:
         content_area.pack_start(mode_label, False, False, 0)
 
         mode_combo = Gtk.ComboBoxText()
-        modes = ['native', 'dynfilefs', 'raw']
-        if self.luks_available:
-            modes.append('luks')
+        modes = [mode for mode in self._filesystem_info.get(
+            'compatible_modes', ['native', 'dynfilefs', 'raw'])
+                 if mode != 'squashfs']
         for mode in modes:
-            if mode != current_mode:
-                mode_combo.append(mode, mode.capitalize())
-        mode_combo.set_active(0)
+            mode_combo.append(mode, mode.capitalize())
+        mode_combo.set_active_id(current_mode if current_mode in modes else modes[0])
         content_area.pack_start(mode_combo, False, False, 0)
+
+        encryption_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        encryption_box.pack_start(Gtk.Label(label=_("Target encryption:")), False, False, 0)
+        encryption_combo = Gtk.ComboBoxText()
+        encryption_combo.append('none', _("None"))
+        encryption_combo.append('luks', _("LUKS2"))
+        encryption_combo.set_active_id(current_encryption)
+        encryption_box.pack_start(encryption_combo, False, False, 0)
+        content_area.pack_start(encryption_box, False, False, 0)
 
         # Size input (for container modes)
         size_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
@@ -2275,10 +2409,14 @@ class SessionManagerGUI:
 
         def on_mode_changed(widget):
             mode = widget.get_active_id()
-            size_spin.set_sensitive(mode in ['dynfilefs', 'dynblk', 'raw', 'luks'])
+            size_spin.set_sensitive(mode in ['dynfilefs', 'dynblk', 'raw'])
+            encryption_supported = self.luks_backends.get(mode, False)
+            encryption_box.set_sensitive(encryption_supported)
+            if not encryption_supported:
+                encryption_combo.set_active_id('none')
             if mode == 'dynblk':
                 upper = 524288
-            elif mode in ('raw', 'luks'):
+            elif mode == 'raw':
                 upper = self._fat_size_limit() or 1000000
             else:
                 upper = 1000000
@@ -2292,17 +2430,27 @@ class SessionManagerGUI:
         response = dialog.run()
         if response == Gtk.ResponseType.OK:
             target_mode = mode_combo.get_active_id()
-            size_mb = int(size_spin.get_value()) if target_mode in ['dynfilefs', 'dynblk', 'raw', 'luks'] else None
+            target_encryption = encryption_combo.get_active_id() or 'none'
+            size_mb = int(size_spin.get_value()) if target_mode in ['dynfilefs', 'dynblk', 'raw'] else None
             dialog.destroy()
-            needs_password = current_mode == 'luks' or target_mode == 'luks'
-            password_input = self._prompt_luks_passphrase(confirm=target_mode == 'luks') if needs_password else None
-            if needs_password and password_input is None:
-                return
+            password_parts = []
+            if current_encryption == 'luks':
+                source_input = self._prompt_luks_passphrase()
+                if source_input is None:
+                    return
+                password_parts.append(source_input)
+            if target_encryption == 'luks':
+                target_input = self._prompt_luks_passphrase(confirm=True)
+                if target_input is None:
+                    return
+                password_parts.append(target_input)
+            password_input = ''.join(password_parts) or None
 
             # Show loading overlay
             self._show_loading(True, _("Converting session, please wait..."))
 
             args = ['convert', session_id, target_mode, '--json']
+            args.extend(['--to-encryption', target_encryption])
             if size_mb:
                 args.extend(['--size', str(size_mb)])
             if password_input is not None:

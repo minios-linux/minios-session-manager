@@ -1,3 +1,17 @@
+minios-session-manager (2.0.0) unstable; urgency=medium
+
+  * Replace the standalone LUKS session backend with optional LUKS2 encryption
+    layered over Raw, DynFileFS, and DynBlk sessions.
+  * Normalize backend and encryption metadata, gate encrypted workflows on the
+    versioned initrd capability, and keep unsupported sessions visible for
+    recovery while failing unsafe operations closed.
+  * Add detached physical cloning and keep logical copy and conversion on fresh
+    filesystem and encryption identities with passwords supplied outside argv.
+  * Update the CLI, completion, GTK workflows, manuals, and translations for
+    the backend-plus-encryption model.
+
+ -- crims0n <crims0n@minios.dev>  Wed, 16 Sep 2026 14:17:07 +0300
+
 minios-session-manager (1.4.1) unstable; urgency=medium
 
   * Adapt dynblk session operations to the initial multi-device ABI by
