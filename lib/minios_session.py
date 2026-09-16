@@ -94,6 +94,9 @@ class SessionManager:
     DYNBLK_INITIAL_MB = 64
     DYNBLK_DEFAULT_SIZE_MB = 16 * 1024
     DYNBLK_MAX_SIZE_MB = 512 * 1024
+    DYNBLK_COMPRESSION_CODECS = (
+        'none', 'lz4', 'lz4hc', 'lzo', 'lzo-rle', 'zstd', 'deflate', '842',
+    )
     DYNBLK_BACKING_FILESYSTEMS = (
         'ext2', 'ext3', 'ext4', 'btrfs', 'vfat', 'fat', 'msdos', 'exfat',
         'ntfs3',
@@ -817,7 +820,7 @@ class SessionManager:
             ['dynblk'] + list(arguments), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if result.returncode:
             message = result.stderr.decode(errors='replace').strip()
-            raise OSError(message or _('dynblk operation failed'))
+            raise OSError(message or _('DynBlk operation failed'))
         return result
 
     def _dynblk_device_from_result(self, result):
@@ -825,10 +828,10 @@ class SessionManager:
         try:
             device = result.stdout.decode(errors='strict').strip()
         except (AttributeError, UnicodeDecodeError):
-            raise OSError(_('Invalid dynblk device response'))
+            raise OSError(_('Invalid DynBlk device response'))
         match = re.fullmatch(r'/dev/dynblk([0-9]+)', device)
         if not match or int(match.group(1)) > 255:
-            raise OSError(_('Invalid dynblk device response'))
+            raise OSError(_('Invalid DynBlk device response'))
         return device
 
     def _dynblk_status(self, device):
@@ -839,7 +842,7 @@ class SessionManager:
             if not isinstance(capacity, int) or isinstance(capacity, bool) or capacity <= 0:
                 raise ValueError
         except (KeyError, TypeError, ValueError, json.JSONDecodeError):
-            raise OSError(_('Invalid dynblk status response'))
+            raise OSError(_('Invalid DynBlk status response'))
         return status
 
     @contextlib.contextmanager
@@ -852,11 +855,11 @@ class SessionManager:
                 if not match:
                     continue
                 if int(match.group(1)) >= 64:
-                    raise OSError(_('Invalid dynblk backing namespace'))
+                    raise OSError(_('Invalid DynBlk backing namespace'))
                 entries.append(name)
             entries.sort()
             if not entries or entries[0] != 'volume000.db':
-                raise OSError(_('dynblk backing volume is missing'))
+                raise OSError(_('DynBlk backing volume is missing'))
             return entries
 
         names = namespace()
@@ -871,7 +874,7 @@ class SessionManager:
                 try:
                     info = os.fstat(fd)
                     if not stat.S_ISREG(info.st_mode):
-                        raise OSError(_('Invalid dynblk backing file'))
+                        raise OSError(_('Invalid DynBlk backing file'))
                     fcntl.flock(fd, lock_type | fcntl.LOCK_NB)
                 except Exception:
                     os.close(fd)
@@ -881,11 +884,11 @@ class SessionManager:
 
             current = namespace()
             if current != names:
-                raise OSError(_('dynblk backing namespace changed during operation'))
+                raise OSError(_('DynBlk backing namespace changed during operation'))
             for name in names:
                 info = os.stat(os.path.join(session_path, name), follow_symlinks=False)
                 if (info.st_dev, info.st_ino) != identities[name]:
-                    raise OSError(_('dynblk backing file changed during operation'))
+                    raise OSError(_('DynBlk backing file changed during operation'))
 
             yield tuple(names)
 
@@ -895,14 +898,14 @@ class SessionManager:
             if os.path.isdir(session_path):
                 current = namespace()
                 if current != names:
-                    raise OSError(_('dynblk backing namespace changed during operation'))
+                    raise OSError(_('DynBlk backing namespace changed during operation'))
                 for name in names:
                     info = os.stat(os.path.join(session_path, name), follow_symlinks=False)
                     if (info.st_dev, info.st_ino) != identities[name]:
-                        raise OSError(_('dynblk backing file changed during operation'))
+                        raise OSError(_('DynBlk backing file changed during operation'))
         except (BlockingIOError, OSError) as error:
             if getattr(error, 'errno', None) in (errno.EAGAIN, errno.EACCES, errno.EWOULDBLOCK):
-                raise OSError(_('dynblk session is attached or busy'))
+                raise OSError(_('DynBlk session is attached or busy'))
             raise
         finally:
             for fd in reversed(locked):
@@ -913,16 +916,20 @@ class SessionManager:
                 os.close(fd)
 
     def _create_dynblk_session(self, session_path, size_mb, encryption='none',
-                               password=None):
-        """Create one detached dynblk/ext4 session without disturbing other dynblk devices."""
+                               password=None, compression='none'):
+        """Create one detached DynBlk/ext4 session without disturbing other DynBlk devices."""
+        if compression not in self.DYNBLK_COMPRESSION_CODECS:
+            return False, _("Unsupported DynBlk compression: {}").format(compression)
+        if encryption == 'luks' and compression != 'none':
+            return False, _("DynBlk compression is unavailable with LUKS encryption.")
         volume = os.path.join(session_path, 'volume000.db')
         device = None
         success = False
-        message = _('Failed to create dynblk session')
+        message = _('Failed to create DynBlk session')
         try:
             result = self._run_dynblk([
                 'create', volume, '--size', '{}MiB'.format(size_mb),
-                '--compression', 'none', '--execute'])
+                '--compression', compression, '--execute'])
             device = self._dynblk_device_from_result(result)
             # The device was just created and is entirely unmapped. Letting
             # mke2fs discard the whole thin address space creates needless COW
@@ -935,14 +942,14 @@ class SessionManager:
                     ['mke2fs', '-F', '-t', 'ext4', '-E', 'nodiscard', device],
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if result is not None and result.returncode:
-                message = _('Failed to format dynblk device: {}').format(
+                message = _('Failed to format DynBlk device: {}').format(
                     result.stderr.decode(errors='replace').strip())
             else:
                 subprocess.run(['sync'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 success = True
-                message = _('dynblk session created successfully')
+                message = _('DynBlk session created successfully')
         except Exception as error:
-            message = _('Failed to create dynblk session: {}').format(str(error))
+            message = _('Failed to create DynBlk session: {}').format(str(error))
         finally:
             if device:
                 unload = subprocess.run(
@@ -950,7 +957,7 @@ class SessionManager:
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 if unload.returncode:
                     success = False
-                    message = _('dynblk was created but could not be detached: {}').format(
+                    message = _('DynBlk was created but could not be detached: {}').format(
                         unload.stderr.decode(errors='replace').strip() or
                         _('device is still active'))
         return success, message
@@ -961,7 +968,7 @@ class SessionManager:
         """Attach one dynblk volume without requiring the module/device namespace to be idle."""
         volume = os.path.join(session_path, 'volume000.db')
         if not os.path.exists(volume):
-            raise OSError(_('dynblk volume000.db not found'))
+            raise OSError(_('DynBlk volume000.db not found'))
         mount_point = tempfile.mkdtemp(prefix='minios_dynblk_')
         device = None
         mounted = False
@@ -979,21 +986,21 @@ class SessionManager:
                 result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 if result.returncode:
                     raise OSError(result.stderr.decode(errors='replace').strip() or
-                                  _('Failed to mount dynblk device'))
+                                  _('Failed to mount DynBlk device'))
                 mounted = True
                 yield mount_point
         finally:
             active_exception = sys.exc_info()[0] is not None
             cleanup_error = None
             if mounted and not self._safe_unmount(mount_point, use_lazy=False):
-                cleanup_error = _('Failed to unmount dynblk session; device was left attached.')
+                cleanup_error = _('Failed to unmount DynBlk session; device was left attached.')
                 device = None
             if device:
                 unload = subprocess.run(
                     ['dynblk', 'unload', device, '--execute'],
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 if unload.returncode:
-                    cleanup_error = _('Failed to detach dynblk after session operation: {}').format(
+                    cleanup_error = _('Failed to detach DynBlk after session operation: {}').format(
                         unload.stderr.decode(errors='replace').strip() or
                         _('device is still active'))
             self._safe_rmtree(mount_point)
@@ -1139,9 +1146,9 @@ class SessionManager:
             return False, _("DynFileFS is not available on this system. Please install dynfilefs package.")
         if mode == 'dynblk':
             if not self._check_dynblk_available():
-                return False, _("dynblk is not available on this system.")
+                return False, _("DynBlk is not available on this system.")
             if size_mb is not None and size_mb > self.DYNBLK_MAX_SIZE_MB:
-                return False, _("dynblk virtual size cannot exceed 512 GiB.")
+                return False, _("DynBlk virtual size cannot exceed 512 GiB.")
         max_size = self._get_filesystem_limitations(fs_info).get('max_file_size')
         if mode == 'raw' and max_size and size_mb and size_mb > max_size:
             return False, _("Container size {}MB exceeds FAT32 file size limit ({}MB).").format(size_mb, max_size)
@@ -1475,7 +1482,7 @@ class SessionManager:
 
     @contextlib.contextmanager
     def _mount_session_write(self, session_path, mode, size_mb=None, password=None,
-                             encryption='none'):
+                             encryption='none', compression='none'):
         """Context manager to mount a session for writing"""
         mount_point = None
         virtual_mount = None
@@ -1532,9 +1539,14 @@ class SessionManager:
                     size_mb = self.DYNBLK_DEFAULT_SIZE_MB
                 volume = os.path.join(session_path, 'volume000.db')
                 if not os.path.exists(volume):
-                    success, message = self._create_dynblk_session(
-                        session_path, size_mb, encryption=encryption,
-                        password=password)
+                    if compression == 'none':
+                        success, message = self._create_dynblk_session(
+                            session_path, size_mb, encryption=encryption,
+                            password=password)
+                    else:
+                        success, message = self._create_dynblk_session(
+                            session_path, size_mb, encryption=encryption,
+                            password=password, compression=compression)
                     if not success:
                         raise OSError(message)
                 with self._mount_dynblk(
@@ -2438,18 +2450,19 @@ class SessionManager:
         return success, str(message), capture
 
     def create_session(self, session_mode="native", size_mb=None, password=None,
-                       policy=None, autosave=0, encryption='none'):
+                       policy=None, autosave=0, encryption='none', compression='none'):
         """Create a session while serializing its tree and metadata publication."""
         try:
             with self._mutation_lock():
                 return self._create_session_locked(
                     session_mode=session_mode, size_mb=size_mb, password=password,
-                    policy=policy, autosave=autosave, encryption=encryption)
+                    policy=policy, autosave=autosave, encryption=encryption,
+                    compression=compression)
         except Exception as error:
             return False, _("Error creating session: {}").format(str(error))
 
     def _create_session_locked(self, session_mode="native", size_mb=None, password=None,
-                               policy=None, autosave=0, encryption='none'):
+                               policy=None, autosave=0, encryption='none', compression='none'):
         """Create a new session."""
         if not self.sessions_dir:
             return False, _("Sessions directory not found")
@@ -2460,6 +2473,12 @@ class SessionManager:
             return False, _("Invalid session mode. Must be one of: {}").format(", ".join(valid_modes))
         if encryption not in ('none', 'luks'):
             return False, _("Invalid session encryption")
+        if compression not in self.DYNBLK_COMPRESSION_CODECS:
+            return False, _("Unsupported DynBlk compression: {}").format(compression)
+        if compression != 'none' and session_mode != 'dynblk':
+            return False, _("DynBlk compression is available only for DynBlk sessions.")
+        if encryption == 'luks' and compression != 'none':
+            return False, _("DynBlk compression is unavailable with LUKS encryption.")
         if encryption == 'luks' and not password:
             return False, _("A LUKS passphrase is required.")
         squashfs_policy = policy or 'shutdown'
@@ -2556,6 +2575,9 @@ class SessionManager:
                     success, message = self._create_dynblk_session(
                         session_path, size_mb, encryption=encryption,
                         password=password)
+                elif compression != 'none':
+                    success, message = self._create_dynblk_session(
+                        session_path, size_mb, compression=compression)
                 else:
                     success, message = self._create_dynblk_session(
                         session_path, size_mb)
@@ -2992,7 +3014,7 @@ class SessionManager:
         """Grow a detached dynblk device and its ext4 filesystem."""
         volume = os.path.join(session_path, 'volume000.db')
         if not os.path.exists(volume):
-            return False, _("dynblk volume000.db not found")
+            return False, _("DynBlk volume000.db not found")
         recorded_size = metadata.get('sessions', {}).get(session_id, {}).get('size', 0)
         try:
             recorded_size = int(recorded_size or 0)
@@ -3024,14 +3046,14 @@ class SessionManager:
                         ['e2fsck', '-p', target_device],
                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     if check.returncode > 1:
-                        operation_error = _("Filesystem check failed before dynblk resize: {}").format(
+                        operation_error = _("Filesystem check failed before DynBlk resize: {}").format(
                             check.stderr.decode(errors='replace').strip())
                     else:
                         resize = subprocess.run(
                             ['resize2fs', '-f', target_device],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                         if resize.returncode:
-                            operation_error = _("Failed to resize dynblk filesystem: {}").format(
+                            operation_error = _("Failed to resize DynBlk filesystem: {}").format(
                                 resize.stderr.decode(errors='replace').strip())
                         else:
                             subprocess.run(['sync'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -3040,7 +3062,7 @@ class SessionManager:
                     ['e2fsck', '-p', device],
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 if check.returncode > 1:
-                    operation_error = _("Filesystem check failed before dynblk resize: {}").format(
+                    operation_error = _("Filesystem check failed before DynBlk resize: {}").format(
                         check.stderr.decode(errors='replace').strip())
                 else:
                     # A previous interrupted resize may already have grown the
@@ -3053,7 +3075,7 @@ class SessionManager:
                         ['resize2fs', '-f', device],
                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     if resize.returncode:
-                        operation_error = _("Failed to resize dynblk filesystem: {}").format(
+                        operation_error = _("Failed to resize DynBlk filesystem: {}").format(
                             resize.stderr.decode(errors='replace').strip())
                     else:
                         subprocess.run(['sync'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -3065,7 +3087,7 @@ class SessionManager:
                     ['dynblk', 'unload', device, '--execute'],
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 if unload.returncode and operation_error is None:
-                    operation_error = _("Failed to detach dynblk after resize: {}").format(
+                    operation_error = _("Failed to detach DynBlk after resize: {}").format(
                         unload.stderr.decode(errors='replace').strip() or
                         _('device is still active'))
 
@@ -3522,7 +3544,7 @@ class SessionManager:
 
     def import_session(self, archive_path, auto_convert=False, force_mode=None,
                        verify=True, skip_compatibility_check=False, password=None,
-                       force_encryption=None):
+                       force_encryption=None, compression='none'):
         """Import session from TAR.ZSTD archive (streaming)
 
         Args:
@@ -3571,6 +3593,12 @@ class SessionManager:
                 import_mode = self._select_compatible_mode(metadata)
             if force_encryption is not None:
                 import_encryption = force_encryption
+            if compression not in self.DYNBLK_COMPRESSION_CODECS:
+                return False, _("Unsupported DynBlk compression: {}").format(compression)
+            if compression != 'none' and import_mode != 'dynblk':
+                return False, _("DynBlk compression is available only for DynBlk sessions.")
+            if import_encryption == 'luks' and compression != 'none':
+                return False, _("DynBlk compression is unavailable with LUKS encryption.")
 
             valid_target, target_error = self._validate_target_mode(
                 import_mode, encryption=import_encryption)
@@ -3601,6 +3629,10 @@ class SessionManager:
                     mount_context = self._mount_session_write(
                         session_path, import_mode, size_mb, password=password,
                         encryption=import_encryption)
+                elif compression != 'none':
+                    mount_context = self._mount_session_write(
+                        session_path, import_mode, size_mb, password=password,
+                        compression=compression)
                 else:
                     mount_context = self._mount_session_write(
                         session_path, import_mode, size_mb, password=password)
@@ -3787,7 +3819,7 @@ class SessionManager:
 
     def copy_session(self, session_id, to_mode=None, size_mb=None,
                      source_password=None, target_password=None,
-                     to_encryption=None):
+                     to_encryption=None, compression='none'):
         """Copy session, optionally converting mode
 
         Args:
@@ -3824,6 +3856,12 @@ class SessionManager:
         target_mode = to_mode if to_mode else source_mode
         target_encryption = (source_encryption if to_encryption is None
                              else to_encryption)
+        if compression not in self.DYNBLK_COMPRESSION_CODECS:
+            return False, _("Unsupported DynBlk compression: {}").format(compression)
+        if compression != 'none' and target_mode != 'dynblk':
+            return False, _("DynBlk compression is available only for DynBlk sessions.")
+        if target_encryption == 'luks' and compression != 'none':
+            return False, _("DynBlk compression is unavailable with LUKS encryption.")
         if target_mode == 'dynblk' and size_mb is None and source_mode != 'dynblk':
             size_mb = self.DYNBLK_DEFAULT_SIZE_MB
         if target_encryption == 'none':
@@ -3865,15 +3903,25 @@ class SessionManager:
 
         try:
             if source_encryption == target_encryption == 'none':
-                success = self._copy_session_with_conversion(
-                    source_path, target_path, source_mode, target_mode, size_mb)
+                if compression == 'none':
+                    success = self._copy_session_with_conversion(
+                        source_path, target_path, source_mode, target_mode, size_mb)
+                else:
+                    success = self._copy_session_with_conversion(
+                        source_path, target_path, source_mode, target_mode, size_mb,
+                        compression=compression)
             else:
+                conversion_kwargs = {
+                    'source_encryption': source_encryption,
+                    'target_encryption': target_encryption,
+                    'source_password': source_password,
+                    'target_password': target_password,
+                }
+                if compression != 'none':
+                    conversion_kwargs['compression'] = compression
                 success = self._copy_session_with_conversion(
                     source_path, target_path, source_mode, target_mode, size_mb,
-                    source_encryption=source_encryption,
-                    target_encryption=target_encryption,
-                    source_password=source_password,
-                    target_password=target_password)
+                    **conversion_kwargs)
 
             if not success:
                 if os.path.exists(target_path):
@@ -4028,7 +4076,8 @@ class SessionManager:
                                       source_encryption='none',
                                       target_encryption='none',
                                       source_password=None,
-                                      target_password=None):
+                                      target_password=None,
+                                      compression='none'):
         """Copy session with mode conversion"""
         try:
             # Direct copy using mounts
@@ -4038,7 +4087,8 @@ class SessionManager:
                 with self._mount_session_write(
                         target_path, target_mode, size_mb,
                         password=target_password,
-                        encryption=target_encryption) as target_dir:
+                        encryption=target_encryption,
+                        compression=compression) as target_dir:
                     # Copy files using rsync
                     cmd = [
                         'rsync', '-aH',
@@ -4065,7 +4115,8 @@ class SessionManager:
 
     def convert_session(self, session_id, target_mode, size_mb=None,
                        in_place=True, source_password=None,
-                       target_password=None, target_encryption='none'):
+                       target_password=None, target_encryption='none',
+                       compression='none'):
         """Convert session storage mode
 
         Args:
@@ -4083,11 +4134,16 @@ class SessionManager:
             return False, str(e)
         # --new-session must leave the original untouched and create a new ID.
         if not in_place:
-            return self.copy_session(
-                session_id, to_mode=target_mode, size_mb=size_mb,
-                source_password=source_password,
-                target_password=target_password,
-                to_encryption=target_encryption)
+            copy_kwargs = {
+                'to_mode': target_mode,
+                'size_mb': size_mb,
+                'source_password': source_password,
+                'target_password': target_password,
+                'to_encryption': target_encryption,
+            }
+            if compression != 'none':
+                copy_kwargs['compression'] = compression
+            return self.copy_session(session_id, **copy_kwargs)
 
         # Get session
         session_info = self._get_session_info(session_id)
@@ -4100,9 +4156,18 @@ class SessionManager:
         source_encryption = session_info.get('encryption', 'none')
         if source_mode == 'squashfs':
             return False, _("SquashFS conversion is unavailable until save support is complete")
+        if compression not in self.DYNBLK_COMPRESSION_CODECS:
+            return False, _("Unsupported DynBlk compression: {}").format(compression)
+        if compression != 'none' and target_mode != 'dynblk':
+            return False, _("DynBlk compression is available only for DynBlk sessions.")
+        if target_encryption == 'luks' and compression != 'none':
+            return False, _("DynBlk compression is unavailable with LUKS encryption.")
 
-        # Check if conversion needed
-        if (source_mode, source_encryption) == (target_mode, target_encryption):
+        # A non-default DynBlk codec is itself a conversion request: rebuilding
+        # the container changes its on-disk compression even when mode/encryption
+        # stay the same.
+        if ((source_mode, source_encryption) == (target_mode, target_encryption)
+                and compression == 'none'):
             return False, _("Session already uses the requested storage and encryption")
 
         # Check if session is running
@@ -4138,12 +4203,17 @@ class SessionManager:
         new_session_path = self._make_temp_dir()
 
         try:
+            conversion_kwargs = {
+                'source_encryption': source_encryption,
+                'target_encryption': target_encryption,
+                'source_password': source_password,
+                'target_password': target_password,
+            }
+            if compression != 'none':
+                conversion_kwargs['compression'] = compression
             if not self._copy_session_with_conversion(
                     session_path, new_session_path, source_mode, target_mode,
-                    size_mb, source_encryption=source_encryption,
-                    target_encryption=target_encryption,
-                    source_password=source_password,
-                    target_password=target_password):
+                    size_mb, **conversion_kwargs):
                 raise OSError(_("Failed to copy session data"))
 
             # Keep a rollback copy until the durable metadata update succeeds.
@@ -4570,6 +4640,9 @@ EXAMPLES:
                               help=_('Size in MB, GB, or TB for container modes (default: 4000MB)'))
     create_parser.add_argument('--encryption', choices=('none', 'luks'), default='none',
                               help=_('Optional encryption layer (default: none)'))
+    create_parser.add_argument('--compression', choices=SessionManager.DYNBLK_COMPRESSION_CODECS,
+                              default='none',
+                              help=_('DynBlk compression codec (not available with LUKS; default: none)'))
     create_parser.add_argument('--policy', choices=('manual', 'shutdown'),
                               help=_('SquashFS shutdown save policy (default: shutdown)'))
     create_parser.add_argument('--autosave', type=int,
@@ -4625,6 +4698,9 @@ EXAMPLES:
                                help=_('Force specific session mode'))
     import_parser.add_argument('--force-encryption', choices=('none', 'luks'),
                                help=_('Force target encryption'))
+    import_parser.add_argument('--compression', choices=SessionManager.DYNBLK_COMPRESSION_CODECS,
+                               default='none',
+                               help=_('DynBlk compression codec for a DynBlk target (not available with LUKS)'))
     import_parser.add_argument('--no-verify', action='store_true', help=_('Skip integrity verification'))
     import_parser.add_argument('--skip-compatibility-check', action='store_true',
                                help=_('Skip compatibility checks'))
@@ -4638,6 +4714,9 @@ EXAMPLES:
                             help=_('Target encryption (default: preserve source)'))
     copy_parser.add_argument('--size', type=parse_perch_size, metavar='SIZE',
                             help=_('Size for a container target, in MB, GB, or TB'))
+    copy_parser.add_argument('--compression', choices=SessionManager.DYNBLK_COMPRESSION_CODECS,
+                            default='none',
+                            help=_('DynBlk compression codec for a DynBlk target (not available with LUKS)'))
 
     clone_parser = subparsers.add_parser(
         'clone', help=_('Physically clone a detached session'),
@@ -4653,6 +4732,9 @@ EXAMPLES:
                                help=_('Size for a container target, in MB, GB, or TB'))
     convert_parser.add_argument('--to-encryption', choices=('none', 'luks'),
                                default='none', help=_('Target encryption'))
+    convert_parser.add_argument('--compression', choices=SessionManager.DYNBLK_COMPRESSION_CODECS,
+                               default='none',
+                               help=_('DynBlk compression codec for a DynBlk target (not available with LUKS)'))
     convert_parser.add_argument('--new-session', action='store_true',
                                help=_('Create new session instead of in-place conversion'))
 
@@ -4812,7 +4894,8 @@ EXAMPLES:
         else:
             success, message = manager.create_session(
                 args.mode, args.size, password=password, policy=args.policy,
-                autosave=args.autosave, encryption=args.encryption)
+                autosave=args.autosave, encryption=args.encryption,
+                compression=args.compression)
         if args.json:
             result = {"success": success, "message": message}
             print(json.dumps(result))
@@ -4957,7 +5040,8 @@ EXAMPLES:
             skip_compatibility_check=args.skip_compatibility_check,
             password=luks_password_from_args(
                 args, confirm=args.force_encryption == 'luks'),
-            force_encryption=args.force_encryption
+            force_encryption=args.force_encryption,
+            compression=args.compression
         )
         if args.json:
             result = {"success": success, "message": message}
@@ -4978,7 +5062,8 @@ EXAMPLES:
                 args.session_id, to_mode=args.to_mode, size_mb=args.size,
                 source_password=source_password,
                 target_password=target_password,
-                to_encryption=args.to_encryption)
+                to_encryption=args.to_encryption,
+                compression=args.compression)
         except ValueError as error:
             success, message = False, str(error)
         if args.json:
@@ -5009,7 +5094,8 @@ EXAMPLES:
                 args.session_id, args.target_mode, size_mb=args.size,
                 in_place=in_place, source_password=source_password,
                 target_password=target_password,
-                target_encryption=target_encryption)
+                target_encryption=target_encryption,
+                compression=args.compression)
         except ValueError as error:
             success, message = False, str(error)
         if args.json:

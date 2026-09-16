@@ -1,5 +1,6 @@
 from pathlib import Path
 import re
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -56,9 +57,14 @@ def test_squashfs_create_policies_and_save_progress_are_exposed():
     assert '_("Save automatically at shutdown (recommended)")' in SOURCE
     assert '_("Periodic save:")' in SOURCE
     assert '_("Every 30 minutes")' in SOURCE
-    assert 'Gtk.Button(label=_("Save Now"))' in SOURCE
-    assert "getattr(row, 'mode', 'unknown') == 'squashfs'" in SOURCE
-    assert "getattr(row, 'is_running', False)" in SOURCE
+    assert 'Gtk.Button(label=_("Save Now"))' not in SOURCE
+    assert 'Gtk.MenuItem.new_with_mnemonic(_("_Save Now"))' in SOURCE
+    assert 'squashfs_options.show_all()' in SOURCE
+    assert 'squashfs_options.hide()' in SOURCE
+    assert 'squashfs_options.set_sensitive(' not in SOURCE
+    assert 'save_now_item.set_visible(is_squashfs)' in SOURCE
+    assert 'save_settings_item.set_visible(is_squashfs)' in SOURCE
+    assert 'self.sessions_writable and is_squashfs and running' in SOURCE
     assert "getattr(row, 'configuration_supported', True)" in SOURCE
     assert "'save', session_id, '--json', '--progress'" in SOURCE
     assert 'GLib.timeout_add(500, show_progress_if_needed)' in SOURCE
@@ -83,6 +89,17 @@ def test_simple_archive_choosers_use_minios_gui_helpers():
     assert "choose_save_file(" in SOURCE
     assert "choose_open_file(" in SOURCE
     assert "Gtk.FileChooserDialog(" not in SOURCE
+
+
+def test_privileged_commands_skip_pkexec_for_root():
+    from minios_session_manager import _privileged_command
+
+    with patch('minios_session_manager.os.geteuid', return_value=0):
+        assert _privileged_command(['minios-session', 'list']) == [
+            'minios-session', 'list']
+    with patch('minios_session_manager.os.geteuid', return_value=1000):
+        assert _privileged_command(['minios-session', 'list']) == [
+            'pkexec', 'minios-session', 'list']
 
 
 def test_repeated_background_work_uses_task_outcomes():
@@ -150,7 +167,8 @@ def test_dynblk_gui_is_capability_driven_and_resizable():
     assert "if session_mode == 'dynblk':" in SOURCE
     assert "encryption_combo.append('luks', _(\"LUKS2\"))" in SOURCE
     assert '_(' + '"LUKS Mode"' + ')' not in SOURCE
-    assert '_("Dynblk Mode")' in SOURCE
+    assert '_("DynBlk Mode")' in SOURCE
+    assert '_("DynBlk compression:")' in SOURCE
     assert "add_class('field-description')" in SOURCE
     assert 'Thin container: default 16 GiB, maximum 512 GiB' in SOURCE
     assert 'Thin container: backing storage grows on demand' in SOURCE
@@ -162,6 +180,8 @@ def test_dynblk_completion_is_capability_gated():
     assert 'minios-initramfs-dynblk' in completion
     assert 'modinfo dynblk >/dev/null 2>&1' in completion
     assert 'session_modes+=" dynblk"' in completion
+    assert 'none lz4 lz4hc lzo lzo-rle zstd deflate 842' in completion
+    assert '--compression' in completion
     assert "grep -Fqx 'luks-layer-v1'" in completion
     assert 'session_modes+=" luks"' not in completion
 

@@ -36,6 +36,21 @@ except Exception:
     _ = lambda x: x
 
 
+DYNBLK_COMPRESSION_CODECS = (
+    'none', 'lz4', 'lz4hc', 'lzo', 'lzo-rle', 'zstd', 'deflate', '842',
+)
+
+
+def _mode_display_name(mode):
+    return {
+        'native': 'Native',
+        'squashfs': 'SquashFS',
+        'dynfilefs': 'DynFileFS',
+        'dynblk': 'DynBlk',
+        'raw': 'Raw',
+    }.get(mode, mode)
+
+
 def _style_dialog_affirmative(dialog, label):
     button = dialog.get_widget_for_response(Gtk.ResponseType.OK)
     if button is not None:
@@ -59,6 +74,14 @@ def _strict_json_loads(text):
     return json.loads(
         text, object_pairs_hook=object_from_pairs,
         parse_constant=reject_constant)
+
+
+def _privileged_command(command):
+    """Use polkit only when the current process is not already privileged."""
+    command = list(command)
+    if os.geteuid() == 0:
+        return command
+    return ['pkexec'] + command
 
 
 class SessionManagerGUI:
@@ -121,7 +144,7 @@ class SessionManagerGUI:
     def _run_cli_command(self, args, input_data=None):
         """Run CLI command and return result"""
         try:
-            cmd = ['pkexec', self.cli_command] + args
+            cmd = _privileged_command([self.cli_command] + args)
             # Long exports, conversions, and imports are not bounded by an arbitrary UI timeout.
             # The lock prevents overlapping privileged operations from racing each other.
             with self._cli_lock:
@@ -182,7 +205,8 @@ class SessionManagerGUI:
     def _run_cli_streaming_save(self, session_id, phase_callback):
         """Run Save Now and surface validated phase events while it is active."""
         try:
-            cmd = ['pkexec', self.cli_command, 'save', session_id, '--json', '--progress']
+            cmd = _privileged_command([
+                self.cli_command, 'save', session_id, '--json', '--progress'])
             with self._cli_lock:
                 with tempfile.TemporaryFile() as error_file:
                     with self._cli_process_lock:
@@ -620,14 +644,6 @@ class SessionManagerGUI:
 
         self.create_btn = create_btn  # Store reference for later use
 
-        save_btn = Gtk.Button(label=_("Save Now"))
-        save_btn.set_image(new_icon("document-save-symbolic", Gtk.IconSize.BUTTON))
-        save_btn.get_style_context().add_class('minios-text-button')
-        save_btn.connect("clicked", self.on_save_clicked)
-        save_btn.set_sensitive(False)
-        toolbar_box.attach(save_btn, 3, 0, 1, 1)
-        self.save_btn = save_btn
-
         # Import button
         import_btn = Gtk.Button(label=_("Import"))
         import_btn.set_image(
@@ -944,7 +960,7 @@ class SessionManagerGUI:
         # Row 1: Mode and Version
         mode_label = Gtk.Label()
         mode_text = _("Mode:")
-        mode_display = mode if encryption == 'none' else '{} + LUKS2'.format(mode)
+        mode_display = _mode_display_name(mode) if encryption == 'none' else '{} + LUKS2'.format(_mode_display_name(mode))
         mode_label.set_markup(f'<span size="small"><b>{mode_text}</b> {GLib.markup_escape_text(mode_display)}</span>')
         mode_label.set_halign(Gtk.Align.START)
         details_grid.attach(mode_label, 0, 0, 1, 1)
@@ -1030,11 +1046,6 @@ class SessionManagerGUI:
             self.selected_session_id = row.session_id
         else:
             self.selected_session_id = None
-        if hasattr(self, 'save_btn'):
-            self.save_btn.set_sensitive(bool(
-                row and self.sessions_writable and
-                getattr(row, 'mode', 'unknown') == 'squashfs' and
-                getattr(row, 'is_running', False)))
 
     def _create_context_menu(self):
         """Create context menu for session items"""
@@ -1046,6 +1057,10 @@ class SessionManagerGUI:
         activate_item.get_style_context().add_class('context-menu-activate')
         activate_item.connect("activate", self._on_context_activate)
         self.context_menu.append(activate_item)
+
+        save_now_item = Gtk.MenuItem.new_with_mnemonic(_("_Save Now"))
+        save_now_item.connect("activate", self._on_context_save_now)
+        self.context_menu.append(save_now_item)
 
         save_settings_item = Gtk.MenuItem.new_with_mnemonic(_("Save _Settings..."))
         save_settings_item.connect("activate", self._on_context_save_settings)
@@ -1132,11 +1147,12 @@ class SessionManagerGUI:
 
     def _prepare_context_menu(self, row):
         children = self.context_menu.get_children()
-        activate_item, save_settings_item, resize_item = children[0:3]
-        export_item, copy_item, clone_item, convert_item = children[4:8]
-        delete_item = children[11]
-        resize_available = getattr(row, 'mode', 'unknown') in (
-            'dynfilefs', 'dynblk', 'raw')
+        activate_item, save_now_item, save_settings_item, resize_item = children[0:4]
+        export_item, copy_item, clone_item, convert_item = children[5:9]
+        delete_item = children[12]
+        mode = getattr(row, 'mode', 'unknown')
+        is_squashfs = mode == 'squashfs'
+        resize_available = mode in ('dynfilefs', 'dynblk', 'raw')
         supported_operations = getattr(row, 'mode', 'unknown') != 'squashfs'
         supported_operations = (
             supported_operations and
@@ -1147,8 +1163,12 @@ class SessionManagerGUI:
         activate_item.set_sensitive(
             self.sessions_writable and not active and
             getattr(row, 'configuration_supported', True))
+        save_now_item.set_visible(is_squashfs)
+        save_settings_item.set_visible(is_squashfs)
+        save_now_item.set_sensitive(
+            self.sessions_writable and is_squashfs and running)
         save_settings_item.set_sensitive(
-            self.sessions_writable and getattr(row, 'mode', 'unknown') == 'squashfs')
+            self.sessions_writable and is_squashfs)
         resize_item.set_sensitive(
             self.sessions_writable and not running and resize_available)
         export_item.set_sensitive(not running and supported_operations)
@@ -1171,6 +1191,11 @@ class SessionManagerGUI:
         """Handle delete from context menu"""
         if self.selected_session_id:
             self.on_delete_clicked(None)
+
+    def _on_context_save_now(self, menu_item):
+        """Save the selected running SquashFS session."""
+        if self.selected_session_id:
+            self.on_save_clicked(None)
 
     def _on_context_save_settings(self, menu_item):
         """Configure automatic saving for a SquashFS session."""
@@ -1317,7 +1342,7 @@ class SessionManagerGUI:
         
         if 'dynblk' in compatible_modes:
             base_radio = first_radio if first_radio else None
-            dynblk_radio = Gtk.RadioButton.new_with_label_from_widget(base_radio, _("Dynblk Mode"))
+            dynblk_radio = Gtk.RadioButton.new_with_label_from_widget(base_radio, _("DynBlk Mode"))
             dynblk_radio.set_tooltip_text(_("Native compressed block-device container"))
             content_area.pack_start(dynblk_radio, False, False, 0)
             radio_buttons['dynblk'] = dynblk_radio
@@ -1343,7 +1368,17 @@ class SessionManagerGUI:
         encryption_box.pack_start(encryption_combo, False, False, 0)
         content_area.pack_start(encryption_box, False, False, 0)
 
-        # SquashFS save policy and optional periodic saving.
+        compression_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        compression_box.pack_start(Gtk.Label(label=_("DynBlk compression:")), False, False, 0)
+        compression_combo = Gtk.ComboBoxText()
+        for codec in DYNBLK_COMPRESSION_CODECS:
+            compression_combo.append(codec, codec)
+        compression_combo.set_active_id('none')
+        compression_box.pack_start(compression_combo, False, False, 0)
+        content_area.pack_start(compression_box, False, False, 0)
+
+        # SquashFS save policy and optional periodic saving. Hide this whole
+        # section for every other backend instead of presenting disabled controls.
         squashfs_options = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
         content_area.pack_start(squashfs_options, False, False, 0)
         shutdown_check = Gtk.CheckButton(
@@ -1411,8 +1446,16 @@ class SessionManagerGUI:
             encryption_box.set_sensitive(encryption_supported)
             if not encryption_supported:
                 encryption_combo.set_active_id('none')
+            compression_enabled = (
+                is_dynblk_active and (encryption_combo.get_active_id() or 'none') == 'none')
+            compression_box.set_sensitive(compression_enabled)
+            if not compression_enabled:
+                compression_combo.set_active_id('none')
 
-            squashfs_options.set_sensitive(is_squashfs_active)
+            if is_squashfs_active:
+                squashfs_options.show_all()
+            else:
+                squashfs_options.hide()
             policy_description.set_text(
                 _("You can also save manually at any time using Save Now.")
                 if shutdown_check.get_active() else
@@ -1458,13 +1501,14 @@ class SessionManagerGUI:
         # Connect signals only for existing radio buttons
         for mode, radio in radio_buttons.items():
             radio.connect("toggled", on_mode_changed)
+        encryption_combo.connect("changed", on_mode_changed)
         shutdown_check.connect("toggled", on_mode_changed)
         autosave_combo.connect("changed", on_mode_changed)
         
-        # Initialize sensitivity
-        on_mode_changed(None)
-        
+        # Show ordinary controls first, then apply mode-specific visibility so
+        # non-SquashFS modes never display a disabled automatic-save section.
         dialog.show_all()
+        on_mode_changed(None)
         
         response = dialog.run()
         
@@ -1481,6 +1525,7 @@ class SessionManagerGUI:
             squashfs_policy = 'shutdown' if shutdown_check.get_active() else 'manual'
             squashfs_autosave = int(autosave_combo.get_active_id() or '0')
             encryption = encryption_combo.get_active_id() or 'none'
+            compression = compression_combo.get_active_id() or 'none'
 
             dialog.destroy()
             
@@ -1489,6 +1534,8 @@ class SessionManagerGUI:
                 return
             if mode in ["dynfilefs", "dynblk", "raw"]:
                 command = ['create', mode, str(size_mb), '--json']
+                if mode == 'dynblk' and compression != 'none':
+                    command.extend(['--compression', compression])
                 if encryption == 'luks':
                     command.extend(['--encryption', 'luks', '--password-stdin'])
             elif mode == 'squashfs':
@@ -1933,7 +1980,7 @@ class SessionManagerGUI:
         
         # Session info
         info_label = Gtk.Label()
-        mode_display = session_mode if session_encryption == 'none' else '{} + LUKS2'.format(session_mode)
+        mode_display = _mode_display_name(session_mode) if session_encryption == 'none' else '{} + LUKS2'.format(_mode_display_name(session_mode))
         info_label.set_markup(f"<b>{_('Session:')} {session_id} ({mode_display})</b>")
         content_area.pack_start(info_label, False, False, 0)
         
@@ -2089,7 +2136,7 @@ class SessionManagerGUI:
             'compatible_modes', ['native', 'dynfilefs', 'raw'])
                         if mode != 'squashfs']
         for mode in import_modes:
-            mode_combo.append(mode, mode.capitalize())
+            mode_combo.append(mode, _mode_display_name(mode))
         mode_combo.set_active_id("auto")
         mode_box.pack_start(mode_label, False, False, 0)
         mode_box.pack_start(mode_combo, True, True, 0)
@@ -2105,15 +2152,31 @@ class SessionManagerGUI:
         encryption_box.pack_start(encryption_combo, True, True, 0)
         content_area.pack_start(encryption_box, False, False, 0)
 
-        def on_import_mode_changed(widget):
-            mode = widget.get_active_id()
+        compression_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        compression_box.pack_start(Gtk.Label(label=_("DynBlk compression:")), False, False, 0)
+        compression_combo = Gtk.ComboBoxText()
+        for codec in DYNBLK_COMPRESSION_CODECS:
+            compression_combo.append(codec, codec)
+        compression_combo.set_active_id('none')
+        compression_box.pack_start(compression_combo, True, True, 0)
+        content_area.pack_start(compression_box, False, False, 0)
+
+        def on_import_mode_changed(_widget):
+            mode = mode_combo.get_active_id()
             supported = (any(self.luks_backends.values()) if mode == 'auto'
                          else self.luks_backends.get(mode, False))
             encryption_box.set_sensitive(supported)
             if not supported:
                 encryption_combo.set_active_id('none')
+            compression_enabled = (
+                mode == 'dynblk' and
+                (encryption_combo.get_active_id() or 'none') == 'none')
+            compression_box.set_sensitive(compression_enabled)
+            if not compression_enabled:
+                compression_combo.set_active_id('none')
 
         mode_combo.connect('changed', on_import_mode_changed)
+        encryption_combo.connect('changed', on_import_mode_changed)
         on_import_mode_changed(mode_combo)
 
         dialog.show_all()
@@ -2125,6 +2188,7 @@ class SessionManagerGUI:
             if force_mode == "auto":
                 force_mode = None
             force_encryption = encryption_combo.get_active_id() or 'none'
+            compression = compression_combo.get_active_id() or 'none'
             dialog.destroy()
             password_input = self._prompt_luks_passphrase(confirm=True) if force_encryption == 'luks' else None
             if force_encryption == 'luks' and password_input is None:
@@ -2139,6 +2203,8 @@ class SessionManagerGUI:
             if force_mode:
                 args.extend(['--force-mode', force_mode])
             args.extend(['--force-encryption', force_encryption])
+            if compression != 'none':
+                args.extend(['--compression', compression])
             if password_input is not None:
                 args.append('--password-stdin')
             self._start_cli_task(args, self._on_import_complete, password_input)
@@ -2204,7 +2270,7 @@ class SessionManagerGUI:
             'compatible_modes', ['native', 'dynfilefs', 'raw'])
                       if mode != 'squashfs']
         for mode in copy_modes:
-            mode_combo.append(mode, mode.capitalize())
+            mode_combo.append(mode, _mode_display_name(mode))
         mode_combo.set_active_id(source_mode if source_mode in copy_modes else copy_modes[0])
         mode_combo.set_sensitive(False)
         mode_box.pack_start(mode_label, False, False, 0)
@@ -2220,6 +2286,15 @@ class SessionManagerGUI:
         encryption_box.pack_start(encryption_combo, True, True, 0)
         content_area.pack_start(encryption_box, False, False, 0)
 
+        compression_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        compression_box.pack_start(Gtk.Label(label=_("DynBlk compression:")), False, False, 0)
+        compression_combo = Gtk.ComboBoxText()
+        for codec in DYNBLK_COMPRESSION_CODECS:
+            compression_combo.append(codec, codec)
+        compression_combo.set_active_id('none')
+        compression_box.pack_start(compression_combo, True, True, 0)
+        content_area.pack_start(compression_box, False, False, 0)
+
         # Size input (for container targets)
         size_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         size_label = Gtk.Label(label=_("Size (MB):"))
@@ -2232,18 +2307,21 @@ class SessionManagerGUI:
         size_box.pack_start(size_spin, True, True, 0)
         content_area.pack_start(size_box, False, False, 0)
 
-        def on_convert_toggled(widget):
-            mode_combo.set_sensitive(widget.get_active())
-            mode = mode_combo.get_active_id()
-            size_spin.set_sensitive(widget.get_active() and mode in ['dynfilefs', 'dynblk', 'raw'])
-
-        def on_mode_changed(widget):
-            mode = widget.get_active_id()
-            size_spin.set_sensitive(convert_check.get_active() and mode in ['dynfilefs', 'dynblk', 'raw'])
+        def refresh_target_controls(_widget=None):
+            convert = convert_check.get_active()
+            mode_combo.set_sensitive(convert)
+            mode = mode_combo.get_active_id() if convert else source_mode
+            size_spin.set_sensitive(convert and mode in ['dynfilefs', 'dynblk', 'raw'])
             encryption_supported = self.luks_backends.get(mode, False)
             encryption_box.set_sensitive(encryption_supported)
             if not encryption_supported:
                 encryption_combo.set_active_id('none')
+            compression_enabled = (
+                mode == 'dynblk' and
+                (encryption_combo.get_active_id() or 'none') == 'none')
+            compression_box.set_sensitive(compression_enabled)
+            if not compression_enabled:
+                compression_combo.set_active_id('none')
             if mode == 'dynblk':
                 upper = 524288
             elif mode == 'raw':
@@ -2252,9 +2330,10 @@ class SessionManagerGUI:
                 upper = 1000000
             size_spin.set_range(100, upper)
 
-        convert_check.connect("toggled", on_convert_toggled)
-        mode_combo.connect("changed", on_mode_changed)
-        on_mode_changed(mode_combo)
+        convert_check.connect("toggled", refresh_target_controls)
+        mode_combo.connect("changed", refresh_target_controls)
+        encryption_combo.connect("changed", refresh_target_controls)
+        refresh_target_controls()
 
         dialog.show_all()
 
@@ -2263,6 +2342,7 @@ class SessionManagerGUI:
             convert = convert_check.get_active()
             target_mode = mode_combo.get_active_id() if convert else None
             target_encryption = encryption_combo.get_active_id() or 'none'
+            compression = compression_combo.get_active_id() or 'none'
             size_mb = int(size_spin.get_value()) if convert and target_mode in ['dynfilefs', 'dynblk', 'raw'] else None
             dialog.destroy()
             password_parts = []
@@ -2288,6 +2368,8 @@ class SessionManagerGUI:
                 args.extend(['--to-encryption', target_encryption])
             if size_mb:
                 args.extend(['--size', str(size_mb)])
+            if compression != 'none':
+                args.extend(['--compression', compression])
             if password_input is not None:
                 args.append('--password-stdin')
             self._start_cli_task(args, self._on_copy_complete, password_input)
@@ -2351,8 +2433,8 @@ class SessionManagerGUI:
         info_label.set_markup(f"<b>{_('Convert session:')} {session_id}</b>")
         content_area.pack_start(info_label, False, False, 0)
 
-        current_display = (current_mode if current_encryption == 'none' else
-                           '{} + LUKS2'.format(current_mode))
+        current_display = (_mode_display_name(current_mode) if current_encryption == 'none' else
+                           '{} + LUKS2'.format(_mode_display_name(current_mode)))
         current_label = Gtk.Label(label=_("Current mode: {}").format(current_display))
         content_area.pack_start(current_label, False, False, 0)
 
@@ -2365,7 +2447,7 @@ class SessionManagerGUI:
             'compatible_modes', ['native', 'dynfilefs', 'raw'])
                  if mode != 'squashfs']
         for mode in modes:
-            mode_combo.append(mode, mode.capitalize())
+            mode_combo.append(mode, _mode_display_name(mode))
         mode_combo.set_active_id(current_mode if current_mode in modes else modes[0])
         content_area.pack_start(mode_combo, False, False, 0)
 
@@ -2377,6 +2459,15 @@ class SessionManagerGUI:
         encryption_combo.set_active_id(current_encryption)
         encryption_box.pack_start(encryption_combo, False, False, 0)
         content_area.pack_start(encryption_box, False, False, 0)
+
+        compression_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        compression_box.pack_start(Gtk.Label(label=_("DynBlk compression:")), False, False, 0)
+        compression_combo = Gtk.ComboBoxText()
+        for codec in DYNBLK_COMPRESSION_CODECS:
+            compression_combo.append(codec, codec)
+        compression_combo.set_active_id('none')
+        compression_box.pack_start(compression_combo, False, False, 0)
+        content_area.pack_start(compression_box, False, False, 0)
 
         # Size input (for container modes)
         size_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
@@ -2407,13 +2498,19 @@ class SessionManagerGUI:
         size_box.pack_start(size_spin, True, True, 0)
         content_area.pack_start(size_box, False, False, 0)
 
-        def on_mode_changed(widget):
-            mode = widget.get_active_id()
+        def on_mode_changed(_widget=None):
+            mode = mode_combo.get_active_id()
             size_spin.set_sensitive(mode in ['dynfilefs', 'dynblk', 'raw'])
             encryption_supported = self.luks_backends.get(mode, False)
             encryption_box.set_sensitive(encryption_supported)
             if not encryption_supported:
                 encryption_combo.set_active_id('none')
+            compression_enabled = (
+                mode == 'dynblk' and
+                (encryption_combo.get_active_id() or 'none') == 'none')
+            compression_box.set_sensitive(compression_enabled)
+            if not compression_enabled:
+                compression_combo.set_active_id('none')
             if mode == 'dynblk':
                 upper = 524288
             elif mode == 'raw':
@@ -2423,7 +2520,8 @@ class SessionManagerGUI:
             size_spin.set_range(100, upper)
 
         mode_combo.connect("changed", on_mode_changed)
-        on_mode_changed(mode_combo)  # Initialize
+        encryption_combo.connect("changed", on_mode_changed)
+        on_mode_changed()
 
         dialog.show_all()
 
@@ -2431,6 +2529,7 @@ class SessionManagerGUI:
         if response == Gtk.ResponseType.OK:
             target_mode = mode_combo.get_active_id()
             target_encryption = encryption_combo.get_active_id() or 'none'
+            compression = compression_combo.get_active_id() or 'none'
             size_mb = int(size_spin.get_value()) if target_mode in ['dynfilefs', 'dynblk', 'raw'] else None
             dialog.destroy()
             password_parts = []
@@ -2453,6 +2552,8 @@ class SessionManagerGUI:
             args.extend(['--to-encryption', target_encryption])
             if size_mb:
                 args.extend(['--size', str(size_mb)])
+            if compression != 'none':
+                args.extend(['--compression', compression])
             if password_input is not None:
                 args.append('--password-stdin')
             self._start_cli_task(args, self._on_convert_complete, password_input)

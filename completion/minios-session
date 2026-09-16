@@ -11,6 +11,7 @@ _minios_session() {
     local session_modes="native squashfs dynfilefs raw"
     local luks_opt=""
     local encryption_values="none"
+    local dynblk_compression_values="none lz4 lz4hc lzo lzo-rle zstd deflate 842"
     if command -v dynblk >/dev/null 2>&1 && command -v modinfo >/dev/null 2>&1 &&
        [[ -f /run/initramfs/etc/minios-initramfs-dynblk ]] &&
        modinfo dynblk >/dev/null 2>&1; then
@@ -111,9 +112,12 @@ _minios_session() {
                 --encryption)
                     COMPREPLY=($(compgen -W "${encryption_values}" -- ${cur}))
                     ;;
+                --compression)
+                    COMPREPLY=($(compgen -W "${dynblk_compression_values}" -- ${cur}))
+                    ;;
                 *)
                     if [[ ${cur} == -* ]]; then
-                        local create_opts="--help --json --sessions-dir --policy --autosave --encryption${luks_opt}"
+                        local create_opts="--help --json --sessions-dir --policy --autosave --encryption --compression${luks_opt}"
                         COMPREPLY=($(compgen -W "${create_opts}" -- ${cur}))
                     elif [[ $arg_count -eq 0 ]]; then
                         # First argument: mode
@@ -275,9 +279,12 @@ _minios_session() {
                 --force-encryption)
                     COMPREPLY=($(compgen -W "${encryption_values}" -- ${cur}))
                     ;;
+                --compression)
+                    COMPREPLY=($(compgen -W "${dynblk_compression_values}" -- ${cur}))
+                    ;;
                 *)
                     if [[ ${cur} == -* ]]; then
-                        local import_opts="--help --json --sessions-dir --auto-convert --force-mode --force-encryption --no-verify --skip-compatibility-check${luks_opt}"
+                        local import_opts="--help --json --sessions-dir --auto-convert --force-mode --force-encryption --compression --no-verify --skip-compatibility-check${luks_opt}"
                         COMPREPLY=($(compgen -W "${import_opts}" -- ${cur}))
                     else
                         # Complete .tar.zst files
@@ -303,6 +310,9 @@ _minios_session() {
                     local size_suggestions="1000MB 2000MB 4GB 6GB 8GB"
                     COMPREPLY=($(compgen -W "${size_suggestions}" -- ${cur}))
                     ;;
+                --compression)
+                    COMPREPLY=($(compgen -W "${dynblk_compression_values}" -- ${cur}))
+                    ;;
                 copy)
                     # Get available sessions
                     local sessions=$(_get_sessions)
@@ -310,7 +320,7 @@ _minios_session() {
                     ;;
                 *)
                     if [[ ${cur} == -* ]]; then
-                        local copy_opts="--help --json --sessions-dir --to-mode --to-encryption --size${luks_opt}"
+                        local copy_opts="--help --json --sessions-dir --to-mode --to-encryption --size --compression${luks_opt}"
                         COMPREPLY=($(compgen -W "${copy_opts}" -- ${cur}))
                     fi
                     ;;
@@ -337,9 +347,12 @@ _minios_session() {
                 --to-encryption)
                     COMPREPLY=($(compgen -W "${encryption_values}" -- ${cur}))
                     ;;
+                --compression)
+                    COMPREPLY=($(compgen -W "${dynblk_compression_values}" -- ${cur}))
+                    ;;
                 *)
                     if [[ ${cur} == -* ]]; then
-                        local convert_opts="--help --json --sessions-dir --size --to-encryption --new-session${luks_opt}"
+                        local convert_opts="--help --json --sessions-dir --size --to-encryption --compression --new-session${luks_opt}"
                         COMPREPLY=($(compgen -W "${convert_opts}" -- ${cur}))
                     elif [[ $arg_count -eq 0 ]]; then
                         # First argument: session ID

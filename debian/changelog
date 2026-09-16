@@ -1,3 +1,11 @@
+minios-session-manager (2.1.0) unstable; urgency=medium
+
+  * Add DynBlk compression selection for create, import, copy, and conversion
+    workflows across the CLI, completion, GTK interface, and documentation.
+  * Avoid nested pkexec calls when the graphical manager already runs as root.
+
+ -- crims0n <crims0n@minios.dev>  Wed, 16 Sep 2026 20:40:22 +0300
+
 minios-session-manager (2.0.0) unstable; urgency=medium
 
   * Replace the standalone LUKS session backend with optional LUKS2 encryption

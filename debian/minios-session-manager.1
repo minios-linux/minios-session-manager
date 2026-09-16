@@ -1,4 +1,4 @@
-.TH MINIOS-SESSION-MANAGER 1 "September 2026" "MiniOS Session Manager 2.0.0" "User Commands"
+.TH MINIOS-SESSION-MANAGER 1 "September 2026" "MiniOS Session Manager 2.1.0" "User Commands"
 .SH NAME
 minios-session-manager \- graphical interface for managing MiniOS persistent sessions
 .SH SYNOPSIS
@@ -26,8 +26,8 @@ For POSIX-compatible filesystems (ext4, btrfs, etc.). Most efficient option.
 For non-POSIX filesystems including FAT32, NTFS, and exFAT. Uses expandable
 container files and requires the dynfilefs utility.
 .TP
-.B Dynblk Mode
-Uses the format-1 dynblk kernel block device with thin backing files. It is shown only when the running system has the dynblk utility and module and the initramfs advertises dynblk resume support.
+.B DynBlk Mode
+Uses the format-1 DynBlk kernel block device with thin backing files. It is shown only when the running system has the dynblk utility and module and the initramfs advertises dynblk resume support.
 .TP
 .B Raw Mode
 For writable filesystems. Uses fixed-size ext4 image files.
@@ -36,20 +36,20 @@ For writable filesystems. Uses fixed-size ext4 image files.
 Uses an exact compressed snapshot of the current live changes and supports manual or shutdown/periodic save policy.
 .TP
 .B Encryption
-Raw, DynFileFS, and Dynblk storage may optionally use LUKS2 encryption. It
+Raw, DynFileFS, and DynBlk storage may optionally use LUKS2 encryption. It
 requires cryptsetup, the tools needed by the selected backend, and a MiniOS
 initrd capability marker containing luks-layer-v1. The GUI prompts for
 passphrases and does not store them in session metadata.
 .SH INTERFACE
 The main window shows the available sessions and their status.
 Create, import, and cleanup actions are available from the toolbar.
-Additional actions for the selected session, such as activate, resize, export, copy, clone, convert, open folder, and delete, are available from the context menu.
+Additional actions for the selected session, such as activate, resize, export, copy, clone, convert, open folder, and delete, are available from the context menu. SquashFS-only Save Now and automatic-save settings are shown there only for SquashFS sessions.
 .PP
 Encrypted exports contain decrypted logical files rather than the encrypted
 backend. Copy creates fresh filesystem and encryption identities; clone preserves
 backend data and identities. Conversion replaces the source unless a new-session
-operation is selected. DynFileFS and Raw default to 4000MB; dynblk defaults to
-16GiB and is capped at 512GiB. Resizable container modes can only grow.
+operation is selected. DynFileFS and Raw default to 4000MB; DynBlk defaults to
+16GiB and is capped at 512GiB. New DynBlk targets can select none, lz4, lz4hc, lzo, lzo-rle, zstd, deflate, or 842 compression; compression is unavailable with LUKS. Resizable container modes can only grow.
 .SH EXAMPLES
 .TP
 .B minios-session-manager

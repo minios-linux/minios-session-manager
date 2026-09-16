@@ -2154,7 +2154,7 @@ class TestSquashfsSaveDelegation:
         assert capture is None
 
 
-class TestDynblkSessions:
+class TestDynBlkSessions:
     def test_compatible_modes_expose_dynblk_only_on_admitted_backing_fs(self):
         from minios_session import SessionManager
 
@@ -2309,6 +2309,34 @@ class TestDynblkSessions:
         commands = [call[0][0] for call in run.call_args_list]
         assert ['mke2fs', '-F', '-t', 'ext4', '-E', 'nodiscard', '/dev/dynblk7'] in commands
         assert ['dynblk', 'unload', '/dev/dynblk7', '--execute'] in commands
+
+    def test_dynblk_creation_passes_selected_compression(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager.__new__(SessionManager)
+        dynblk_calls = []
+        sm._run_dynblk = lambda args: (
+            dynblk_calls.append(list(args)) or
+            SimpleNamespace(returncode=0, stdout=b'/dev/dynblk7\n', stderr=b''))
+        completed = SimpleNamespace(returncode=0, stdout=b'', stderr=b'')
+
+        with patch('minios_session.subprocess.run', return_value=completed):
+            success, _message = sm._create_dynblk_session(
+                temp_sessions_dir, 4096, compression='zstd')
+        assert success is True
+        assert dynblk_calls[0] == [
+            'create', os.path.join(temp_sessions_dir, 'volume000.db'),
+            '--size', '4096MiB', '--compression', 'zstd', '--execute']
+
+    def test_dynblk_compression_is_rejected_with_luks(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        success, message = sm._create_session_locked(
+            'dynblk', 4096, password=b'secret', encryption='luks',
+            compression='zstd')
+        assert success is False
+        assert 'unavailable with LUKS' in message
 
     def test_dynblk_mount_uses_allocated_device_while_other_dynblk_can_exist(self,
                                                                             temp_sessions_dir):
