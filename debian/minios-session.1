@@ -1,4 +1,4 @@
-.TH MINIOS-SESSION 1 "September 2026" "MiniOS Session Manager 2.2.0" "User Commands"
+.TH MINIOS-SESSION 1 "September 2026" "MiniOS Session Manager 2.3.0" "User Commands"
 .SH NAME
 minios-session \- command-line interface for managing MiniOS persistent sessions
 .SH SYNOPSIS
@@ -51,11 +51,11 @@ create and select a session on a target installation medium. Without this
 option, the current boot default is unchanged.
 .TP
 \fImode\fR (optional)
-Session mode: native, squashfs, dynfilefs, dynblk, or raw (default: native). DynBlk is exposed only when its userspace utility, kernel module, and initrd capability marker are available.
+Session mode: native, squashfs, dynfilefs, dynblk, vmdk, or raw (default: native). DynBlk is exposed only when its userspace utility, kernel module, and initrd capability marker are available.
 .TP
 \fIsize\fR (optional)
 Decimal size in MB, GB, or TB for container modes. DynFileFS and raw
-default to 4000MB. DynBlk defaults to 16GiB and is limited to 512GiB.
+default to 4000MB. DynBlk defaults to 16GiB and uses the installed backend limit (dynblk limits).
 .TP
 \fB\-\-encryption\fR none|luks (optional)
 Encrypt Raw, DynFileFS, or DynBlk storage with LUKS2. Encrypted creation reads
@@ -63,8 +63,11 @@ the passphrase and confirmation interactively or from standard input with
 \fB\-\-password-stdin\fR.
 .TP
 \fB\-\-compression\fR CODEC (optional)
-DynBlk creation codec: none, lz4, lz4hc, lzo, lzo-rle, zstd, deflate, or 842.
-The option applies only to DynBlk and cannot be combined with LUKS encryption.
+DynBlk creation codec. Known codecs are none, lz4, lz4hc, lzo, lzo-rle, zstd,
+deflate, and 842. Before creating storage, minios-session checks the running
+kernel's kmod metadata under /run/initramfs and rejects codecs whose crypto_comp
+provider is unavailable there. The option applies only to DynBlk and cannot be
+combined with LUKS encryption.
 .RE
 .TP
 .B delete \fIsession_id\fR
@@ -76,7 +79,7 @@ ID of the session to delete
 .RE
 .TP
 .B resize \fIsession_id\fR \fIsize\fR
-Resize the specified session to a larger size in MB, GB, or TB. Works for dynfilefs, dynblk, and raw sessions, including their encrypted forms. DynBlk growth expands the virtual block device and then its ext4 filesystem without preallocating the new virtual capacity. Cannot resize currently running sessions.
+Resize the specified session to a larger size in MB, GB, or TB. Works for dynfilefs, dynblk, vmdk, and raw sessions, including their encrypted forms. DynBlk growth expands the virtual block device and then its ext4 filesystem without preallocating the new virtual capacity. Cannot resize currently running sessions.
 .RS
 .TP
 \fIsession_id\fR (required)
@@ -112,7 +115,7 @@ Path to the archive file (.tar.zst)
 Automatically convert to compatible mode for current filesystem
 .TP
 \fB\-\-force-mode\fR \fIMODE\fR (optional)
-Force import as a specific storage mode (native/dynfilefs/dynblk/raw)
+Force import as a specific storage mode (native/dynfilefs/dynblk/vmdk/raw)
 .TP
 \fB\-\-force-encryption\fR none|luks (optional)
 Force target encryption. A LUKS target receives a fresh LUKS header and ext4
@@ -137,13 +140,13 @@ capacity, or encryption. The target receives fresh filesystem and LUKS identitie
 ID of the session to copy
 .TP
 \fB\-\-to-mode\fR \fIMODE\fR (optional)
-Convert to a different storage mode: native, dynfilefs, dynblk, or raw
+Convert to a different storage mode: native, dynfilefs, dynblk, vmdk, or raw
 .TP
 \fB\-\-to-encryption\fR none|luks (optional)
 Select target encryption.
 .TP
 \fB\-\-size\fR \fISIZE\fR (optional)
-Decimal size in MB, GB, or TB for dynfilefs, dynblk, or raw targets.
+Decimal size in MB, GB, or TB for dynfilefs, dynblk, vmdk, or raw targets.
 DynBlk defaults to 16GiB; the other container modes default to 4000MB when no source size is inferred.
 .TP
 \fB\-\-compression\fR CODEC (optional)
@@ -162,13 +165,13 @@ Convert an existing session to a different mode in-place.
 ID of the session to convert
 .TP
 \fItarget_mode\fR (required)
-Target storage mode: native, dynfilefs, dynblk, or raw
+Target storage mode: native, dynfilefs, dynblk, vmdk, or raw
 .TP
 \fB\-\-to-encryption\fR none|luks (optional)
 Select target encryption.
 .TP
 \fB\-\-size\fR \fISIZE\fR (optional)
-Decimal size in MB, GB, or TB for dynfilefs, dynblk, or raw targets.
+Decimal size in MB, GB, or TB for dynfilefs, dynblk, vmdk, or raw targets.
 .TP
 \fB\-\-compression\fR CODEC (optional)
 Select compression for the new DynBlk container. Not available with LUKS.
@@ -216,7 +219,7 @@ without mode: Uses native mode, may fail on non-POSIX filesystems
 .TP
 - 
 .B create
-without size: Uses 16GiB for DynBlk and 4000MB for dynfilefs and raw modes
+without size: Uses 16GiB for DynBlk/VMDK and 4000MB for dynfilefs and raw modes
 .TP
 - 
 .B cleanup
@@ -236,7 +239,7 @@ Direct storage on POSIX-compatible filesystems (ext4, btrfs, etc.). This is the 
 Dynamic file-based storage suitable for non-POSIX filesystems (FAT32, NTFS, exFAT). Creates expandable container files.
 .TP
 .B dynblk
-Format-1 kernel block storage backed by thin volumeNNN.db files. The mode is available only when the running system has the dynblk utility and module and the initramfs advertises dynblk resume support. Its virtual size defaults to 16GiB and cannot exceed 512GiB.
+Format-1 kernel block storage backed by thin volumeNNN.db files. The mode is available only when the running system has the dynblk utility and module and the initramfs advertises dynblk resume support. Its virtual size defaults to 16GiB and is limited by the installed backend (dynblk limits).
 .TP
 .B raw
 Fixed-size image file storage compatible with any filesystem. Requires pre-allocation of storage space.
@@ -379,3 +382,20 @@ Session activation takes effect on the next boot. The tool automatically detects
 crims0n <crims0n@minios.dev>
 .SH REPORTING BUGS
 Report bugs to: https://github.com/minios-linux/minios-session-manager/issues
+
+.SH VMDK SESSIONS
+The vmdk mode uses the DynBlk driver with standard split sparse VMDK storage.
+Managed sessions contain volume.vmdk and its volume-sNNN.vmdk extents.
+Compression is unavailable. The default size is 16384 MiB; installed limits are
+queried per format. The running initrd must advertise vmdk-session-v1.
+Creation, resize, copy, clone, conversion and logical export/import support vmdk.
+.SH SPACE RECLAMATION
+.B minios-session reclaim ID [--compact] [--json]
+.PP
+Trim the unencrypted internal ext4 and reclaim known free container space.
+The running device is validated against this boot and remains connected.
+Inactive sessions are temporarily attached and mounted.
+Only --compact permits live-data relocation; it is never an automatic fallback
+on exFAT. Compaction increases flash writes. Encrypted sessions reclaim only
+already-known free storage and do not enable discard through LUKS.
+The GUI provides the same operation as Free Space in the session context menu.

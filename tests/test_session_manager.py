@@ -1671,14 +1671,15 @@ class TestSquashfsSave:
 
 
 class TestLuksLayer:
-    def test_perchsize_uses_decimal_units_and_one_tb_limit(self):
+    def test_perchsize_units_and_backend_neutral_integer_limit(self):
         from minios_session import parse_perch_size
 
         assert parse_perch_size('4000') == 4000
         assert parse_perch_size('4GB') == 4000
         assert parse_perch_size('1TB') == 1000000
+        assert parse_perch_size('4TB') == 4000000
         with pytest.raises(Exception):
-            parse_perch_size('1001TB')
+            parse_perch_size('100000000TB')
 
     def test_luks_capability_requires_versioned_initrd_marker(self, temp_sessions_dir,
                                                               monkeypatch):
@@ -1744,7 +1745,7 @@ class TestLuksLayer:
         else:
             sm._create_dynblk_session.assert_called_once_with(
                 os.path.join(temp_sessions_dir, '1'), 64,
-                encryption='luks', password=b'secret')
+                encryption='luks', password=b'secret', storage_format='dynblk')
 
     def test_unsupported_metadata_remains_listed_for_recovery(self,
                                                                temp_sessions_dir):
@@ -2175,10 +2176,11 @@ class TestDynBlkSessions:
         sm._detect_filesystem_type = lambda: (filesystem, None)
         sm._check_dynblk_available = lambda: True
         sm._check_luks_available = lambda: (False, None)
-        assert sm._validate_target_mode('dynblk', 524288) == (True, None)
-        valid, message = sm._validate_target_mode('dynblk', 524289)
-        assert valid is False
-        assert '512 GiB' in message
+        with patch('minios_session.runtime_dynblk_max_size_mib', return_value=67108864):
+            assert sm._validate_target_mode('dynblk', 4 * 1024 * 1024) == (True, None)
+            valid, message = sm._validate_target_mode('dynblk', 67108865)
+            assert valid is False
+            assert '67108864 MiB' in message
 
     def test_dynblk_size_reports_parts_and_virtual_capacity(self, temp_sessions_dir):
         from minios_session import SessionManager
@@ -2191,7 +2193,8 @@ class TestDynBlkSessions:
         with open(os.path.join(session, 'volume001.db'), 'wb') as handle:
             handle.truncate(4096)
         info = sm._get_session_size_info(session, {'mode': 'dynblk', 'size': 64})
-        assert info['used_size'] == 16384
+        assert info['used_size'] == sum(os.stat(os.path.join(session, name)).st_blocks * 512
+                                        for name in ('volume000.db', 'volume001.db'))
         assert info['total_size'] == 64 * 1024 * 1024
 
     def test_dynblk_direct_copy_preserves_all_parts(self, temp_sessions_dir):
@@ -2202,12 +2205,13 @@ class TestDynBlkSessions:
         target = os.path.join(temp_sessions_dir, 'target')
         os.mkdir(source)
         os.mkdir(target)
-        for index, content in ((0, b'header'), (3, b'payload')):
+        for index, content in ((0, b'header'), (3, b'payload'), (1000, b'high part')):
             with open(os.path.join(source, 'volume{:03d}.db'.format(index)), 'wb') as handle:
                 handle.write(content)
         assert sm._copy_session_direct(source, target, 'dynblk') is True
         assert open(os.path.join(target, 'volume000.db'), 'rb').read() == b'header'
         assert open(os.path.join(target, 'volume003.db'), 'rb').read() == b'payload'
+        assert open(os.path.join(target, 'volume1000.db'), 'rb').read() == b'high part'
 
     def test_dynblk_direct_copy_rejects_attached_source(self, temp_sessions_dir):
         from minios_session import SessionManager
@@ -2305,7 +2309,7 @@ class TestDynBlkSessions:
         assert success is True
         assert dynblk_calls == [[
             'create', os.path.join(temp_sessions_dir, 'volume000.db'),
-            '--size', '4096MiB', '--compression', 'none', '--execute']]
+            '--size', '4096MiB', '--compression', 'none', '--format', 'dynblk', '--execute']]
         commands = [call[0][0] for call in run.call_args_list]
         assert ['mke2fs', '-F', '-t', 'ext4', '-E', 'nodiscard', '/dev/dynblk7'] in commands
         assert ['dynblk', 'unload', '/dev/dynblk7', '--execute'] in commands
@@ -2318,6 +2322,7 @@ class TestDynBlkSessions:
         sm._run_dynblk = lambda args: (
             dynblk_calls.append(list(args)) or
             SimpleNamespace(returncode=0, stdout=b'/dev/dynblk7\n', stderr=b''))
+        sm._get_dynblk_compression_codecs = lambda: ('none', 'zstd')
         completed = SimpleNamespace(returncode=0, stdout=b'', stderr=b'')
 
         with patch('minios_session.subprocess.run', return_value=completed):
@@ -2326,7 +2331,7 @@ class TestDynBlkSessions:
         assert success is True
         assert dynblk_calls[0] == [
             'create', os.path.join(temp_sessions_dir, 'volume000.db'),
-            '--size', '4096MiB', '--compression', 'zstd', '--execute']
+            '--size', '4096MiB', '--compression', 'zstd', '--format', 'dynblk', '--execute']
 
     def test_dynblk_compression_is_rejected_with_luks(self, temp_sessions_dir):
         from minios_session import SessionManager
@@ -2368,7 +2373,7 @@ class TestDynBlkSessions:
         sm.check_sessions_directory_status = lambda: {'writable': True}
         sm._validate_target_mode = lambda _mode, _size: (True, None)
         sm._check_free_space = lambda _path, _size: (True, None)
-        sm._create_dynblk_session = lambda _path, _size: (False, 'dynblk failed')
+        sm._create_dynblk_session = lambda _path, _size, **_kwargs: (False, 'dynblk failed')
         success, message = sm._create_session_locked('dynblk', 4096)
 
         assert success is False
@@ -2383,7 +2388,7 @@ class TestDynBlkSessions:
         sm._validate_target_mode = lambda _mode, _size: (True, None)
         sm._check_free_space = lambda _path, _size: (True, None)
 
-        def fail_with_attached_volume(path, _size):
+        def fail_with_attached_volume(path, _size, **_kwargs):
             open(os.path.join(path, 'volume000.db'), 'wb').close()
             return False, 'detach failed'
 
@@ -2419,7 +2424,7 @@ class TestDynBlkSessions:
                 temp_sessions_dir, 8192, '7', metadata)
 
         assert success is True
-        assert ['load', volume, '--execute'] in calls
+        assert ['load', volume, '--format', 'dynblk', '--execute'] in calls
         assert ['grow', '/dev/dynblk9', '8192MiB', '--execute'] in calls
         commands = [call[0][0] for call in run.call_args_list]
         assert ['e2fsck', '-p', '/dev/dynblk9'] in commands
@@ -2453,6 +2458,27 @@ class TestDynBlkSessions:
         commands = [call[0][0] for call in run.call_args_list]
         assert ['resize2fs', '-f', '/dev/dynblk9'] in commands
         assert metadata['sessions']['7']['size'] == 8192
+
+
+def test_dynblk_compression_capabilities_come_from_run_initramfs(tmp_path):
+    from minios_session import runtime_dynblk_compression_codecs
+
+    kernel = '6.12-test'
+    (tmp_path / 'lib' / 'modules' / kernel).mkdir(parents=True)
+
+    def probe(command, **_kwargs):
+        return SimpleNamespace(
+            returncode=0 if command[-1] in ('crypto-lzo', 'crypto-zstd') else 1)
+
+    with patch('minios_session.shutil.which', return_value='/usr/sbin/modprobe'), \
+         patch('minios_session.subprocess.run', side_effect=probe) as run:
+        assert runtime_dynblk_compression_codecs(
+            str(tmp_path), kernel=kernel) == ('none', 'lzo', 'zstd')
+
+    command = run.call_args_list[0][0][0]
+    assert command[1:5] == ['-d', str(tmp_path), '-S', kernel]
+    assert '--ignore-install' in command
+    assert '--show-depends' in command
 
 
 def test_dynblk_capability_requires_initrd_marker_and_module(temp_sessions_dir):

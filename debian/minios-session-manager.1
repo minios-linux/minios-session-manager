@@ -1,4 +1,4 @@
-.TH MINIOS-SESSION-MANAGER 1 "September 2026" "MiniOS Session Manager 2.2.0" "User Commands"
+.TH MINIOS-SESSION-MANAGER 1 "September 2026" "MiniOS Session Manager 2.3.0" "User Commands"
 .SH NAME
 minios-session-manager \- graphical interface for managing MiniOS persistent sessions
 .SH SYNOPSIS
@@ -49,7 +49,11 @@ Encrypted exports contain decrypted logical files rather than the encrypted
 backend. Copy creates fresh filesystem and encryption identities; clone preserves
 backend data and identities. Conversion replaces the source unless a new-session
 operation is selected. DynFileFS and Raw default to 4000MB; DynBlk defaults to
-16GiB and is capped at 512GiB. New DynBlk targets can select none, lz4, lz4hc, lzo, lzo-rle, zstd, deflate, or 842 compression; compression is unavailable with LUKS. Resizable container modes can only grow.
+16GiB and uses the installed backend limit (dynblk limits). New DynBlk targets show only compression codecs
+provided by the running kernel and the modules/built-in metadata under
+/run/initramfs. Known codecs are none, lz4, lz4hc, lzo, lzo-rle, zstd, deflate,
+and 842; unavailable codecs are omitted. Compression is unavailable with LUKS.
+Resizable container modes can only grow.
 .SH EXAMPLES
 .TP
 .B minios-session-manager

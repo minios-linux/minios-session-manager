@@ -47,6 +47,7 @@ def _mode_display_name(mode):
         'squashfs': 'SquashFS',
         'dynfilefs': 'DynFileFS',
         'dynblk': 'DynBlk',
+        'vmdk': 'VMDK',
         'raw': 'Raw',
     }.get(mode, mode)
 
@@ -101,8 +102,9 @@ class SessionManagerGUI:
         self._filesystem_info = {}
         self.luks_backends = {
             mode: False
-            for mode in ('raw', 'dynfilefs', 'dynblk')
+            for mode in ('raw', 'dynfilefs', 'dynblk', 'vmdk')
         }
+        self.dynblk_compression_codecs = ('none',)
         
         self.sessions_status = {
             'success': False, 'found': False, 'writable': False,
@@ -273,6 +275,11 @@ class SessionManagerGUI:
 
     def _get_session_mode(self, session_id):
         return self._sessions_by_id.get(session_id, {}).get('mode')
+
+    def _dynblk_size_limit(self, mode='dynblk'):
+        # The backend supplies geometry limits; keep old backend JSON usable.
+        value = self._filesystem_info.get('vmdk_max_size_mb' if mode == 'vmdk' else 'dynblk_max_size_mb')
+        return value if type(value) is int and value > 0 else 512 * 1024
 
     def _fat_size_limit(self):
         return self._filesystem_info.get('limitations', {}).get('max_file_size')
@@ -764,6 +771,7 @@ class SessionManagerGUI:
         compatible_modes = info.get('compatible_modes')
         limitations = info.get('limitations')
         encryptions = info.get('compatible_encryptions')
+        codecs = info.get('dynblk_compression_codecs', ['none'])
         if encryptions is None:
             encryptions = {mode: ['none'] for mode in compatible_modes or []}
         if (not isinstance(filesystem, dict) or
@@ -773,13 +781,20 @@ class SessionManagerGUI:
                 any(not isinstance(mode, str) or not mode
                     for mode in compatible_modes) or
                 not isinstance(limitations, dict) or
-                not isinstance(encryptions, dict)):
+                not isinstance(encryptions, dict) or
+                not isinstance(codecs, list) or not codecs or codecs[0] != 'none' or
+                any(codec not in DYNBLK_COMPRESSION_CODECS for codec in codecs)):
             return False
         for mode in compatible_modes:
             values = encryptions.get(mode)
             if (not isinstance(values, list) or not values or
                     values[0] != 'none' or
                     any(value not in ('none', 'luks') for value in values)):
+                return False
+        for key in ('dynblk_max_size_mb', 'vmdk_max_size_mb'):
+            limit = info.get(key)
+            if limit is not None and (type(limit) is not int or
+                    not 0 < limit <= ((1 << 63) - 1) // (1 << 20)):
                 return False
         max_file_size = limitations.get('max_file_size')
         if (max_file_size is not None and
@@ -846,8 +861,10 @@ class SessionManagerGUI:
                 'compatible_encryptions', {})
             self.luks_backends = {
                 mode: 'luks' in available_encryptions.get(mode, [])
-                for mode in ('raw', 'dynfilefs', 'dynblk')
+                for mode in ('raw', 'dynfilefs', 'dynblk', 'vmdk')
             }
+            self.dynblk_compression_codecs = tuple(
+                self._filesystem_info.get('dynblk_compression_codecs') or ['none'])
             self._snapshot_time = time.monotonic()
             self.create_btn.set_sensitive(
                 self.sessions_writable and bool(self._filesystem_info))
@@ -1119,6 +1136,9 @@ class SessionManagerGUI:
         delete_item.connect("activate", self._on_context_delete)
         self.context_menu.append(delete_item)
 
+        self.reclaim_item = Gtk.MenuItem.new_with_mnemonic(_("_Free Space..."))
+        self.reclaim_item.connect("activate", self._on_context_reclaim)
+        self.context_menu.append(self.reclaim_item)
         self.context_menu.show_all()
 
     def _on_list_button_press(self, widget, event):
@@ -1151,8 +1171,11 @@ class SessionManagerGUI:
         export_item, copy_item, clone_item, convert_item = children[5:9]
         delete_item = children[12]
         mode = getattr(row, 'mode', 'unknown')
+        self.reclaim_item.set_visible(mode in ('dynblk', 'vmdk'))
+        self.reclaim_item.set_sensitive(self.sessions_writable and
+                                        getattr(row, 'configuration_supported', True))
         is_squashfs = mode == 'squashfs'
-        resize_available = mode in ('dynfilefs', 'dynblk', 'raw')
+        resize_available = mode in ('dynfilefs', 'dynblk', 'vmdk', 'raw')
         supported_operations = getattr(row, 'mode', 'unknown') != 'squashfs'
         supported_operations = (
             supported_operations and
@@ -1201,6 +1224,65 @@ class SessionManagerGUI:
         """Configure automatic saving for a SquashFS session."""
         if self.selected_session_id:
             self._show_squashfs_settings_dialog(self.selected_session_id)
+
+    def _on_context_reclaim(self, _menu_item):
+        session_id = self.selected_session_id
+        session = self._sessions_by_id.get(session_id, {})
+        if not self.sessions_writable or session.get('mode') not in ('dynblk', 'vmdk'):
+            return
+        dialog = Gtk.Dialog(title=_("Free Space — Session {}").format(session_id),
+                            transient_for=self.window, modal=True)
+        dialog.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+                           _("Free Space"), Gtk.ResponseType.OK)
+        _style_dialog_affirmative(dialog, _("Free Space"))
+        box = dialog.get_content_area()
+        box.set_spacing(12)
+        box.set_border_width(12)
+        note = Gtk.Label(label=_(
+            "Return unused container space without conversion. By default, live data is not moved. "
+            "On exFAT, free space inside the file may remain allocated."))
+        note.set_line_wrap(True)
+        note.set_max_width_chars(64)
+        note.set_xalign(0)
+        box.pack_start(note, False, False, 0)
+        compact = Gtk.CheckButton(label=_("Also compact by moving live data (additional flash writes)"))
+        compact.set_active(False)
+        box.pack_start(compact, False, False, 0)
+        if session.get('encryption', 'none') != 'none':
+            encrypted = Gtk.Label(label=_(
+                "Encrypted session: only known free space is reclaimed. Discard through LUKS is not enabled automatically."))
+            encrypted.set_line_wrap(True)
+            encrypted.set_max_width_chars(64)
+            encrypted.set_xalign(0)
+            box.pack_start(encrypted, False, False, 0)
+        dialog.show_all()
+        response = dialog.run()
+        move_data = compact.get_active()
+        dialog.destroy()
+        if response != Gtk.ResponseType.OK:
+            return
+        args = ['reclaim', session_id, '--json']
+        if move_data:
+            args.append('--compact')
+        self._show_loading(True, _("Reclaiming session space..."))
+        self._start_cli_task(args, self._on_reclaim_complete)
+
+    def _on_reclaim_complete(self, success, output, error):
+        self._show_loading(False)
+        try:
+            result = _strict_json_loads(output) if output else {}
+            if not isinstance(result, dict) or type(result.get('success')) is not bool:
+                raise ValueError('invalid reclaim reply')
+            success = success and result['success']
+            message = result.get('message') or error or _("Space reclamation finished.")
+        except (TypeError, ValueError):
+            message = error or _("Invalid response from the session backend.")
+            success = False
+        self.refresh_session_list()
+        if success:
+            self._show_info(message)
+        else:
+            self._show_error(message)
 
     def _on_context_resize(self, menu_item):
         """Handle resize from context menu"""
@@ -1349,6 +1431,14 @@ class SessionManagerGUI:
             if first_radio is None:
                 first_radio = dynblk_radio
 
+        if 'vmdk' in compatible_modes:
+            vmdk_radio = Gtk.RadioButton.new_with_label_from_widget(first_radio, _("VMDK Mode"))
+            vmdk_radio.set_tooltip_text(_("Split sparse VMDK image on the DynBlk driver; no compression"))
+            content_area.pack_start(vmdk_radio, False, False, 0)
+            radio_buttons['vmdk'] = vmdk_radio
+            if first_radio is None:
+                first_radio = vmdk_radio
+
         if 'raw' in compatible_modes:
             base_radio = first_radio if first_radio else None
             raw_radio = Gtk.RadioButton.new_with_label_from_widget(base_radio, _("Raw Mode"))
@@ -1371,7 +1461,7 @@ class SessionManagerGUI:
         compression_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         compression_box.pack_start(Gtk.Label(label=_("DynBlk compression:")), False, False, 0)
         compression_combo = Gtk.ComboBoxText()
-        for codec in DYNBLK_COMPRESSION_CODECS:
+        for codec in self.dynblk_compression_codecs:
             compression_combo.append(codec, codec)
         compression_combo.set_active_id('none')
         compression_box.pack_start(compression_combo, False, False, 0)
@@ -1435,9 +1525,10 @@ class SessionManagerGUI:
             # Check which radio buttons exist and are active
             is_dynfilefs_active = 'dynfilefs' in radio_buttons and radio_buttons['dynfilefs'].get_active()
             is_dynblk_active = 'dynblk' in radio_buttons and radio_buttons['dynblk'].get_active()
+            is_vmdk_active = 'vmdk' in radio_buttons and radio_buttons['vmdk'].get_active()
             is_raw_active = 'raw' in radio_buttons and radio_buttons['raw'].get_active()
             is_squashfs_active = 'squashfs' in radio_buttons and radio_buttons['squashfs'].get_active()
-            is_sized_mode = is_dynfilefs_active or is_dynblk_active or is_raw_active
+            is_sized_mode = is_dynfilefs_active or is_dynblk_active or is_vmdk_active or is_raw_active
             selected_mode = next((
                 name for name, button in radio_buttons.items()
                 if button.get_active()), None)
@@ -1477,16 +1568,15 @@ class SessionManagerGUI:
                     size_spinbutton.set_value(max_size)
                 adjustment.set_upper(max_size)
                 size_info_label.set_text(_("Maximum {} MB on FAT32").format(max_size))
-            elif is_dynblk_active:
-                adjustment.set_upper(524288)
-                # Match the CLI/driver default without preallocating this much
-                # backing storage: dynblk capacity is thin and grows on demand.
+            elif is_dynblk_active or is_vmdk_active:
+                maximum = self._dynblk_size_limit(selected_mode)
+                adjustment.set_upper(maximum)
                 if int(size_spinbutton.get_value()) == 4000:
                     size_spinbutton.set_value(16384)
-                elif size_spinbutton.get_value() > 524288:
-                    size_spinbutton.set_value(524288)
+                elif size_spinbutton.get_value() > maximum:
+                    size_spinbutton.set_value(maximum)
                 size_info_label.set_text(_(
-                    "Thin container: default 16 GiB, maximum 512 GiB"))
+                    "Thin container: default 16 GiB, backend maximum {} MiB").format(maximum))
             elif is_dynfilefs_active:
                 adjustment.set_upper(1000000)
                 size_info_label.set_text(_(
@@ -1532,7 +1622,7 @@ class SessionManagerGUI:
             password_input = self._prompt_luks_passphrase(confirm=True) if encryption == 'luks' else None
             if encryption == 'luks' and password_input is None:
                 return
-            if mode in ["dynfilefs", "dynblk", "raw"]:
+            if mode in ["dynfilefs", "dynblk", "vmdk", "raw"]:
                 command = ['create', mode, str(size_mb), '--json']
                 if mode == 'dynblk' and compression != 'none':
                     command.extend(['--compression', compression])
@@ -1931,7 +2021,7 @@ class SessionManagerGUI:
         try:
             session_mode = session_info.get('mode', 'unknown')
             session_encryption = session_info.get('encryption', 'none')
-            if session_mode not in ['dynfilefs', 'dynblk', 'raw']:
+            if session_mode not in ['dynfilefs', 'dynblk', 'vmdk', 'raw']:
                 self._show_error(_("Resize is only supported for DynFileFS, DynBlk, and Raw sessions"))
                 return
             
@@ -1944,7 +2034,7 @@ class SessionManagerGUI:
             # Get current session size in MB
             current_size_mb = 100  # Default minimum
             
-            if session_mode in ('dynfilefs', 'dynblk'):
+            if session_mode in ('dynfilefs', 'dynblk', 'vmdk'):
                 # Thin backends report physical use separately from virtual capacity.
                 if 'total_size' in session_info:
                     current_size_mb = session_info['total_size'] // (1024 * 1024)
@@ -1989,8 +2079,8 @@ class SessionManagerGUI:
         content_area.pack_start(size_label, False, False, 0)
         
         size_spin = Gtk.SpinButton()
-        if session_mode == 'dynblk':
-            max_resize_mb = 524288
+        if session_mode in ('dynblk', 'vmdk'):
+            max_resize_mb = self._dynblk_size_limit(session_mode)
         elif session_mode == 'raw':
             max_resize_mb = self._fat_size_limit() or 1000000
         else:
@@ -2155,7 +2245,7 @@ class SessionManagerGUI:
         compression_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         compression_box.pack_start(Gtk.Label(label=_("DynBlk compression:")), False, False, 0)
         compression_combo = Gtk.ComboBoxText()
-        for codec in DYNBLK_COMPRESSION_CODECS:
+        for codec in self.dynblk_compression_codecs:
             compression_combo.append(codec, codec)
         compression_combo.set_active_id('none')
         compression_box.pack_start(compression_combo, True, True, 0)
@@ -2289,7 +2379,7 @@ class SessionManagerGUI:
         compression_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         compression_box.pack_start(Gtk.Label(label=_("DynBlk compression:")), False, False, 0)
         compression_combo = Gtk.ComboBoxText()
-        for codec in DYNBLK_COMPRESSION_CODECS:
+        for codec in self.dynblk_compression_codecs:
             compression_combo.append(codec, codec)
         compression_combo.set_active_id('none')
         compression_box.pack_start(compression_combo, True, True, 0)
@@ -2311,7 +2401,7 @@ class SessionManagerGUI:
             convert = convert_check.get_active()
             mode_combo.set_sensitive(convert)
             mode = mode_combo.get_active_id() if convert else source_mode
-            size_spin.set_sensitive(convert and mode in ['dynfilefs', 'dynblk', 'raw'])
+            size_spin.set_sensitive(convert and mode in ['dynfilefs', 'dynblk', 'vmdk', 'raw'])
             encryption_supported = self.luks_backends.get(mode, False)
             encryption_box.set_sensitive(encryption_supported)
             if not encryption_supported:
@@ -2322,8 +2412,8 @@ class SessionManagerGUI:
             compression_box.set_sensitive(compression_enabled)
             if not compression_enabled:
                 compression_combo.set_active_id('none')
-            if mode == 'dynblk':
-                upper = 524288
+            if mode in ('dynblk', 'vmdk'):
+                upper = self._dynblk_size_limit(mode)
             elif mode == 'raw':
                 upper = self._fat_size_limit() or 1000000
             else:
@@ -2343,7 +2433,7 @@ class SessionManagerGUI:
             target_mode = mode_combo.get_active_id() if convert else None
             target_encryption = encryption_combo.get_active_id() or 'none'
             compression = compression_combo.get_active_id() or 'none'
-            size_mb = int(size_spin.get_value()) if convert and target_mode in ['dynfilefs', 'dynblk', 'raw'] else None
+            size_mb = int(size_spin.get_value()) if convert and target_mode in ['dynfilefs', 'dynblk', 'vmdk', 'raw'] else None
             dialog.destroy()
             password_parts = []
             if source_encryption == 'luks':
@@ -2463,7 +2553,7 @@ class SessionManagerGUI:
         compression_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         compression_box.pack_start(Gtk.Label(label=_("DynBlk compression:")), False, False, 0)
         compression_combo = Gtk.ComboBoxText()
-        for codec in DYNBLK_COMPRESSION_CODECS:
+        for codec in self.dynblk_compression_codecs:
             compression_combo.append(codec, codec)
         compression_combo.set_active_id('none')
         compression_box.pack_start(compression_combo, False, False, 0)
@@ -2500,7 +2590,7 @@ class SessionManagerGUI:
 
         def on_mode_changed(_widget=None):
             mode = mode_combo.get_active_id()
-            size_spin.set_sensitive(mode in ['dynfilefs', 'dynblk', 'raw'])
+            size_spin.set_sensitive(mode in ['dynfilefs', 'dynblk', 'vmdk', 'raw'])
             encryption_supported = self.luks_backends.get(mode, False)
             encryption_box.set_sensitive(encryption_supported)
             if not encryption_supported:
@@ -2511,8 +2601,8 @@ class SessionManagerGUI:
             compression_box.set_sensitive(compression_enabled)
             if not compression_enabled:
                 compression_combo.set_active_id('none')
-            if mode == 'dynblk':
-                upper = 524288
+            if mode in ('dynblk', 'vmdk'):
+                upper = self._dynblk_size_limit(mode)
             elif mode == 'raw':
                 upper = self._fat_size_limit() or 1000000
             else:
@@ -2530,7 +2620,7 @@ class SessionManagerGUI:
             target_mode = mode_combo.get_active_id()
             target_encryption = encryption_combo.get_active_id() or 'none'
             compression = compression_combo.get_active_id() or 'none'
-            size_mb = int(size_spin.get_value()) if target_mode in ['dynfilefs', 'dynblk', 'raw'] else None
+            size_mb = int(size_spin.get_value()) if target_mode in ['dynfilefs', 'dynblk', 'vmdk', 'raw'] else None
             dialog.destroy()
             password_parts = []
             if current_encryption == 'luks':

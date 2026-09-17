@@ -163,14 +163,14 @@ def test_ram_only_status_explains_missing_persistent_storage():
 
 def test_dynblk_gui_is_capability_driven_and_resizable():
     assert "compatible_modes = ['native', 'dynfilefs', 'raw']" in SOURCE
-    assert "for mode in ('raw', 'dynfilefs', 'dynblk')" in SOURCE
-    assert "if session_mode == 'dynblk':" in SOURCE
+    assert "for mode in ('raw', 'dynfilefs', 'dynblk', 'vmdk')" in SOURCE
+    assert "if session_mode in ('dynblk', 'vmdk'):" in SOURCE
     assert "encryption_combo.append('luks', _(\"LUKS2\"))" in SOURCE
     assert '_(' + '"LUKS Mode"' + ')' not in SOURCE
     assert '_("DynBlk Mode")' in SOURCE
     assert '_("DynBlk compression:")' in SOURCE
     assert "add_class('field-description')" in SOURCE
-    assert 'Thin container: default 16 GiB, maximum 512 GiB' in SOURCE
+    assert 'Thin container: default 16 GiB, backend maximum {} MiB' in SOURCE
     assert 'Thin container: backing storage grows on demand' in SOURCE
     assert 'size_info_label.set_sensitive(' not in SOURCE
 
@@ -180,7 +180,9 @@ def test_dynblk_completion_is_capability_gated():
     assert 'minios-initramfs-dynblk' in completion
     assert 'modinfo dynblk >/dev/null 2>&1' in completion
     assert 'session_modes+=" dynblk"' in completion
-    assert 'none lz4 lz4hc lzo lzo-rle zstd deflate 842' in completion
+    assert '_minios_session_dynblk_compressions' in completion
+    assert '--show-depends "crypto-$codec"' in completion
+    assert 'dynblk_compression_values="$(_minios_session_dynblk_compressions)"' in completion
     assert '--compression' in completion
     assert "grep -Fqx 'luks-layer-v1'" in completion
     assert 'session_modes+=" luks"' not in completion

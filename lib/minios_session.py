@@ -49,6 +49,63 @@ except Exception:
 INITRD_CRYPTO_MARKER = '/run/initramfs/etc/minios-initramfs-crypt'
 INITRD_DYNBLK_MARKER = '/run/initramfs/etc/minios-initramfs-dynblk'
 LUKS_LAYER_CAPABILITY = 'luks-layer-v1'
+DYNBLK_COMPRESSION_CODECS = (
+    'none', 'lz4', 'lz4hc', 'lzo', 'lzo-rle', 'zstd', 'deflate', '842',
+)
+
+
+def runtime_dynblk_compression_codecs(initramfs_root='/run/initramfs', kernel=None):
+    """Return DynBlk crypto_comp providers available to the boot initramfs."""
+    modprobe = shutil.which('modprobe')
+    if not modprobe:
+        modprobe = next(
+            (path for path in ('/usr/sbin/modprobe', '/sbin/modprobe')
+             if os.access(path, os.X_OK)), None)
+    kernel = kernel or os.uname().release
+    if not modprobe or not kernel:
+        return ('none',)
+
+    roots = []
+    seen_module_dirs = set()
+    for prefix in ('', 'main', 'early'):
+        base = os.path.normpath(os.path.join(initramfs_root, prefix))
+        for relative in (os.path.join('lib', 'modules'), os.path.join('usr', 'lib', 'modules')):
+            modules = os.path.join(base, relative, kernel)
+            modules_parent = os.path.dirname(modules)
+            real_modules_parent = os.path.realpath(modules_parent)
+            if (os.path.isdir(modules) and
+                    real_modules_parent not in seen_module_dirs):
+                seen_module_dirs.add(real_modules_parent)
+                roots.append((base, modules_parent))
+    if not roots:
+        return ('none',)
+
+    supported = set(DYNBLK_COMPRESSION_CODECS)
+    with tempfile.TemporaryDirectory(prefix='minios-kmod-probe-') as scratch:
+        config_dir = os.path.join(scratch, 'modprobe.d')
+        os.mkdir(config_dir)
+        for index, (base, modules_parent) in enumerate(roots):
+            probe_root = base
+            expected = os.path.join(base, 'lib', 'modules')
+            if os.path.realpath(modules_parent) != os.path.realpath(expected):
+                probe_root = os.path.join(scratch, 'root-{}'.format(index))
+                os.makedirs(os.path.join(probe_root, 'lib'))
+                os.symlink(modules_parent, os.path.join(probe_root, 'lib', 'modules'))
+            available = {'none'}
+            for codec in DYNBLK_COMPRESSION_CODECS[1:]:
+                try:
+                    result = subprocess.run(
+                        [modprobe, '-d', probe_root, '-S', kernel,
+                         '-C', config_dir, '--ignore-install', '--show-depends',
+                         'crypto-{}'.format(codec)],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        check=False, timeout=5)
+                except (OSError, subprocess.SubprocessError):
+                    continue
+                if result.returncode == 0:
+                    available.add(codec)
+            supported.intersection_update(available)
+    return tuple(codec for codec in DYNBLK_COMPRESSION_CODECS if codec in supported)
 
 
 def initrd_has_capability(marker, capability):
@@ -64,7 +121,7 @@ def initrd_has_capability(marker, capability):
 
 def luks_runtime_available(backend='raw'):
     """Check the compositional userspace/initrd requirements for one backend."""
-    if backend not in ('raw', 'dynfilefs', 'dynblk'):
+    if backend not in ('raw', 'dynfilefs', 'dynblk', 'vmdk'):
         return False
     if not shutil.which('cryptsetup') or not initrd_has_capability(
             INITRD_CRYPTO_MARKER, LUKS_LAYER_CAPABILITY):
@@ -72,6 +129,23 @@ def luks_runtime_available(backend='raw'):
     if backend in ('raw', 'dynfilefs') and not shutil.which('losetup'):
         return False
     return True
+
+
+def runtime_dynblk_max_size_mib(storage_format='dynblk'):
+    """Read the installed backend limit; old CLIs retain their legacy ceiling."""
+    try:
+        result = subprocess.run(
+            ['dynblk', 'limits', '--format', storage_format, '--json'],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=5,
+            check=False)
+        if result.returncode == 0:
+            value = json.loads(result.stdout)['max_capacity_mib']
+            if type(value) is int and 0 < value <= ((1 << 63) - 1) // (1 << 20):
+                return value
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
+        pass
+    # Compatibility only: pre-1.2 drivers cannot handle the new large images.
+    return 512 * 1024
 
 
 class MetadataCommitUncertain(OSError):
@@ -88,12 +162,10 @@ class SessionManager:
     # creation and growth is protected at runtime by the persistence guard, so
     # admission requires only this floor instead of the full logical size.
     DYNFILEFS_INITIAL_MB = 64
-    # dynblk is thin at creation too. Format 1 exposes up to 512 GiB of virtual
-    # capacity while backing parts remain below the FAT32 single-file limit;
-    # kernel storage and memory admission remain authoritative.
+    # DynBlk is thin, with backend-reported virtual capacity and bounded cache.
+    # Parts remain below the FAT32 single-file limit; admission is authoritative.
     DYNBLK_INITIAL_MB = 64
     DYNBLK_DEFAULT_SIZE_MB = 16 * 1024
-    DYNBLK_MAX_SIZE_MB = 512 * 1024
     DYNBLK_COMPRESSION_CODECS = (
         'none', 'lz4', 'lz4hc', 'lzo', 'lzo-rle', 'zstd', 'deflate', '842',
     )
@@ -464,6 +536,7 @@ class SessionManager:
         result['capabilities'] = {
             'luks_layer_v1': luks_runtime_available('raw'),
             'dynblk': self._check_dynblk_available(),
+            'vmdk': self._check_vmdk_available(),
         }
         if error_msg:
             result['error'] = error_msg
@@ -672,6 +745,7 @@ class SessionManager:
             ('raw', 'none'), ('raw', 'luks'),
             ('dynfilefs', 'none'), ('dynfilefs', 'luks'),
             ('dynblk', 'none'), ('dynblk', 'luks'),
+            ('vmdk', 'none'), ('vmdk', 'luks'),
         }
 
     def list_sessions(self, include_running_check=True):
@@ -796,6 +870,9 @@ class SessionManager:
         except Exception:
             return False
 
+    def _get_dynblk_compression_codecs(self):
+        return runtime_dynblk_compression_codecs()
+
     def _check_dynblk_available(self):
         """Require dynblk in both the running system and the boot initramfs."""
         if not shutil.which('dynblk') or not os.path.isfile(INITRD_DYNBLK_MARKER):
@@ -814,6 +891,34 @@ class SessionManager:
             return result.returncode == 0
         except OSError:
             return False
+
+    def _check_vmdk_available(self):
+        """Never create a boot session that the current initrd cannot resume."""
+        if not self._check_dynblk_available() or not initrd_has_capability(
+                INITRD_DYNBLK_MARKER, 'vmdk-session-v1'):
+            return False
+        try:
+            result = subprocess.run(['dynblk', 'limits', '--format', 'vmdk', '--json'],
+                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                    timeout=5, check=False)
+            return result.returncode == 0 and json.loads(result.stdout).get('storage_format') == 'vmdk'
+        except (OSError, subprocess.SubprocessError, ValueError, AttributeError):
+            return False
+
+    @staticmethod
+    def _dynblk_volume(session_path, storage_format=None):
+        native = os.path.join(session_path, 'volume000.db')
+        vmdk = os.path.join(session_path, 'volume.vmdk')
+        if os.path.lexists(native) and os.path.lexists(vmdk):
+            raise OSError(_('Ambiguous session: both DynBlk and VMDK images are present.'))
+        if storage_format is None:
+            storage_format = 'vmdk' if os.path.lexists(vmdk) else 'dynblk'
+        if storage_format not in ('dynblk', 'vmdk'):
+            raise ValueError('invalid block image format')
+        selected, other = (vmdk, native) if storage_format == 'vmdk' else (native, vmdk)
+        if os.path.lexists(other):
+            raise OSError(_('Session metadata does not match the stored block image format.'))
+        return selected
 
     def _run_dynblk(self, arguments):
         result = subprocess.run(
@@ -850,17 +955,24 @@ class SessionManager:
         """Lock a detached dynblk namespace while copying or deleting it."""
         def namespace():
             entries = []
+            primary = os.path.basename(self._dynblk_volume(session_path))
+            vmdk = primary == 'volume.vmdk'
             for name in os.listdir(session_path):
-                match = re.fullmatch(r'volume([0-9]{3})\.db', name)
+                if vmdk and name == primary:
+                    entries.append(name)
+                    continue
+                match = re.fullmatch(r'volume-s([0-9]+)\.vmdk' if vmdk else r'volume([0-9]+)\.db', name)
                 if not match:
                     continue
-                if int(match.group(1)) >= 64:
+                index = int(match.group(1))
+                if index >= (1 << 32) or name != ('volume-s{:03d}.vmdk' if vmdk else 'volume{:03d}.db').format(index):
                     raise OSError(_('Invalid DynBlk backing namespace'))
                 entries.append(name)
             entries.sort()
-            if not entries or entries[0] != 'volume000.db':
+            if primary not in entries:
                 raise OSError(_('DynBlk backing volume is missing'))
-            return entries
+            # Descriptor/primary first, matching the driver's lock order.
+            return [primary] + [name for name in entries if name != primary]
 
         names = namespace()
         locked = []
@@ -916,20 +1028,26 @@ class SessionManager:
                 os.close(fd)
 
     def _create_dynblk_session(self, session_path, size_mb, encryption='none',
-                               password=None, compression='none'):
+                               password=None, compression='none', storage_format='dynblk'):
         """Create one detached DynBlk/ext4 session without disturbing other DynBlk devices."""
         if compression not in self.DYNBLK_COMPRESSION_CODECS:
             return False, _("Unsupported DynBlk compression: {}").format(compression)
+        if compression not in self._get_dynblk_compression_codecs():
+            return False, _(
+                "DynBlk compression is not supported by the current kernel/initramfs: {}"
+            ).format(compression)
         if encryption == 'luks' and compression != 'none':
             return False, _("DynBlk compression is unavailable with LUKS encryption.")
-        volume = os.path.join(session_path, 'volume000.db')
+        if storage_format == 'vmdk' and compression != 'none':
+            return False, _('VMDK sessions do not support compression.')
+        volume = self._dynblk_volume(session_path, storage_format)
         device = None
         success = False
         message = _('Failed to create DynBlk session')
         try:
             result = self._run_dynblk([
                 'create', volume, '--size', '{}MiB'.format(size_mb),
-                '--compression', compression, '--execute'])
+                '--compression', compression, '--format', storage_format, '--execute'])
             device = self._dynblk_device_from_result(result)
             # The device was just created and is entirely unmapped. Letting
             # mke2fs discard the whole thin address space creates needless COW
@@ -964,16 +1082,20 @@ class SessionManager:
 
     @contextlib.contextmanager
     def _mount_dynblk(self, session_path, writable, encryption='none',
-                      password=None):
+                      password=None, storage_format=None):
         """Attach one dynblk volume without requiring the module/device namespace to be idle."""
-        volume = os.path.join(session_path, 'volume000.db')
+        volume = self._dynblk_volume(session_path, storage_format)
         if not os.path.exists(volume):
-            raise OSError(_('DynBlk volume000.db not found'))
+            raise OSError(_('DynBlk/VMDK session image not found'))
         mount_point = tempfile.mkdtemp(prefix='minios_dynblk_')
         device = None
         mounted = False
         try:
-            result = self._run_dynblk(['load', volume, '--execute'])
+            selected_format = storage_format or ('vmdk' if volume.endswith('.vmdk') else 'dynblk')
+            attach_args = ['load', volume, '--format', selected_format, '--execute']
+            if not writable:
+                attach_args.append('--read-only')
+            result = self._run_dynblk(attach_args)
             device = self._dynblk_device_from_result(result)
             if encryption == 'luks':
                 with self._mount_luks(device, password, writable) as encrypted_mount:
@@ -1012,7 +1134,7 @@ class SessionManager:
 
     def _check_luks_available(self, backend='raw'):
         """Check userspace and versioned initrd support for layered LUKS."""
-        if backend not in ('raw', 'dynfilefs', 'dynblk'):
+        if backend not in ('raw', 'dynfilefs', 'dynblk', 'vmdk'):
             return False, _("LUKS encryption is not supported with {} persistence.").format(backend)
         if not shutil.which('cryptsetup'):
             return False, _("LUKS encryption requires cryptsetup.")
@@ -1080,6 +1202,8 @@ class SessionManager:
         # the kernel module. Only expose targets covered by that contract.
         if fs_type in self.DYNBLK_BACKING_FILESYSTEMS and self._check_dynblk_available():
             compatible_modes.append('dynblk')
+            if self._check_vmdk_available():
+                compatible_modes.append('vmdk')
         
         # Raw mode: works on ALL writable filesystems (static images)
         compatible_modes.append('raw')
@@ -1123,7 +1247,7 @@ class SessionManager:
 
     def _validate_target_mode(self, mode, size_mb=None, encryption='none'):
         """Validate a backend and encryption layer against the target."""
-        if mode not in ('native', 'squashfs', 'dynfilefs', 'dynblk', 'raw'):
+        if mode not in ('native', 'squashfs', 'dynfilefs', 'dynblk', 'raw', 'vmdk'):
             return False, _("Invalid session mode")
         if encryption not in ('none', 'luks'):
             return False, _("Invalid session encryption")
@@ -1144,15 +1268,16 @@ class SessionManager:
             return False, _("SquashFS sessions do not use a fixed container size")
         if mode == 'dynfilefs' and not self._check_dynfilefs_available():
             return False, _("DynFileFS is not available on this system. Please install dynfilefs package.")
-        if mode == 'dynblk':
+        if mode in ('dynblk', 'vmdk'):
             if not self._check_dynblk_available():
                 return False, _("DynBlk is not available on this system.")
-            if size_mb is not None and size_mb > self.DYNBLK_MAX_SIZE_MB:
-                return False, _("DynBlk virtual size cannot exceed 512 GiB.")
+            maximum = runtime_dynblk_max_size_mib(mode)
+            if size_mb is not None and size_mb > maximum:
+                return False, _("DynBlk virtual size cannot exceed {} MiB.").format(maximum)
         max_size = self._get_filesystem_limitations(fs_info).get('max_file_size')
         if mode == 'raw' and max_size and size_mb and size_mb > max_size:
             return False, _("Container size {}MB exceeds FAT32 file size limit ({}MB).").format(size_mb, max_size)
-        if mode == 'raw' and size_mb and size_mb > self.MAX_CONTAINER_SIZE_MB:
+        if mode in ('raw', 'dynfilefs') and size_mb and size_mb > self.MAX_CONTAINER_SIZE_MB:
             return False, _("Container size exceeds the 1TB limit.")
         return True, None
 
@@ -1433,10 +1558,10 @@ class SessionManager:
                     else:
                         yield virtual_mount
             
-            elif mode == 'dynblk':
+            elif mode in ('dynblk', 'vmdk'):
                 with self._mount_dynblk(
                         session_path, writable=False, encryption=encryption,
-                        password=password) as dynblk_mount:
+                        password=password, storage_format=mode) as dynblk_mount:
                     changes_dir = os.path.join(dynblk_mount, 'changes')
                     yield changes_dir if os.path.isdir(changes_dir) else dynblk_mount
 
@@ -1534,24 +1659,24 @@ class SessionManager:
 
                     yield virtual_mount
                 
-            elif mode == 'dynblk':
+            elif mode in ('dynblk', 'vmdk'):
                 if not size_mb:
                     size_mb = self.DYNBLK_DEFAULT_SIZE_MB
-                volume = os.path.join(session_path, 'volume000.db')
+                volume = self._dynblk_volume(session_path, mode)
                 if not os.path.exists(volume):
                     if compression == 'none':
                         success, message = self._create_dynblk_session(
                             session_path, size_mb, encryption=encryption,
-                            password=password)
+                            password=password, storage_format=mode)
                     else:
                         success, message = self._create_dynblk_session(
                             session_path, size_mb, encryption=encryption,
-                            password=password, compression=compression)
+                            password=password, compression=compression, storage_format=mode)
                     if not success:
                         raise OSError(message)
                 with self._mount_dynblk(
                         session_path, writable=True, encryption=encryption,
-                        password=password) as dynblk_mount:
+                        password=password, storage_format=mode) as dynblk_mount:
                     yield dynblk_mount
 
             elif mode == 'raw':
@@ -1656,10 +1781,6 @@ class SessionManager:
         if stored_size is not None:
             try:
                 stored_size = int(stored_size)
-                # Auto-detect if stored as bytes vs MB
-                # If > 100000, assume it's in bytes and convert to MB
-                if stored_size > 100000:
-                    stored_size = max(100, int(stored_size / (1024 * 1024)))
             except (ValueError, TypeError):
                 stored_size = None
 
@@ -1699,14 +1820,16 @@ class SessionManager:
                     'display': display
                 }
         
-        elif session_mode == 'dynblk':
+        elif session_mode in ('dynblk', 'vmdk'):
             used_size = 0
             try:
                 for name in os.listdir(session_path):
-                    if re.fullmatch(r'volume[0-9]{3}\.db', name):
+                    if (re.fullmatch(r'volume[0-9]{3,}\.db', name) or
+                            (session_mode == 'vmdk' and re.fullmatch(r'volume(?:-s[0-9]{3,})?\.vmdk', name))):
                         path = os.path.join(session_path, name)
                         if os.path.isfile(path):
-                            used_size += os.path.getsize(path)
+                            info = os.stat(path, follow_symlinks=False)
+                            used_size += getattr(info, 'st_blocks', (info.st_size + 511) // 512) * 512
             except OSError:
                 pass
             result = {'used_size': used_size, 'display': self._format_size(used_size)}
@@ -2470,7 +2593,7 @@ class SessionManager:
             return False, _("Sessions directory not found")
         
         # Validate session mode
-        valid_modes = ["native", "squashfs", "dynfilefs", "dynblk", "raw"]
+        valid_modes = ["native", "squashfs", "dynfilefs", "dynblk", "raw", 'vmdk']
         if session_mode not in valid_modes:
             return False, _("Invalid session mode. Must be one of: {}").format(", ".join(valid_modes))
         if encryption not in ('none', 'luks'):
@@ -2524,8 +2647,9 @@ class SessionManager:
                 required_mb = 1
             elif session_mode == "dynfilefs":
                 required_mb = min(required_mb, self.DYNFILEFS_INITIAL_MB)
-            elif session_mode == "dynblk":
-                required_mb = min(required_mb, self.DYNBLK_INITIAL_MB)
+            elif session_mode in ('dynblk', 'vmdk'):
+                # Reserve metadata headroom for all declared logical ranges.
+                required_mb = max(self.DYNBLK_INITIAL_MB, (int(required_mb) + 1023) // 1024)
             has_space, space_error = self._check_free_space(self.sessions_dir, required_mb)
             if not has_space:
                 return False, space_error
@@ -2573,19 +2697,19 @@ class SessionManager:
                         pass
                     return False, message
             
-            elif session_mode == "dynblk":
+            elif session_mode in ('dynblk', 'vmdk'):
                 if size_mb is None:
                     size_mb = self.DYNBLK_DEFAULT_SIZE_MB
                 if encryption == 'luks':
                     success, message = self._create_dynblk_session(
                         session_path, size_mb, encryption=encryption,
-                        password=password)
+                        password=password, storage_format=session_mode)
                 elif compression != 'none':
                     success, message = self._create_dynblk_session(
-                        session_path, size_mb, compression=compression)
+                        session_path, size_mb, compression=compression, storage_format=session_mode)
                 else:
                     success, message = self._create_dynblk_session(
-                        session_path, size_mb)
+                        session_path, size_mb, storage_format=session_mode)
                 if not success:
                     # Do not infer ownership from /sys/module/dynblk or dynblk0:
                     # other volumes may legitimately be attached. Preserve any
@@ -2593,7 +2717,7 @@ class SessionManager:
                     # failure; remove only an unused reserved session directory.
                     try:
                         has_volume_parts = any(
-                            re.fullmatch(r'volume[0-9]{3}\.db', name)
+                            re.fullmatch(r'volume[0-9]{3,}\.db', name)
                             for name in os.listdir(session_path))
                     except OSError:
                         has_volume_parts = True
@@ -2683,7 +2807,7 @@ class SessionManager:
                     boot_id = self._current_boot_id()
                     if boot_id:
                         session_record['capture_boot_id'] = boot_id
-                elif session_mode in ["dynfilefs", "dynblk", "raw"] and size_mb:
+                elif session_mode in ["dynfilefs", "dynblk", "raw", 'vmdk'] and size_mb:
                     session_record["size"] = size_mb
                 metadata["sessions"][new_id] = session_record
                 if activate:
@@ -2704,7 +2828,7 @@ class SessionManager:
                     return True, message
                 except Exception:
                     # Fallback to simple English message if translation fails
-                    if session_mode in ["dynfilefs", "dynblk", "raw"] and size_mb is not None:
+                    if session_mode in ["dynfilefs", "dynblk", "raw", 'vmdk'] and size_mb is not None:
                         return True, f"Session {new_id} created successfully (mode: {session_mode}, size: {size_mb}MB)"
                     else:
                         return True, f"Session {new_id} created successfully (mode: {session_mode})"
@@ -2760,7 +2884,7 @@ class SessionManager:
                 metadata = self._read_sessions_metadata()
                 session_data = metadata.get("sessions", {}).get(session_id, {})
                 is_dynblk = (
-                    session_data.get('mode') == 'dynblk' or
+                    session_data.get('mode') in ('dynblk', 'vmdk') or
                     os.path.isfile(os.path.join(session_path, 'volume000.db')))
                 if is_dynblk:
                     # Hold exclusive backing-file locks through removal. This
@@ -2839,6 +2963,155 @@ class SessionManager:
         
         return deleted_count, errors
 
+    @staticmethod
+    def _decode_mount_field(value):
+        return re.sub(r'\\([0-7]{3})', lambda m: chr(int(m.group(1), 8)), value)
+
+    def _running_block_device(self, session_id, mode, encryption):
+        """Resolve the current boot's device, not an arbitrary metadata device name."""
+        fd = os.open(self.BOOT_STATE_FILE, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        with os.fdopen(fd, 'r', encoding='utf-8') as stream:
+            st = os.fstat(stream.fileno())
+            if (not stat.S_ISREG(st.st_mode) or st.st_uid != 0 or st.st_nlink != 1 or
+                    st.st_mode & 0o022 or st.st_size > 16384):
+                raise OSError(_('Persistence runtime state is not trusted'))
+            state = {}
+            for line in stream:
+                key, separator, value = line.rstrip('\n').partition('=')
+                if not separator or key in state or '\r' in value:
+                    raise OSError(_('Persistence runtime state is malformed'))
+                state[key] = value
+        boot_id = Path(self.BOOT_ID_FILE).read_text(encoding='ascii').strip()
+        root = os.stat(self.sessions_dir, follow_symlinks=False)
+        expected = {'boot_id': boot_id, 'boot_level': 'ok', 'session': session_id,
+                    'mode': mode, 'encryption': encryption, 'durable': '1', 'writable': '1',
+                    'sessions_device': str(root.st_dev), 'sessions_inode': str(root.st_ino)}
+        if not boot_id or any(state.get(k) != v for k, v in expected.items()):
+            raise OSError(_('Selected session is not the writable session of this boot.'))
+        device = state.get('dynblk_device', '')
+        if not re.fullmatch(r'/dev/dynblk(?:[0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])', device):
+            raise OSError(_('Invalid DynBlk device response'))
+        return device
+
+    def _block_filesystem_mount(self, device):
+        """Find the real ext4 mount, never AUFS/OverlayFS or a directory within it."""
+        st = os.stat(device, follow_symlinks=False)
+        if not stat.S_ISBLK(st.st_mode):
+            raise OSError(_('Expected a block device.'))
+        identity = '{}:{}'.format(os.major(st.st_rdev), os.minor(st.st_rdev))
+        with open('/proc/self/mountinfo', encoding='utf-8') as stream:
+            for line in stream:
+                fields = line.split()
+                if '-' not in fields:
+                    continue
+                split = fields.index('-')
+                if (fields[2] == identity and fields[3] == '/' and
+                        fields[split + 1] == 'ext4' and 'rw' in fields[5].split(',')):
+                    return self._decode_mount_field(fields[4])
+        raise OSError(_('The session ext4 filesystem is not mounted read-write.'))
+
+    def _trim_block_filesystem(self, device, mount_point):
+        # Keep the directory pinned and check st_dev before executing FITRIM.
+        # A pass_fds path avoids a mountpoint replacement between validation and trim.
+        disk = os.stat(device, follow_symlinks=False)
+        fd = os.open(mount_point, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        try:
+            if not stat.S_ISBLK(disk.st_mode) or os.fstat(fd).st_dev != disk.st_rdev:
+                raise OSError(_('Session mount changed before space reclamation.'))
+            result = subprocess.run(['fstrim', '-v', '/proc/self/fd/{}'.format(fd)],
+                                    pass_fds=(fd,), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if result.returncode:
+                raise OSError(result.stderr.decode(errors='replace').strip() or
+                              _('Filesystem trim failed; no compaction was started.'))
+        finally:
+            os.close(fd)
+
+    def reclaim_session(self, session_id, compact=False):
+        """Trim an inner ext4 and reclaim through its owning driver, without conversion."""
+        details = None
+        owned_device = None
+        temp_mount = None
+        mounted = False
+        pinned = None
+        try:
+            session_id = self._validate_session_id(session_id)
+            with self._mutation_lock():
+                metadata = self._read_sessions_metadata()
+                data = metadata.get('sessions', {}).get(session_id, {})
+                mode = data.get('mode')
+                if mode not in ('dynblk', 'vmdk'):
+                    raise OSError(_('Space reclamation is available only for DynBlk and VMDK sessions.'))
+                if not self._session_configuration_supported(data):
+                    raise OSError(_('Unsupported session configuration.'))
+                session_path = self._session_path(session_id, require_exists=True)
+                encryption = data.get('encryption', 'none')
+                running = str(metadata.get('running', '')) == session_id
+                if running:
+                    device = self._running_block_device(session_id, mode, encryption)
+                else:
+                    volume = self._dynblk_volume(session_path, mode)
+                    device = self._dynblk_device_from_result(self._run_dynblk(
+                        ['load', volume, '--format', mode, '--execute']))
+                    owned_device = device
+                pinned = os.open(device, os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC)
+                if not stat.S_ISBLK(os.fstat(pinned).st_mode):
+                    raise OSError(_('Expected a block device.'))
+                status = self._dynblk_status(device)
+                if (status.get('storage_format') != mode or status.get('read_only') or
+                        status.get('fenced') or status.get('cache') == 'unsafe'):
+                    raise OSError(_('Reclamation requires a writable DynBlk device with flush barriers enabled.'))
+                # Probe before trimming: old drivers must fail without modifying the filesystem.
+                probe = self._run_dynblk(['reclaim', device, '--json'])
+                if json.loads(probe.stdout).get('dry_run') is not True:
+                    raise OSError(_('Update DynBlk to use space reclamation.'))
+                # Do not silently enable discard through encryption: it leaks allocation patterns.
+                if encryption == 'none':
+                    if running:
+                        mount_point = self._block_filesystem_mount(device)
+                    else:
+                        temp_mount = tempfile.mkdtemp(prefix='minios_reclaim_')
+                        result = subprocess.run(
+                            ['mount', '-t', 'ext4', '-o', 'nosuid,nodev,noexec', device, temp_mount],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        if result.returncode:
+                            raise OSError(result.stderr.decode(errors='replace').strip() or
+                                          _('Cannot mount session for trim.'))
+                        mounted = True
+                        mount_point = temp_mount
+                    self._trim_block_filesystem(device, mount_point)
+                args = ['reclaim', device, '--execute', '--json']
+                if compact:
+                    args.append('--compact')
+                details = json.loads(self._run_dynblk(args).stdout)
+                if not isinstance(details, dict) or details.get('complete') is not True:
+                    raise OSError(_('Space reclamation did not complete.'))
+                self._invalidate_size_cache(session_id)
+                message = _('Space reclamation completed for session {}.').format(session_id)
+                if encryption != 'none':
+                    message += ' ' + _('Encrypted session: only previously known free space was reclaimed; discard through LUKS was not enabled.')
+        except Exception as error:
+            success, message = False, str(error)
+        else:
+            success = True
+        finally:
+            if pinned is not None:
+                os.close(pinned)
+            if mounted:
+                if not self._safe_unmount(temp_mount, use_lazy=False):
+                    success = False
+                    message = _('Cannot unmount the temporary session; its device was left attached.')
+                    owned_device = None
+                else:
+                    mounted = False
+            if owned_device:
+                try:
+                    self._run_dynblk(['unload', owned_device, '--execute'])
+                except OSError as error:
+                    success, message = False, str(error)
+            if temp_mount and not mounted:
+                os.rmdir(temp_mount)
+        return success, message, details
+
     def resize_session(self, session_id, new_size_mb, password=None):
         """Resize a session to new size"""
         if not self.sessions_dir:
@@ -2858,7 +3131,7 @@ class SessionManager:
             session_data = metadata.get("sessions", {}).get(session_id, {})
             session_mode = session_data.get("mode", "unknown")
             encryption = session_data.get('encryption', 'none')
-            if session_mode not in ["dynfilefs", "dynblk", "raw"]:
+            if session_mode not in ["dynfilefs", "dynblk", "raw", 'vmdk']:
                 return False, _("Resize is only supported for DynFileFS, DynBlk, and Raw sessions")
             valid_target, target_error = self._validate_target_mode(
                 session_mode, new_size_mb, encryption)
@@ -2872,7 +3145,7 @@ class SessionManager:
                     return self._resize_dynfilefs_session(
                         session_path, new_size_mb, session_id, metadata,
                         encryption=encryption, password=password)
-                if session_mode == 'dynblk':
+                if session_mode in ('dynblk', 'vmdk'):
                     return self._resize_dynblk_session(
                         session_path, new_size_mb, session_id, metadata,
                         encryption=encryption, password=password)
@@ -3021,9 +3294,9 @@ class SessionManager:
     def _resize_dynblk_session(self, session_path, new_size_mb, session_id,
                                metadata, encryption='none', password=None):
         """Grow a detached dynblk device and its ext4 filesystem."""
-        volume = os.path.join(session_path, 'volume000.db')
+        volume = self._dynblk_volume(session_path, metadata.get('sessions', {}).get(session_id, {}).get('mode', 'dynblk'))
         if not os.path.exists(volume):
-            return False, _("DynBlk volume000.db not found")
+            return False, _("DynBlk/VMDK session image not found")
         recorded_size = metadata.get('sessions', {}).get(session_id, {}).get('size', 0)
         try:
             recorded_size = int(recorded_size or 0)
@@ -3035,7 +3308,8 @@ class SessionManager:
         device = None
         operation_error = None
         try:
-            result = self._run_dynblk(['load', volume, '--execute'])
+            storage_format = metadata.get('sessions', {}).get(session_id, {}).get('mode', 'dynblk')
+            result = self._run_dynblk(['load', volume, '--format', storage_format, '--execute'])
             device = self._dynblk_device_from_result(result)
             status = self._dynblk_status(device)
             current_size_mb = status['capacity_bytes'] // (1024 * 1024)
@@ -3546,7 +3820,7 @@ class SessionManager:
             return False
         session = metadata['session']
         encryption = session.get('encryption', 'none')
-        return (session.get('mode') in ('native', 'dynfilefs', 'dynblk', 'raw')
+        return (session.get('mode') in ('native', 'dynfilefs', 'dynblk', 'raw', 'vmdk')
                 and encryption in ('none', 'luks')
                 and self._session_configuration_supported(session)
                 and all(isinstance(session.get(key), str) for key in ('version', 'edition', 'union')))
@@ -3629,7 +3903,7 @@ class SessionManager:
             
             # Determine size for container modes
             size_mb = None
-            if import_mode in ['dynfilefs', 'dynblk', 'raw']:
+            if import_mode in ['dynfilefs', 'dynblk', 'raw', 'vmdk']:
                 size_mb = max(100, int(required_mb))
 
             # Import directly using streaming
@@ -3814,7 +4088,7 @@ class SessionManager:
             }
             if encryption == 'luks':
                 session_data['encryption'] = 'luks'
-            if mode in ['dynfilefs', 'dynblk', 'raw']:
+            if mode in ['dynfilefs', 'dynblk', 'raw', 'vmdk']:
                 size = import_metadata['session'].get('size', 4000)
                 if isinstance(size, int):
                     session_data['size'] = max(100, int(size / (1024 * 1024))) if size > 100000 else max(100, size)
@@ -3871,7 +4145,7 @@ class SessionManager:
             return False, _("DynBlk compression is available only for DynBlk sessions.")
         if target_encryption == 'luks' and compression != 'none':
             return False, _("DynBlk compression is unavailable with LUKS encryption.")
-        if target_mode == 'dynblk' and size_mb is None and source_mode != 'dynblk':
+        if target_mode in ('dynblk', 'vmdk') and size_mb is None and source_mode not in ('dynblk', 'vmdk'):
             size_mb = self.DYNBLK_DEFAULT_SIZE_MB
         if target_encryption == 'none':
             valid_target, target_error = self._validate_target_mode(
@@ -3892,8 +4166,8 @@ class SessionManager:
         # A same-mode dynblk copy is different: all existing backing bytes are
         # copied, so reserve enough room for the current physical namespace.
         source_size = source_session.get('size', 0)
-        if target_mode == 'dynblk':
-            if source_mode == 'dynblk':
+        if target_mode in ('dynblk', 'vmdk'):
+            if source_mode in ('dynblk', 'vmdk'):
                 size_info = self._get_session_size_info(source_path, source_session)
                 used_bytes = int(size_info.get('used_size', 0) or 0)
                 required_mb = max(
@@ -3946,7 +4220,7 @@ class SessionManager:
                 }
                 if target_encryption == 'luks':
                     metadata['sessions'][str(new_id)]['encryption'] = 'luks'
-                if target_mode in ['dynfilefs', 'dynblk', 'raw']:
+                if target_mode in ['dynfilefs', 'dynblk', 'raw', 'vmdk']:
                     if size_mb:
                         metadata['sessions'][str(new_id)]['size'] = size_mb
                     elif source_mode == target_mode and source_session.get('total_size_mb'):
@@ -4055,7 +4329,7 @@ class SessionManager:
                             os.path.join(target_path, file))
                 return True
 
-            elif mode == 'dynblk':
+            elif mode in ('dynblk', 'vmdk'):
                 # A format-1 volume is a coordinated namespace, not a set of
                 # independently copyable files. Shared BSD locks conflict with
                 # the kernel driver's exclusive locks, so attached or resizing
@@ -4196,7 +4470,7 @@ class SessionManager:
             return False, target_error
 
         # Set default size for dynfilefs/raw if not specified
-        if target_mode in ['dynfilefs', 'dynblk', 'raw'] and not size_mb:
+        if target_mode in ['dynfilefs', 'dynblk', 'raw', 'vmdk'] and not size_mb:
             # Try to use size from source session if available
             if session_info.get('total_size_mb'):
                 size_mb = session_info['total_size_mb']
@@ -4241,7 +4515,7 @@ class SessionManager:
                     metadata['sessions'][session_id]['encryption'] = 'luks'
                 else:
                     metadata['sessions'][session_id].pop('encryption', None)
-                if target_mode in ['dynfilefs', 'dynblk', 'raw']:
+                if target_mode in ['dynfilefs', 'dynblk', 'raw', 'vmdk']:
                     metadata['sessions'][session_id]['size'] = size_mb
                 else:
                     metadata['sessions'][session_id].pop('size', None)
@@ -4277,6 +4551,10 @@ class SessionManager:
                 mode: self._get_compatible_encryptions(mode)
                 for mode in compatible_modes
             },
+            'dynblk_compression_codecs': list(self._get_dynblk_compression_codecs())
+            if 'dynblk' in compatible_modes else ['none'],
+            'dynblk_max_size_mb': runtime_dynblk_max_size_mib() if 'dynblk' in compatible_modes else None,
+            'vmdk_max_size_mb': runtime_dynblk_max_size_mib('vmdk') if 'vmdk' in compatible_modes else None,
             'limitations': limitations
         }, None
 
@@ -4307,7 +4585,7 @@ def format_session_list(sessions):
         lines.append(f"  {_('Size:').rstrip(':')} {size_str}")
         
         # Add Total Size for dynfilefs sessions
-        if session['mode'] in ('dynfilefs', 'dynblk') and 'total_size_mb' in session and session['total_size_mb']:
+        if session['mode'] in ('dynfilefs', 'dynblk', 'vmdk') and 'total_size_mb' in session and session['total_size_mb']:
             total_size_mb = session['total_size_mb']
             # Convert to int if it's a string
             if isinstance(total_size_mb, str):
@@ -4346,7 +4624,7 @@ def format_sessions_json(sessions):
         }
         
         # Add total_size fields right after size_formatted for dynfilefs sessions
-        if session['mode'] in ('dynfilefs', 'dynblk') and 'total_size_mb' in session and session['total_size_mb']:
+        if session['mode'] in ('dynfilefs', 'dynblk', 'vmdk') and 'total_size_mb' in session and session['total_size_mb']:
             total_size_mb = session['total_size_mb']
             if isinstance(total_size_mb, str):
                 try:
@@ -4396,7 +4674,7 @@ def format_session_json(session):
     }
 
     # Add total_size fields right after size_formatted for dynfilefs sessions
-    if session['mode'] in ('dynfilefs', 'dynblk') and 'total_size_mb' in session and session['total_size_mb']:
+    if session['mode'] in ('dynfilefs', 'dynblk', 'vmdk') and 'total_size_mb' in session and session['total_size_mb']:
         total_size_mb = session['total_size_mb']
         if isinstance(total_size_mb, str):
             try:
@@ -4437,8 +4715,10 @@ def parse_perch_size(value):
     number, unit = int(match.group(1)), match.group(2).lower()
     multiplier = 1000000 if unit.startswith('t') else 1000 if unit.startswith('g') else 1
     size_mb = number * multiplier
-    if not size_mb or size_mb > SessionManager.MAX_CONTAINER_SIZE_MB:
-        raise argparse.ArgumentTypeError('size must be between 1MB and 1TB')
+    # Parsing is backend-neutral. Native DynBlk and Raw/DynFileFS limits are
+    # checked later by _validate_target_mode, not by a global 1-TB parser cap.
+    if not size_mb or size_mb > ((1 << 63) - 1) // (1 << 20):
+        raise argparse.ArgumentTypeError('size must be positive and fit signed 64-bit byte offsets')
     return size_mb
 
 def luks_password_from_args(args, confirm=False):
@@ -4508,7 +4788,7 @@ def main():
         sys.exit(1)
 
     luks_available = luks_runtime_available()
-    session_modes = ['native', 'squashfs', 'dynfilefs', 'dynblk', 'raw']
+    session_modes = ['native', 'squashfs', 'dynfilefs', 'dynblk', 'raw', 'vmdk']
 
     parser = argparse.ArgumentParser(
         description=_('MiniOS Session Manager - Command line tool for managing persistent sessions'),
@@ -4541,7 +4821,8 @@ SESSION MODES:
   native                    Direct filesystem changes (requires POSIX-compatible filesystem)
   squashfs                  Compressed snapshot of the current live changes
   dynfilefs                 Dynamic file system overlay (works on any filesystem)
-  dynblk                    Native format-1 block device (supported lower filesystems)
+  dynblk                    Compressed native format-1 block device
+  vmdk                      Split sparse VMDK block device (no compression)
   raw                       Raw disk image (works on any filesystem, 4000MB default)
 
 COMMAND BEHAVIOR:
@@ -4690,6 +4971,11 @@ EXAMPLES:
     status_parser = subparsers.add_parser('status', help=_('Check sessions directory status'), parents=[parent_parser])
 
     # Resize command
+    reclaim_parser = subparsers.add_parser('reclaim', help=_('Reclaim free space in a DynBlk or VMDK session'), parents=[parent_parser])
+    reclaim_parser.add_argument('session_id', type=str)
+    reclaim_parser.add_argument('--compact', action='store_true',
+                                help=_('Explicitly permit moving live data; increases flash writes'))
+
     resize_parser = subparsers.add_parser('resize', help=_('Resize a session'), parents=[parent_parser])
     resize_parser.add_argument('session_id', help=_('Session ID to resize'))
     resize_parser.add_argument('size', type=parse_perch_size, metavar='SIZE', help=_('New size in MB, GB, or TB'))
@@ -4996,6 +5282,14 @@ EXAMPLES:
                 print(_("Errors:"))
                 for error in errors:
                     print(f"  {error}")
+
+    elif args.command == 'reclaim':
+        success, message, details = manager.reclaim_session(args.session_id, compact=args.compact)
+        if args.json:
+            print(json.dumps({'success': success, 'message': message, 'reclaim': details}))
+        else:
+            print(message)
+        sys.exit(0 if success else 1)
 
     elif args.command == 'resize':
         success, message = manager.resize_session(args.session_id, args.size,

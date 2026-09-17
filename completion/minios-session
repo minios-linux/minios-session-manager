@@ -1,3 +1,33 @@
+_minios_session_dynblk_compressions() {
+    local root=/run/initramfs kernel codec tmp probe_root values="none" modprobe=""
+    modprobe="$(command -v modprobe 2>/dev/null || true)"
+    if [[ -z "$modprobe" ]]; then
+        for codec in /usr/sbin/modprobe /sbin/modprobe; do
+            if [[ -x "$codec" ]]; then modprobe="$codec"; break; fi
+        done
+    fi
+    [[ -n "$modprobe" ]] || { printf '%s\n' "$values"; return; }
+    kernel="$(uname -r)"
+    tmp="$(mktemp -d 2>/dev/null)" || { printf '%s\n' "$values"; return; }
+    mkdir -p "$tmp/config"
+    probe_root="$root"
+    if [[ ! -d "$root/lib/modules/$kernel" && -d "$root/usr/lib/modules/$kernel" ]]; then
+        mkdir -p "$tmp/root/lib"
+        ln -s "$root/usr/lib/modules" "$tmp/root/lib/modules"
+        probe_root="$tmp/root"
+    fi
+    if [[ -d "$probe_root/lib/modules/$kernel" ]]; then
+        for codec in lz4 lz4hc lzo lzo-rle zstd deflate 842; do
+            if "$modprobe" -d "$probe_root" -S "$kernel" -C "$tmp/config" \
+                    --ignore-install --show-depends "crypto-$codec" >/dev/null 2>&1; then
+                values+=" $codec"
+            fi
+        done
+    fi
+    rm -rf "$tmp"
+    printf '%s\n' "$values"
+}
+
 _minios_session() {
     local cur prev opts subcommands
     COMPREPLY=()
@@ -5,17 +35,22 @@ _minios_session() {
     prev="${COMP_WORDS[COMP_CWORD - 1]}"
     
     # Main commands
-    subcommands="list active running info activate save create settings delete resize cleanup status export import copy clone convert"
+    subcommands="list active running info activate save create settings delete resize reclaim cleanup status export import copy clone convert"
     
     # Storage backends and encryption are separate capabilities.
     local session_modes="native squashfs dynfilefs raw"
     local luks_opt=""
     local encryption_values="none"
-    local dynblk_compression_values="none lz4 lz4hc lzo lzo-rle zstd deflate 842"
+    local dynblk_compression_values
+    dynblk_compression_values="$(_minios_session_dynblk_compressions)"
     if command -v dynblk >/dev/null 2>&1 && command -v modinfo >/dev/null 2>&1 &&
        [[ -f /run/initramfs/etc/minios-initramfs-dynblk ]] &&
        modinfo dynblk >/dev/null 2>&1; then
         session_modes+=" dynblk"
+        if grep -Fqx 'vmdk-session-v1' /run/initramfs/etc/minios-initramfs-dynblk 2>/dev/null &&
+           dynblk limits --format vmdk >/dev/null 2>&1; then
+            session_modes+=" vmdk"
+        fi
     fi
     if command -v cryptsetup >/dev/null 2>&1 && command -v losetup >/dev/null 2>&1 &&
        grep -Fqx 'luks-layer-v1' /run/initramfs/etc/minios-initramfs-crypt 2>/dev/null; then
@@ -30,7 +65,7 @@ _minios_session() {
     local subcommand=""
     local subcommand_pos=1
     for ((i=1; i<${#COMP_WORDS[@]}; i++)); do
-        if [[ "${COMP_WORDS[i]}" =~ ^(list|active|running|info|activate|save|create|settings|delete|resize|cleanup|status|export|import|copy|clone|convert)$ ]]; then
+        if [[ "${COMP_WORDS[i]}" =~ ^(list|active|running|info|activate|save|create|settings|delete|resize|reclaim|cleanup|status|export|import|copy|clone|convert)$ ]]; then
             subcommand="${COMP_WORDS[i]}"
             subcommand_pos=$i
             break
@@ -155,9 +190,9 @@ _minios_session() {
             esac
             ;;
         
-        activate|save|delete|clone)
+        activate|save|delete|clone|reclaim)
             case "${prev}" in
-                activate|save|delete|clone)
+                activate|save|delete|clone|reclaim)
                     # Get available sessions
                     local sessions=$(_get_sessions)
                     COMPREPLY=($(compgen -W "${sessions}" -- ${cur}))
@@ -170,6 +205,7 @@ _minios_session() {
                         local cmd_opts="--help --json --sessions-dir${luks_opt}"
                         [[ "$subcommand" == save ]] && cmd_opts+=" --progress"
                         [[ "$subcommand" == delete ]] && cmd_opts+=" --handoff"
+                        [[ "$subcommand" == reclaim ]] && cmd_opts+=" --compact"
                         COMPREPLY=($(compgen -W "${cmd_opts}" -- ${cur}))
                     fi
                     ;;

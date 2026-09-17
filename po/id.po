@@ -5,10 +5,10 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: minios-session-manager 2.2.0\n"
+"Project-Id-Version: minios-session-manager 2.3.0\n"
 "Report-Msgid-Bugs-To: support@minios.dev\n"
-"POT-Creation-Date: 2026-09-16 20:14+0300\n"
-"PO-Revision-Date: 2026-09-16 17:14+0000\n"
+"POT-Creation-Date: 2026-09-17 21:14+0300\n"
+"PO-Revision-Date: 2026-09-17 18:16+0000\n"
 "Last-Translator: crims0n <crims0n@minios.dev>\n"
 "Language-Team: none\n"
 "Language: id\n"
@@ -52,7 +52,7 @@ msgstr "Perangkat persistensi hampir penuh"
 msgid "Very little space remains for saved changes. Free up space or remove old sessions soon."
 msgstr "Sisa ruang untuk menyimpan perubahan sangat sedikit. Kosongkan ruang atau hapus sesi lama segera."
 
-#: lib/minios_persistence_alert.py:184 lib/minios_session_manager.py:501
+#: lib/minios_persistence_alert.py:184 lib/minios_session_manager.py:517
 msgid "Low space on persistence device"
 msgstr "Ruang pada perangkat persistensi hampir habis"
 
@@ -108,7 +108,7 @@ msgstr "Sesi MiniOS SquashFS"
 msgid "Save Now"
 msgstr "Simpan Sekarang"
 
-#: lib/minios_persistence_alert.py:332 lib/minios_session.py:4658
+#: lib/minios_persistence_alert.py:332 lib/minios_session.py:4950
 msgid "Save automatically at shutdown"
 msgstr "Simpan otomatis saat shutdown"
 
@@ -116,53 +116,53 @@ msgstr "Simpan otomatis saat shutdown"
 msgid "Periodic save"
 msgstr "Penyimpanan berkala"
 
-#: lib/minios_persistence_alert.py:340 lib/minios_session_manager.py:1391
-#: lib/minios_session_manager.py:1868
+#: lib/minios_persistence_alert.py:340 lib/minios_session_manager.py:1489
+#: lib/minios_session_manager.py:1965
 msgid "Off"
 msgstr "Mati"
 
-#: lib/minios_persistence_alert.py:340 lib/minios_session_manager.py:1391
-#: lib/minios_session_manager.py:1868
+#: lib/minios_persistence_alert.py:340 lib/minios_session_manager.py:1489
+#: lib/minios_session_manager.py:1965
 msgid "Every 30 minutes"
 msgstr "Setiap 30 menit"
 
-#: lib/minios_persistence_alert.py:341 lib/minios_session_manager.py:1392
-#: lib/minios_session_manager.py:1869
+#: lib/minios_persistence_alert.py:341 lib/minios_session_manager.py:1490
+#: lib/minios_session_manager.py:1966
 msgid "Every 1 hour"
 msgstr "Setiap 1 jam"
 
-#: lib/minios_persistence_alert.py:341 lib/minios_session_manager.py:1392
-#: lib/minios_session_manager.py:1869
+#: lib/minios_persistence_alert.py:341 lib/minios_session_manager.py:1490
+#: lib/minios_session_manager.py:1966
 msgid "Every 2 hours"
 msgstr "Setiap 2 jam"
 
-#: lib/minios_persistence_alert.py:342 lib/minios_session_manager.py:1393
-#: lib/minios_session_manager.py:1870
+#: lib/minios_persistence_alert.py:342 lib/minios_session_manager.py:1491
+#: lib/minios_session_manager.py:1967
 msgid "Every 4 hours"
 msgstr "Setiap 4 jam"
 
-#: lib/minios_persistence_alert.py:342 lib/minios_session_manager.py:1393
-#: lib/minios_session_manager.py:1870
+#: lib/minios_persistence_alert.py:342 lib/minios_session_manager.py:1491
+#: lib/minios_session_manager.py:1967
 msgid "Every 8 hours"
 msgstr "Setiap 8 jam"
 
-#: lib/minios_persistence_alert.py:387 lib/minios_session_manager.py:1571
+#: lib/minios_persistence_alert.py:387 lib/minios_session_manager.py:1668
 msgid "Saving Session"
 msgstr "Menyimpan Sesi"
 
-#: lib/minios_persistence_alert.py:428 lib/minios_session_manager.py:1592
+#: lib/minios_persistence_alert.py:428 lib/minios_session_manager.py:1689
 msgid "Session saved"
 msgstr "Sesi telah disimpan"
 
-#: lib/minios_persistence_alert.py:429 lib/minios_session_manager.py:1593
+#: lib/minios_persistence_alert.py:429 lib/minios_session_manager.py:1690
 msgid "SquashFS session #{} was saved successfully."
 msgstr "Sesi SquashFS #{} berhasil disimpan."
 
-#: lib/minios_persistence_alert.py:431 lib/minios_session_manager.py:1596
+#: lib/minios_persistence_alert.py:431 lib/minios_session_manager.py:1693
 msgid "Failed to save session"
 msgstr "Gagal menyimpan sesi"
 
-#: lib/minios_persistence_alert.py:488 lib/minios_session_manager.py:1915
+#: lib/minios_persistence_alert.py:488 lib/minios_session_manager.py:2012
 msgid "Failed to update save settings"
 msgstr "Gagal memperbarui pengaturan penyimpanan"
 
@@ -194,930 +194,1004 @@ msgstr "Sesi Anda disimpan sebagai snapshot terkompresi. Gunakan ikon simpan kap
 msgid "SquashFS session is active"
 msgstr "Sesi SquashFS sedang aktif"
 
-#: lib/minios_session.py:206
+#: lib/minios_session.py:278
 msgid "Invalid session ID"
 msgstr "ID sesi tidak valid"
 
-#: lib/minios_session.py:213 lib/minios_session.py:415
-#: lib/minios_session.py:1028 lib/minios_session.py:1869
-#: lib/minios_session.py:2468 lib/minios_session.py:2722
-#: lib/minios_session.py:2836
+#: lib/minios_session.py:285 lib/minios_session.py:487
+#: lib/minios_session.py:1150 lib/minios_session.py:1992
+#: lib/minios_session.py:2593 lib/minios_session.py:2855
+#: lib/minios_session.py:3118
 msgid "Sessions directory not found"
 msgstr "Direktori sesi tidak ditemukan"
 
-#: lib/minios_session.py:217
+#: lib/minios_session.py:289
 msgid "Invalid session path"
 msgstr "Path sesi tidak valid"
 
-#: lib/minios_session.py:219 lib/minios_session.py:1882
-#: lib/minios_session.py:1925
+#: lib/minios_session.py:291 lib/minios_session.py:2005
+#: lib/minios_session.py:2048
 msgid "Session {} does not exist"
 msgstr "Sesi {} tidak ada"
 
-#: lib/minios_session.py:356
+#: lib/minios_session.py:428
 msgid "Insufficient disk space: {} MB required, {} MB available"
 msgstr "Ruang disk tidak cukup: {} MB diperlukan, {} MB tersedia"
 
-#: lib/minios_session.py:362
+#: lib/minios_session.py:434
 msgid "Unable to check free disk space: {}"
 msgstr "Tidak dapat memeriksa ruang disk kosong: {}"
 
-#: lib/minios_session.py:425
+#: lib/minios_session.py:497
 msgid "Sessions directory does not exist"
 msgstr "Direktori sesi tidak ada"
 
-#: lib/minios_session.py:442
+#: lib/minios_session.py:514
 msgid "Sessions directory is on a read-only filesystem"
 msgstr "Direktori sesi berada di filesystem hanya-baca"
 
-#: lib/minios_session.py:452
+#: lib/minios_session.py:524
 msgid "Permission denied: {}"
 msgstr "Izin ditolak: {}"
 
-#: lib/minios_session.py:455
+#: lib/minios_session.py:527
 msgid "Error checking directory: {}"
 msgstr "Kesalahan memeriksa direktori: {}"
 
-#: lib/minios_session.py:823
+#: lib/minios_session.py:913
+msgid "Ambiguous session: both DynBlk and VMDK images are present."
+msgstr "Sesi ambigu: baik DynBlk maupun image VMDK terdeteksi."
+
+#: lib/minios_session.py:920
+msgid "Session metadata does not match the stored block image format."
+msgstr "Metadata sesi tidak sesuai dengan format image blok yang tersimpan."
+
+#: lib/minios_session.py:928
 msgid "DynBlk operation failed"
 msgstr "DynBlk gagal melakukan operasi"
 
-#: lib/minios_session.py:831 lib/minios_session.py:834
+#: lib/minios_session.py:936 lib/minios_session.py:939
+#: lib/minios_session.py:2993
 msgid "Invalid DynBlk device response"
 msgstr "Respons perangkat DynBlk tidak valid"
 
-#: lib/minios_session.py:845
+#: lib/minios_session.py:950
 msgid "Invalid DynBlk status response"
 msgstr "Respons status DynBlk tidak valid"
 
-#: lib/minios_session.py:858
+#: lib/minios_session.py:969
 msgid "Invalid DynBlk backing namespace"
 msgstr "Backing namespace DynBlk tidak valid"
 
-#: lib/minios_session.py:862
+#: lib/minios_session.py:973
 msgid "DynBlk backing volume is missing"
 msgstr "Backing volume DynBlk tidak ditemukan"
 
-#: lib/minios_session.py:877
+#: lib/minios_session.py:989
 msgid "Invalid DynBlk backing file"
 msgstr "Backing file DynBlk tidak valid"
 
-#: lib/minios_session.py:887 lib/minios_session.py:901
+#: lib/minios_session.py:999 lib/minios_session.py:1013
 msgid "DynBlk backing namespace changed during operation"
 msgstr "Backing namespace DynBlk berubah selama operasi"
 
-#: lib/minios_session.py:891 lib/minios_session.py:905
+#: lib/minios_session.py:1003 lib/minios_session.py:1017
 msgid "DynBlk backing file changed during operation"
 msgstr "Backing file DynBlk berubah selama operasi"
 
-#: lib/minios_session.py:908
+#: lib/minios_session.py:1020
 msgid "DynBlk session is attached or busy"
 msgstr "Sesi DynBlk sedang terhubung atau sibuk"
 
-#: lib/minios_session.py:922 lib/minios_session.py:2477
-#: lib/minios_session.py:3597 lib/minios_session.py:3860
-#: lib/minios_session.py:4160
+#: lib/minios_session.py:1034 lib/minios_session.py:2602
+#: lib/minios_session.py:3880 lib/minios_session.py:4143
+#: lib/minios_session.py:4443
 msgid "Unsupported DynBlk compression: {}"
 msgstr "Kompresi DynBlk tidak didukung: {}"
 
-#: lib/minios_session.py:924 lib/minios_session.py:2481
-#: lib/minios_session.py:3601 lib/minios_session.py:3864
-#: lib/minios_session.py:4164
+#: lib/minios_session.py:1037
+msgid "DynBlk compression is not supported by the current kernel/initramfs: {}"
+msgstr "Kompresi DynBlk tidak didukung oleh kernel/initramfs saat ini: {}"
+
+#: lib/minios_session.py:1040 lib/minios_session.py:2606
+#: lib/minios_session.py:3884 lib/minios_session.py:4147
+#: lib/minios_session.py:4447
 msgid "DynBlk compression is unavailable with LUKS encryption."
 msgstr "Kompresi DynBlk tidak tersedia dengan enkripsi LUKS."
 
-#: lib/minios_session.py:928
+#: lib/minios_session.py:1042
+msgid "VMDK sessions do not support compression."
+msgstr "Sesi VMDK tidak mendukung kompresi."
+
+#: lib/minios_session.py:1046
 msgid "Failed to create DynBlk session"
 msgstr "Gagal membuat sesi DynBlk"
 
-#: lib/minios_session.py:945
+#: lib/minios_session.py:1063
 msgid "Failed to format DynBlk device: {}"
 msgstr "Gagal memformat perangkat DynBlk: {}"
 
-#: lib/minios_session.py:950
+#: lib/minios_session.py:1068
 msgid "DynBlk session created successfully"
 msgstr "Sesi DynBlk berhasil dibuat"
 
-#: lib/minios_session.py:952
+#: lib/minios_session.py:1070
 msgid "Failed to create DynBlk session: {}"
 msgstr "Gagal membuat sesi DynBlk: {}"
 
-#: lib/minios_session.py:960
+#: lib/minios_session.py:1078
 msgid "DynBlk was created but could not be detached: {}"
 msgstr "DynBlk berhasil dibuat namun tidak dapat dilepas: {}"
 
-#: lib/minios_session.py:962 lib/minios_session.py:1005
-#: lib/minios_session.py:3092
+#: lib/minios_session.py:1080 lib/minios_session.py:1127
+#: lib/minios_session.py:3375
 msgid "device is still active"
 msgstr "perangkat masih aktif"
 
-#: lib/minios_session.py:971 lib/minios_session.py:3017
-msgid "DynBlk volume000.db not found"
-msgstr "DynBlk volume000.db tidak ditemukan"
+#: lib/minios_session.py:1089 lib/minios_session.py:3299
+msgid "DynBlk/VMDK session image not found"
+msgstr "Image sesi DynBlk/VMDK tidak ditemukan"
 
-#: lib/minios_session.py:989
+#: lib/minios_session.py:1111
 msgid "Failed to mount DynBlk device"
 msgstr "Gagal me-mount perangkat DynBlk"
 
-#: lib/minios_session.py:996
+#: lib/minios_session.py:1118
 msgid "Failed to unmount DynBlk session; device was left attached."
 msgstr "Gagal melepaskan sesi DynBlk; perangkat masih terhubung."
 
-#: lib/minios_session.py:1003
+#: lib/minios_session.py:1125
 msgid "Failed to detach DynBlk after session operation: {}"
 msgstr "Gagal melepaskan DynBlk setelah operasi sesi: {}"
 
-#: lib/minios_session.py:1016
+#: lib/minios_session.py:1138
 msgid "LUKS encryption is not supported with {} persistence."
 msgstr "Enkripsi LUKS tidak didukung dengan persistensi {}."
 
-#: lib/minios_session.py:1018
+#: lib/minios_session.py:1140
 msgid "LUKS encryption requires cryptsetup."
 msgstr "Enkripsi LUKS memerlukan cryptsetup."
 
-#: lib/minios_session.py:1020
+#: lib/minios_session.py:1142
 msgid "LUKS encryption for {} requires util-linux."
 msgstr "Enkripsi LUKS untuk {} memerlukan util-linux."
 
-#: lib/minios_session.py:1023
+#: lib/minios_session.py:1145
 msgid "This MiniOS initrd does not advertise the luks-layer-v1 persistence capability."
 msgstr "Initrd MiniOS ini tidak menyediakan kemampuan persistensi luks-layer-v1."
 
-#: lib/minios_session.py:1042 lib/minios_session.py:1136
+#: lib/minios_session.py:1164 lib/minios_session.py:1260
 msgid "Failed to determine filesystem information"
 msgstr "Gagal menentukan informasi sistem berkas"
 
-#: lib/minios_session.py:1057
+#: lib/minios_session.py:1179
 msgid "Error detecting filesystem: {}"
 msgstr "Kesalahan mendeteksi sistem berkas: {}"
 
-#: lib/minios_session.py:1127
+#: lib/minios_session.py:1251
 msgid "Invalid session mode"
 msgstr "Mode sesi tidak valid"
 
-#: lib/minios_session.py:1129 lib/minios_session.py:2475
+#: lib/minios_session.py:1253 lib/minios_session.py:2600
 msgid "Invalid session encryption"
 msgstr "Enkripsi sesi tidak valid"
 
-#: lib/minios_session.py:1138 lib/minios_session_manager.py:360
+#: lib/minios_session.py:1262 lib/minios_session_manager.py:376
 msgid "Sessions directory is read-only"
 msgstr "Direktori sesi hanya-baca"
 
-#: lib/minios_session.py:1140
+#: lib/minios_session.py:1264
 msgid "Session mode '{}' is not compatible with {} filesystem"
 msgstr "Mode sesi '{}' tidak kompatibel dengan sistem berkas {}"
 
-#: lib/minios_session.py:1142 lib/minios_session.py:2843
+#: lib/minios_session.py:1266 lib/minios_session.py:3125
 msgid "Session size must be greater than zero"
 msgstr "Ukuran sesi harus lebih dari nol"
 
-#: lib/minios_session.py:1144
+#: lib/minios_session.py:1268
 msgid "SquashFS sessions do not use a fixed container size"
 msgstr "Sesi SquashFS tidak menggunakan ukuran kontainer tetap"
 
-#: lib/minios_session.py:1146 lib/minios_session.py:2513
+#: lib/minios_session.py:1270 lib/minios_session.py:2638
 msgid "DynFileFS is not available on this system. Please install dynfilefs package."
 msgstr "DynFileFS tidak tersedia di sistem ini. Harap instal paket dynfilefs."
 
-#: lib/minios_session.py:1149
+#: lib/minios_session.py:1273
 msgid "DynBlk is not available on this system."
 msgstr "DynBlk tidak tersedia di sistem ini."
 
-#: lib/minios_session.py:1151
-msgid "DynBlk virtual size cannot exceed 512 GiB."
-msgstr "Ukuran virtual DynBlk tidak boleh melebihi 512 GiB."
+#: lib/minios_session.py:1276
+msgid "DynBlk virtual size cannot exceed {} MiB."
+msgstr "Ukuran virtual DynBlk tidak boleh melebihi {} MiB."
 
-#: lib/minios_session.py:1154
+#: lib/minios_session.py:1279
 msgid "Container size {}MB exceeds FAT32 file size limit ({}MB)."
 msgstr "Ukuran container {}MB melebihi batas ukuran file FAT32 ({}MB)."
 
-#: lib/minios_session.py:1156
+#: lib/minios_session.py:1281
 msgid "Container size exceeds the 1TB limit."
 msgstr "Ukuran container melebihi batas 1TB."
 
-#: lib/minios_session.py:1173 lib/minios_session.py:2483
+#: lib/minios_session.py:1298 lib/minios_session.py:2608
 msgid "A LUKS passphrase is required."
 msgstr "Passphrase LUKS diperlukan."
 
-#: lib/minios_session.py:1181
+#: lib/minios_session.py:1306
 msgid "Invalid LUKS backend device"
 msgstr "Perangkat backend LUKS tidak valid"
 
-#: lib/minios_session.py:1188
+#: lib/minios_session.py:1313
 msgid "Failed to attach loop device"
 msgstr "Gagal memasang perangkat loop"
 
-#: lib/minios_session.py:1191
+#: lib/minios_session.py:1316
 msgid "Invalid loop device response"
 msgstr "Respons perangkat loop tidak valid"
 
-#: lib/minios_session.py:1213
+#: lib/minios_session.py:1338
 msgid "Failed to close LUKS mapper"
 msgstr "Gagal menutup mapper LUKS"
 
-#: lib/minios_session.py:1220
+#: lib/minios_session.py:1345
 msgid "Failed to detach loop device"
 msgstr "Gagal melepas perangkat loop"
 
-#: lib/minios_session.py:1237
+#: lib/minios_session.py:1362
 msgid "Failed to create encrypted ext4 filesystem"
 msgstr "Gagal membuat filesystem ext4 terenkripsi"
 
-#: lib/minios_session.py:1410
+#: lib/minios_session.py:1535
 msgid "DynFileFS container not found"
 msgstr "Kontainer DynFileFS tidak ditemukan"
 
-#: lib/minios_session.py:1421
+#: lib/minios_session.py:1546
 msgid "Failed to mount dynfilefs (timeout)"
 msgstr "Gagal memasang dynfilefs (batas waktu)"
 
-#: lib/minios_session.py:1446
+#: lib/minios_session.py:1571
 msgid "Raw image not found"
 msgstr "Citra mentah tidak ditemukan"
 
-#: lib/minios_session.py:1462 lib/minios_session.py:3470
+#: lib/minios_session.py:1587 lib/minios_session.py:3753
 msgid "Unknown session mode: {}"
 msgstr "Mode sesi tidak dikenal: {}"
 
-#: lib/minios_session.py:1511
+#: lib/minios_session.py:1636
 msgid "Failed to create dynfilefs (timeout)"
 msgstr "Gagal membuat dynfilefs (batas waktu)"
 
-#: lib/minios_session.py:1612
+#: lib/minios_session.py:1737
 msgid "Failed to create dynfilefs virtual file (timeout)"
 msgstr "Gagal membuat berkas virtual dynfilefs (batas waktu)"
 
-#: lib/minios_session.py:1621
+#: lib/minios_session.py:1746
 msgid "Failed to format dynfilefs virtual file: {}"
 msgstr "Gagal memformat berkas virtual dynfilefs: {}"
 
-#: lib/minios_session.py:1623
+#: lib/minios_session.py:1748
 msgid "DynFileFS session created successfully"
 msgstr "Sesi DynFileFS berhasil dibuat"
 
-#: lib/minios_session.py:1625
+#: lib/minios_session.py:1750
 msgid "Error creating dynfilefs session: {}"
 msgstr "Kesalahan membuat sesi dynfilefs: {}"
 
-#: lib/minios_session.py:1831
+#: lib/minios_session.py:1954
 msgid "SquashFS session has an invalid save policy"
 msgstr "Sesi SquashFS memiliki kebijakan penyimpanan yang tidak valid"
 
-#: lib/minios_session.py:1833
+#: lib/minios_session.py:1956
 msgid "SquashFS session union filesystem does not match this system"
 msgstr "Union filesystem sesi SquashFS tidak sesuai dengan sistem ini"
 
-#: lib/minios_session.py:1836
+#: lib/minios_session.py:1959
 msgid "SquashFS session metadata has an invalid digest"
 msgstr "Metadata sesi SquashFS memiliki digest yang tidak valid"
 
-#: lib/minios_session.py:1842 lib/minios_session.py:1844
+#: lib/minios_session.py:1965 lib/minios_session.py:1967
 msgid "SquashFS session metadata is incomplete"
 msgstr "Metadata sesi SquashFS tidak lengkap"
 
-#: lib/minios_session.py:1851 lib/minios_session.py:1859
+#: lib/minios_session.py:1974 lib/minios_session.py:1982
 msgid "SquashFS session artifact does not match its metadata"
 msgstr "Artefak sesi SquashFS tidak sesuai dengan metadata-nya"
 
-#: lib/minios_session.py:1854
+#: lib/minios_session.py:1977
 msgid "SquashFS session artifact is invalid"
 msgstr "Artefak sesi SquashFS tidak valid"
 
-#: lib/minios_session.py:1863
+#: lib/minios_session.py:1986
 msgid "SquashFS session artifact is unavailable: {}"
 msgstr "Artefak sesi SquashFS tidak tersedia: {}"
 
-#: lib/minios_session.py:1884 lib/minios_session.py:3254
-#: lib/minios_session.py:3842 lib/minios_session.py:3963
-#: lib/minios_session.py:4153
+#: lib/minios_session.py:2007 lib/minios_session.py:3537
+#: lib/minios_session.py:4125 lib/minios_session.py:4246
+#: lib/minios_session.py:4436
 msgid "Session has unsupported persistence metadata"
 msgstr "Sesi memiliki metadata persistensi yang tidak didukung"
 
-#: lib/minios_session.py:1900
+#: lib/minios_session.py:2023
 msgid "Session {} activated (was session {})"
 msgstr "Sesi {} diaktifkan (sebelumnya sesi {})"
 
-#: lib/minios_session.py:1902
+#: lib/minios_session.py:2025
 msgid "Session {} activated"
 msgstr "Sesi {} diaktifkan"
 
-#: lib/minios_session.py:1904 lib/minios_session.py:2053
-#: lib/minios_session.py:2708 lib/minios_session.py:2953
-#: lib/minios_session.py:3005 lib/minios_session.py:3098
-#: lib/minios_session.py:3148 lib/minios_session.py:3215
-#: lib/minios_session.py:3676 lib/minios_session.py:3946
-#: lib/minios_session.py:3981 lib/minios_session.py:4242
+#: lib/minios_session.py:2027 lib/minios_session.py:2176
+#: lib/minios_session.py:2841 lib/minios_session.py:3235
+#: lib/minios_session.py:3287 lib/minios_session.py:3381
+#: lib/minios_session.py:3431 lib/minios_session.py:3498
+#: lib/minios_session.py:3959 lib/minios_session.py:4229
+#: lib/minios_session.py:4264 lib/minios_session.py:4525
 msgid "Failed to update session metadata"
 msgstr "Gagal memperbarui metadata sesi"
 
-#: lib/minios_session.py:1906
+#: lib/minios_session.py:2029
 msgid "Error activating session: {}"
 msgstr "Kesalahan mengaktifkan sesi: {}"
 
-#: lib/minios_session.py:1918 lib/minios_session.py:1920
-#: lib/minios_session.py:1954 lib/minios_session.py:1958
-#: lib/minios_session.py:2490 lib/minios_session.py:2492
+#: lib/minios_session.py:2041 lib/minios_session.py:2043
+#: lib/minios_session.py:2077 lib/minios_session.py:2081
+#: lib/minios_session.py:2615 lib/minios_session.py:2617
 msgid "Invalid SquashFS automatic save interval"
 msgstr "Interval simpan otomatis SquashFS tidak valid"
 
-#: lib/minios_session.py:1927
+#: lib/minios_session.py:2050
 msgid "Session {} is not a SquashFS session"
 msgstr "Sesi {} bukan sesi SquashFS"
 
-#: lib/minios_session.py:1937
+#: lib/minios_session.py:2060
 msgid "Failed to update session save settings"
 msgstr "Gagal memperbarui pengaturan penyimpanan sesi"
 
-#: lib/minios_session.py:1942
+#: lib/minios_session.py:2065
 msgid "Session save settings updated"
 msgstr "Pengaturan penyimpanan sesi berhasil diperbarui"
 
-#: lib/minios_session.py:1950
+#: lib/minios_session.py:2073
 msgid "No running SquashFS session requires periodic saving"
 msgstr "Tidak ada sesi SquashFS yang berjalan yang memerlukan penyimpanan berkala"
 
-#: lib/minios_session.py:1956
+#: lib/minios_session.py:2079
 msgid "Periodic session saving is disabled"
 msgstr "Penyimpanan sesi berkala dinonaktifkan"
 
-#: lib/minios_session.py:1977
+#: lib/minios_session.py:2100
 msgid "Periodic session save is not due yet"
 msgstr "Penyimpanan sesi berkala belum waktunya dijalankan"
 
-#: lib/minios_session.py:1988 lib/minios_session.py:2264
+#: lib/minios_session.py:2111 lib/minios_session.py:2387
+#: lib/minios_session.py:2977
 msgid "Persistence runtime state is not trusted"
 msgstr "Status runtime persistence tidak dipercaya"
 
-#: lib/minios_session.py:1996
+#: lib/minios_session.py:2119
 msgid "Persistence runtime session changed"
 msgstr "Sesi runtime persistence telah berubah"
 
-#: lib/minios_session.py:2001 lib/minios_session.py:2270
-#: lib/minios_session.py:2277
+#: lib/minios_session.py:2124 lib/minios_session.py:2393
+#: lib/minios_session.py:2400 lib/minios_session.py:2982
 msgid "Persistence runtime state is malformed"
 msgstr "Status runtime persistence tidak valid"
 
-#: lib/minios_session.py:2028
+#: lib/minios_session.py:2151
 msgid "The running and target sessions are the same"
 msgstr "Sesi yang berjalan dan sesi target adalah sama"
 
-#: lib/minios_session.py:2032
+#: lib/minios_session.py:2155
 msgid "The active SquashFS session is not available for handoff"
 msgstr "Sesi SquashFS aktif tidak tersedia untuk handoff"
 
-#: lib/minios_session.py:2037
+#: lib/minios_session.py:2160
 msgid "SquashFS handoff requires running and active SquashFS sessions"
 msgstr "Handoff SquashFS memerlukan sesi SquashFS yang berjalan dan aktif"
 
-#: lib/minios_session.py:2040
+#: lib/minios_session.py:2163
 msgid "The active SquashFS session was not captured during this boot"
 msgstr "Sesi SquashFS aktif tidak ditangkap selama proses boot ini"
 
-#: lib/minios_session.py:2060
+#: lib/minios_session.py:2183
 msgid "Running session moved to session {}"
 msgstr "Sesi yang berjalan dipindahkan ke sesi {}"
 
-#: lib/minios_session.py:2127
+#: lib/minios_session.py:2250
 msgid "Trusted savechanges command is unavailable: {}"
 msgstr "Perintah savechanges tepercaya tidak tersedia: {}"
 
-#: lib/minios_session.py:2132
+#: lib/minios_session.py:2255
 msgid "Trusted savechanges command is unavailable"
 msgstr "Perintah savechanges tepercaya tidak tersedia"
 
-#: lib/minios_session.py:2165
+#: lib/minios_session.py:2288
 msgid "Session save was cancelled"
 msgstr "Penyimpanan sesi telah dibatalkan"
 
-#: lib/minios_session.py:2169
+#: lib/minios_session.py:2292
 msgid "savechanges failed with status {}"
 msgstr "savechanges gagal dengan status {}"
 
-#: lib/minios_session.py:2258 lib/minios_session.py:2372
+#: lib/minios_session.py:2381 lib/minios_session.py:2495
 msgid "SquashFS saving is unavailable for a custom sessions directory"
 msgstr "Penyimpanan SquashFS tidak tersedia untuk direktori sesi kustom"
 
-#: lib/minios_session.py:2288
+#: lib/minios_session.py:2411
 msgid "The requested SquashFS session is not active in this boot"
 msgstr "Sesi SquashFS yang diminta tidak aktif pada proses boot ini"
 
-#: lib/minios_session.py:2301
+#: lib/minios_session.py:2424
 msgid "Selected persistence storage is ambiguous"
 msgstr "Penyimpanan persistence yang dipilih ambigu"
 
-#: lib/minios_session.py:2304
+#: lib/minios_session.py:2427
 msgid "Selected persistence storage changed after activation"
 msgstr "Penyimpanan persistence yang dipilih berubah setelah aktivasi"
 
-#: lib/minios_session.py:2309
+#: lib/minios_session.py:2432
 msgid "Selected persistence storage is not durably writable"
 msgstr "Penyimpanan persistence yang dipilih tidak dapat ditulis secara permanen"
 
-#: lib/minios_session.py:2312
+#: lib/minios_session.py:2435
 msgid "Selected persistence storage cannot preserve exact capture metadata"
 msgstr "Penyimpanan persistence yang dipilih tidak dapat mempertahankan metadata capture secara persis"
 
-#: lib/minios_session.py:2315
+#: lib/minios_session.py:2438
 msgid "Persistence runtime state is unavailable: {}"
 msgstr "Status runtime persistence tidak tersedia: {}"
 
-#: lib/minios_session.py:2342
+#: lib/minios_session.py:2465
 msgid "Captured SquashFS identity or size changed"
 msgstr "Identitas atau ukuran SquashFS yang ditangkap berubah"
 
-#: lib/minios_session.py:2347
+#: lib/minios_session.py:2470
 msgid "Captured file is not a SquashFS image"
 msgstr "Berkas yang ditangkap bukan citra SquashFS"
 
-#: lib/minios_session.py:2352
+#: lib/minios_session.py:2475
 msgid "Captured SquashFS digest does not match its result"
 msgstr "Digest SquashFS yang ditangkap tidak sesuai dengan hasilnya"
 
-#: lib/minios_session.py:2382
+#: lib/minios_session.py:2505
 msgid "SquashFS save backend is unavailable: {}"
 msgstr "Backend penyimpanan SquashFS tidak tersedia: {}"
 
-#: lib/minios_session.py:2387
+#: lib/minios_session.py:2510
 msgid "SquashFS save backend is unavailable"
 msgstr "Backend penyimpanan SquashFS tidak tersedia"
 
-#: lib/minios_session.py:2420
+#: lib/minios_session.py:2543
 msgid "SquashFS save backend returned invalid machine output"
 msgstr "Backend penyimpanan SquashFS mengembalikan output mesin yang tidak valid"
 
-#: lib/minios_session.py:2427
+#: lib/minios_session.py:2550
 msgid "SquashFS save backend returned no result"
 msgstr "Backend penyimpanan SquashFS tidak mengembalikan hasil"
 
-#: lib/minios_session.py:2431
+#: lib/minios_session.py:2554
 msgid "SquashFS save backend returned an invalid phase sequence"
 msgstr "Backend penyimpanan SquashFS mengembalikan urutan fase yang tidak valid"
 
-#: lib/minios_session.py:2436 lib/minios_session.py:2439
-#: lib/minios_session.py:2442
+#: lib/minios_session.py:2559 lib/minios_session.py:2562
+#: lib/minios_session.py:2565
 msgid "SquashFS save backend returned an invalid result"
 msgstr "Backend penyimpanan SquashFS mengembalikan hasil yang tidak valid"
 
-#: lib/minios_session.py:2444
+#: lib/minios_session.py:2567
 msgid "SquashFS save backend returned an inconsistent result"
 msgstr "Backend penyimpanan SquashFS mengembalikan hasil yang tidak konsisten"
 
-#: lib/minios_session.py:2447
+#: lib/minios_session.py:2570
 msgid "Session {} saved successfully"
 msgstr "Sesi {} berhasil disimpan"
 
-#: lib/minios_session.py:2448
+#: lib/minios_session.py:2571
 msgid "Failed to save session {} "
 msgstr "Gagal menyimpan sesi {} "
 
-#: lib/minios_session.py:2462 lib/minios_session.py:2717
+#: lib/minios_session.py:2586 lib/minios_session.py:2850
 msgid "Error creating session: {}"
 msgstr "Kesalahan membuat sesi: {}"
 
-#: lib/minios_session.py:2473
+#: lib/minios_session.py:2598
 msgid "Invalid session mode. Must be one of: {}"
 msgstr "Mode sesi tidak valid. Harus salah satu dari: {}"
 
-#: lib/minios_session.py:2479 lib/minios_session.py:3599
-#: lib/minios_session.py:3862 lib/minios_session.py:4162
+#: lib/minios_session.py:2604 lib/minios_session.py:3882
+#: lib/minios_session.py:4145 lib/minios_session.py:4445
 msgid "DynBlk compression is available only for DynBlk sessions."
 msgstr "Kompresi DynBlk hanya tersedia untuk sesi DynBlk."
 
-#: lib/minios_session.py:2486
+#: lib/minios_session.py:2611
 msgid "SquashFS save policy must be manual or shutdown"
 msgstr "Kebijakan penyimpanan SquashFS harus manual atau shutdown"
 
-#: lib/minios_session.py:2494
+#: lib/minios_session.py:2619
 msgid "Save policy is available only for SquashFS sessions"
 msgstr "Kebijakan penyimpanan hanya tersedia untuk sesi SquashFS"
 
-#: lib/minios_session.py:2499
+#: lib/minios_session.py:2624
 msgid "Sessions directory is not writable"
 msgstr "Direktori sesi tidak dapat ditulis"
 
-#: lib/minios_session.py:2626
+#: lib/minios_session.py:2755
 msgid "Failed to format raw image file: {}"
 msgstr "Gagal memformat berkas citra mentah: {}"
 
-#: lib/minios_session.py:2630
+#: lib/minios_session.py:2759
 msgid "Failed to create raw image file: {}"
 msgstr "Gagal membuat berkas citra mentah: {}"
 
-#: lib/minios_session.py:2690 lib/minios_session.py:2692
+#: lib/minios_session.py:2823 lib/minios_session.py:2825
 msgid "Session {} created successfully (mode: {}, size: {}MB)"
 msgstr "Sesi {} berhasil dibuat (mode: {}, ukuran: {}MB)"
 
-#: lib/minios_session.py:2694
+#: lib/minios_session.py:2827
 msgid "Session {} created successfully (mode: {})"
 msgstr "Sesi {} berhasil dibuat (mode: {})"
 
-#: lib/minios_session.py:2712
+#: lib/minios_session.py:2845
 msgid "Session metadata publication is uncertain; session data was preserved: {}"
 msgstr "Publikasi metadata sesi tidak pasti; data sesi telah disimpan: {}"
 
-#: lib/minios_session.py:2732
+#: lib/minios_session.py:2865
 msgid "Cannot delete currently active session"
 msgstr "Tidak dapat menghapus sesi yang sedang aktif"
 
-#: lib/minios_session.py:2739
+#: lib/minios_session.py:2872
 msgid "Cannot delete currently running session without SquashFS handoff"
 msgstr "Tidak dapat menghapus sesi yang sedang berjalan tanpa handoff SquashFS"
 
-#: lib/minios_session.py:2741
+#: lib/minios_session.py:2874
 msgid "Activate another SquashFS session before deleting the running session"
 msgstr "Aktifkan sesi SquashFS lain sebelum menghapus sesi yang sedang berjalan"
 
-#: lib/minios_session.py:2745
+#: lib/minios_session.py:2878
 msgid "Failed to hand off the running SquashFS session: {}"
 msgstr "Gagal melakukan handoff pada sesi SquashFS yang sedang berjalan: {}"
 
-#: lib/minios_session.py:2767
+#: lib/minios_session.py:2900
 msgid "Session deleted but failed to update session metadata"
 msgstr "Sesi dihapus tetapi gagal memperbarui metadata sesi"
 
-#: lib/minios_session.py:2769
+#: lib/minios_session.py:2902
 msgid "Session {} deleted successfully"
 msgstr "Sesi {} berhasil dihapus"
 
-#: lib/minios_session.py:2771
+#: lib/minios_session.py:2904
 msgid "Error deleting session: {}"
 msgstr "Kesalahan menghapus sesi: {}"
 
-#: lib/minios_session.py:2801 lib/minios_session.py:4967
+#: lib/minios_session.py:2934 lib/minios_session.py:5264
 msgid "Days threshold must be greater than zero"
 msgstr "Batas hari harus lebih dari nol"
 
-#: lib/minios_session.py:2853 lib/minios_session_manager.py:1928
+#: lib/minios_session.py:2990
+msgid "Selected session is not the writable session of this boot."
+msgstr "Sesi yang dipilih bukan sesi writable untuk boot ini."
+
+#: lib/minios_session.py:3000 lib/minios_session.py:3058
+msgid "Expected a block device."
+msgstr "Diharapkan perangkat blok."
+
+#: lib/minios_session.py:3011
+msgid "The session ext4 filesystem is not mounted read-write."
+msgstr "Filesystem ext4 sesi tidak ter-mount dalam mode baca-tulis."
+
+#: lib/minios_session.py:3020
+msgid "Session mount changed before space reclamation."
+msgstr "Mount sesi berubah sebelum proses reclaim ruang."
+
+#: lib/minios_session.py:3025
+msgid "Filesystem trim failed; no compaction was started."
+msgstr "Trim filesystem gagal; proses kompaksi tidak dijalankan."
+
+#: lib/minios_session.py:3043
+msgid "Space reclamation is available only for DynBlk and VMDK sessions."
+msgstr "Reklamasi ruang hanya tersedia untuk sesi DynBlk dan VMDK."
+
+#: lib/minios_session.py:3045
+msgid "Unsupported session configuration."
+msgstr "Konfigurasi sesi tidak didukung."
+
+#: lib/minios_session.py:3062
+msgid "Reclamation requires a writable DynBlk device with flush barriers enabled."
+msgstr "Reklamasi membutuhkan perangkat DynBlk yang writable dengan flush barrier diaktifkan."
+
+#: lib/minios_session.py:3066
+msgid "Update DynBlk to use space reclamation."
+msgstr "Perbarui DynBlk untuk menggunakan reclamasi ruang."
+
+#: lib/minios_session.py:3078
+msgid "Cannot mount session for trim."
+msgstr "Tidak dapat mount sesi untuk trim."
+
+#: lib/minios_session.py:3087
+msgid "Space reclamation did not complete."
+msgstr "Reklamasi ruang tidak selesai sepenuhnya."
+
+#: lib/minios_session.py:3089
+msgid "Space reclamation completed for session {}."
+msgstr "Reklamasi ruang selesai untuk sesi {}."
+
+#: lib/minios_session.py:3091
+msgid "Encrypted session: only previously known free space was reclaimed; discard through LUKS was not enabled."
+msgstr "Sesi terenkripsi: hanya ruang kosong yang sudah diketahui yang direklamasi; discard melalui LUKS tidak diaktifkan."
+
+#: lib/minios_session.py:3102
+msgid "Cannot unmount the temporary session; its device was left attached."
+msgstr "Tidak dapat unmount sesi sementara; perangkatnya masih terpasang."
+
+#: lib/minios_session.py:3135 lib/minios_session_manager.py:2025
 msgid "Resize is only supported for DynFileFS, DynBlk, and Raw sessions"
 msgstr "Resize hanya didukung untuk sesi DynFileFS, DynBlk, dan Raw"
 
-#: lib/minios_session.py:2860
+#: lib/minios_session.py:3142
 msgid "Cannot resize currently running session"
 msgstr "Tidak dapat mengubah ukuran sesi yang sedang berjalan"
 
-#: lib/minios_session.py:2876
+#: lib/minios_session.py:3158
 msgid "Error resizing session: {}"
 msgstr "Kesalahan mengubah ukuran sesi: {}"
 
-#: lib/minios_session.py:2883
+#: lib/minios_session.py:3165
 msgid "DynFileFS changes.dat file not found"
 msgstr "Berkas changes.dat DynFileFS tidak ditemukan"
 
-#: lib/minios_session.py:2897 lib/minios_session.py:3024
+#: lib/minios_session.py:3179 lib/minios_session.py:3306
 msgid "New size must be larger than current total size ({}MB)"
 msgstr "Ukuran baru harus lebih besar dari total ukuran saat ini ({}MB)"
 
-#: lib/minios_session.py:2900
+#: lib/minios_session.py:3182
 msgid "New size must be larger than used size ({}MB)"
 msgstr "Ukuran baru harus lebih besar dari ukuran yang digunakan ({}MB)"
 
-#: lib/minios_session.py:2927
+#: lib/minios_session.py:3209
 msgid "Failed to create/resize virtual.dat file (timeout)"
 msgstr "Gagal membuat/mengubah ukuran berkas virtual.dat (batas waktu)"
 
-#: lib/minios_session.py:2936 lib/minios_session.py:3143
+#: lib/minios_session.py:3218 lib/minios_session.py:3426
 msgid "Failed to resize filesystem: {}"
 msgstr "Gagal mengubah ukuran sistem berkas: {}"
 
-#: lib/minios_session.py:2955 lib/minios_session.py:3006
-#: lib/minios_session.py:3099 lib/minios_session.py:3150
-#: lib/minios_session.py:3220
+#: lib/minios_session.py:3237 lib/minios_session.py:3288
+#: lib/minios_session.py:3382 lib/minios_session.py:3433
+#: lib/minios_session.py:3503
 msgid "Session {} resized to {}MB successfully"
 msgstr "Sesi {} berhasil diubah ukurannya menjadi {}MB"
 
-#: lib/minios_session.py:2958
+#: lib/minios_session.py:3240
 msgid "Failed to resize dynfilefs session: {}"
 msgstr "Gagal mengubah ukuran sesi dynfilefs: {}"
 
-#: lib/minios_session.py:2974
+#: lib/minios_session.py:3256
 msgid "Failed to expose DynFileFS virtual image"
 msgstr "Gagal mengekspor image virtual DynFileFS"
 
-#: lib/minios_session.py:3009
+#: lib/minios_session.py:3291
 msgid "Failed to resize encrypted DynFileFS session: {}"
 msgstr "Gagal mengubah ukuran sesi DynFileFS terenkripsi: {}"
 
-#: lib/minios_session.py:3035
+#: lib/minios_session.py:3318
 msgid "dynblk device is already {}MB and cannot be shrunk to {}MB"
 msgstr "Perangkat dynblk sudah {}MB dan tidak dapat diperkecil menjadi {}MB"
 
-#: lib/minios_session.py:3049 lib/minios_session.py:3065
+#: lib/minios_session.py:3332 lib/minios_session.py:3348
 msgid "Filesystem check failed before DynBlk resize: {}"
 msgstr "Pemeriksaan sistem berkas gagal sebelum mengubah ukuran DynBlk: {}"
 
-#: lib/minios_session.py:3056 lib/minios_session.py:3078
+#: lib/minios_session.py:3339 lib/minios_session.py:3361
 msgid "Failed to resize DynBlk filesystem: {}"
 msgstr "Gagal mengubah ukuran filesystem DynBlk: {}"
 
-#: lib/minios_session.py:3090
+#: lib/minios_session.py:3373
 msgid "Failed to detach DynBlk after resize: {}"
 msgstr "Gagal melepaskan DynBlk setelah mengubah ukuran: {}"
 
-#: lib/minios_session.py:3106
+#: lib/minios_session.py:3389
 msgid "Raw image file not found"
 msgstr "Berkas citra mentah tidak ditemukan"
 
-#: lib/minios_session.py:3120 lib/minios_session.py:3178
-#: lib/minios_session.py:3183
+#: lib/minios_session.py:3403 lib/minios_session.py:3461
+#: lib/minios_session.py:3466
 msgid "Session {} resize metadata recovered"
 msgstr "Metadata resize sesi {} berhasil dipulihkan"
 
-#: lib/minios_session.py:3121 lib/minios_session.py:3179
-#: lib/minios_session.py:3184
+#: lib/minios_session.py:3404 lib/minios_session.py:3462
+#: lib/minios_session.py:3467
 msgid "Failed to recover resize metadata"
 msgstr "Gagal memulihkan metadata resize"
 
-#: lib/minios_session.py:3123 lib/minios_session.py:3186
+#: lib/minios_session.py:3406 lib/minios_session.py:3469
 msgid "New size must be larger than current size ({}MB)"
 msgstr "Ukuran baru harus lebih besar dari ukuran saat ini ({}MB)"
 
-#: lib/minios_session.py:3153
+#: lib/minios_session.py:3436
 msgid "Failed to resize raw session: {}"
 msgstr "Gagal mengubah ukuran sesi raw: {}"
 
-#: lib/minios_session.py:3160
+#: lib/minios_session.py:3443
 msgid "LUKS container not found"
 msgstr "Container LUKS tidak ditemukan"
 
-#: lib/minios_session.py:3232
+#: lib/minios_session.py:3515
 msgid "Failed to resize LUKS session: {}"
 msgstr "Gagal mengubah ukuran sesi LUKS: {}"
 
-#: lib/minios_session.py:3252
+#: lib/minios_session.py:3535
 msgid "Session #{} not found"
 msgstr "Sesi #{} tidak ditemukan"
 
-#: lib/minios_session.py:3256
+#: lib/minios_session.py:3539
 msgid "SquashFS export is unavailable until save support is complete"
 msgstr "Ekspor SquashFS tidak tersedia hingga dukungan penyimpanan selesai"
 
-#: lib/minios_session.py:3266
+#: lib/minios_session.py:3549
 msgid "Cannot export currently running session"
 msgstr "Tidak dapat mengekspor sesi yang sedang berjalan"
 
-#: lib/minios_session.py:3283
+#: lib/minios_session.py:3566
 msgid "Export output must be a regular file"
 msgstr "Output ekspor harus berupa file reguler"
 
-#: lib/minios_session.py:3347
+#: lib/minios_session.py:3630
 msgid "Export verification failed"
 msgstr "Verifikasi ekspor gagal"
 
-#: lib/minios_session.py:3357
+#: lib/minios_session.py:3640
 msgid "Session exported successfully to {} ({})"
 msgstr "Sesi berhasil diekspor ke {} ({})"
 
-#: lib/minios_session.py:3362
+#: lib/minios_session.py:3645
 msgid "Export failed: {}"
 msgstr "Ekspor gagal: {}"
 
-#: lib/minios_session.py:3502 lib/minios_session.py:3532
+#: lib/minios_session.py:3785 lib/minios_session.py:3815
 msgid "Invalid or unreadable archive"
 msgstr "Arsip tidak valid atau tidak dapat dibaca"
 
-#: lib/minios_session.py:3509
+#: lib/minios_session.py:3792
 msgid "Archive contains an unsupported member type"
 msgstr "Arsip berisi tipe anggota yang tidak didukung"
 
-#: lib/minios_session.py:3513
+#: lib/minios_session.py:3796
 msgid "Archive contains invalid member metadata"
 msgstr "Arsip berisi metadata anggota yang tidak valid"
 
-#: lib/minios_session.py:3516
+#: lib/minios_session.py:3799
 msgid "Archive expands beyond the allowed size"
 msgstr "Arsip melebihi ukuran yang diizinkan"
 
-#: lib/minios_session.py:3521
+#: lib/minios_session.py:3804
 msgid "Archive contains an unsafe member path"
 msgstr "Arsip berisi path anggota yang tidak aman"
 
-#: lib/minios_session.py:3523
+#: lib/minios_session.py:3806
 msgid "Archive contains files outside its data directory"
 msgstr "Arsip berisi file di luar direktori data"
 
-#: lib/minios_session.py:3529
+#: lib/minios_session.py:3812
 msgid "Archive contains an unsafe link target"
 msgstr "Arsip berisi target link yang tidak aman"
 
-#: lib/minios_session.py:3562
+#: lib/minios_session.py:3845
 msgid "Archive file not found"
 msgstr "Berkas arsip tidak ditemukan"
 
-#: lib/minios_session.py:3566
+#: lib/minios_session.py:3849
 msgid "Invalid archive format. Only .tar.zst files are supported."
 msgstr "Format arsip tidak valid. Hanya berkas .tar.zst yang didukung."
 
-#: lib/minios_session.py:3575
+#: lib/minios_session.py:3858
 msgid "Invalid session archive: missing or corrupted metadata"
 msgstr "Arsip sesi tidak valid: metadata hilang atau rusak"
 
-#: lib/minios_session.py:3582
+#: lib/minios_session.py:3865
 msgid "Incompatible session: {}"
 msgstr "Sesi tidak kompatibel: {}"
 
-#: lib/minios_session.py:3658
+#: lib/minios_session.py:3941
 msgid "Failed to import session data: {}"
 msgstr "Gagal mengimpor data sesi: {}"
 
-#: lib/minios_session.py:3665
+#: lib/minios_session.py:3948
 msgid "Imported session failed verification"
 msgstr "Sesi yang diimpor gagal verifikasi"
 
-#: lib/minios_session.py:3678
+#: lib/minios_session.py:3961
 msgid "Session imported successfully as #{}"
 msgstr "Sesi berhasil diimpor sebagai #{}"
 
-#: lib/minios_session.py:3681
+#: lib/minios_session.py:3964
 msgid "Import failed: {}"
 msgstr "Impor gagal: {}"
 
-#: lib/minios_session.py:3733
+#: lib/minios_session.py:4016
 msgid "Version mismatch: {} → {}"
 msgstr "Ketidakcocokan versi: {} → {}"
 
-#: lib/minios_session.py:3738
+#: lib/minios_session.py:4021
 msgid "Edition mismatch: {} → {}"
 msgstr "Ketidakcocokan edisi: {} → {}"
 
-#: lib/minios_session.py:3743
+#: lib/minios_session.py:4026
 msgid "Union FS mismatch: {} → {}"
 msgstr "Ketidakcocokan sistem Union: {} → {}"
 
-#: lib/minios_session.py:3840 lib/minios_session.py:3961
+#: lib/minios_session.py:4123 lib/minios_session.py:4244
 msgid "Source session not found"
 msgstr "Sesi sumber tidak ditemukan"
 
-#: lib/minios_session.py:3851
+#: lib/minios_session.py:4134
 msgid "SquashFS copy is unavailable until save support is complete"
 msgstr "Salin SquashFS tidak tersedia hingga dukungan penyimpanan selesai"
 
-#: lib/minios_session.py:3879
+#: lib/minios_session.py:4162
 msgid "Cannot copy currently running session"
 msgstr "Tidak dapat menyalin sesi yang sedang berjalan"
 
-#: lib/minios_session.py:3929 lib/minios_session.py:4217
+#: lib/minios_session.py:4212 lib/minios_session.py:4500
 msgid "Failed to copy session data"
 msgstr "Gagal menyalin data sesi"
 
-#: lib/minios_session.py:3948
+#: lib/minios_session.py:4231
 msgid "Session copied successfully to #{}"
 msgstr "Sesi berhasil disalin ke #{}"
 
-#: lib/minios_session.py:3953
+#: lib/minios_session.py:4236
 msgid "Copy failed: {}"
 msgstr "Penyalinan gagal: {}"
 
-#: lib/minios_session.py:3965
+#: lib/minios_session.py:4248
 msgid "SquashFS clone is not supported"
 msgstr "Clone SquashFS tidak didukung"
 
-#: lib/minios_session.py:3968
+#: lib/minios_session.py:4251
 msgid "Cannot clone currently running session"
 msgstr "Tidak dapat melakukan clone pada sesi yang sedang berjalan"
 
-#: lib/minios_session.py:3973
+#: lib/minios_session.py:4256
 msgid "Failed to clone session data"
 msgstr "Gagal menyalin data sesi"
 
-#: lib/minios_session.py:3978
+#: lib/minios_session.py:4261
 msgid "Source session metadata is missing"
 msgstr "Metadata sesi sumber tidak ditemukan"
 
-#: lib/minios_session.py:3982
+#: lib/minios_session.py:4265
 msgid "Session cloned successfully to #{}"
 msgstr "Sesi berhasil di-clone ke #{}"
 
-#: lib/minios_session.py:3986
+#: lib/minios_session.py:4269
 msgid "Clone failed: {}"
 msgstr "Clone gagal: {}"
 
-#: lib/minios_session.py:4151 lib/minios_session_manager.py:1838
-#: lib/minios_session_manager.py:1921 lib/minios_session_manager.py:2395
+#: lib/minios_session.py:4434 lib/minios_session_manager.py:1935
+#: lib/minios_session_manager.py:2018 lib/minios_session_manager.py:2492
 msgid "Session not found"
 msgstr "Sesi tidak ditemukan"
 
-#: lib/minios_session.py:4158
+#: lib/minios_session.py:4441
 msgid "SquashFS conversion is unavailable until save support is complete"
 msgstr "Konversi SquashFS tidak tersedia hingga dukungan penyimpanan selesai"
 
-#: lib/minios_session.py:4171
+#: lib/minios_session.py:4454
 msgid "Session already uses the requested storage and encryption"
 msgstr "Sesi sudah menggunakan storage dan enkripsi yang diminta"
 
-#: lib/minios_session.py:4176
+#: lib/minios_session.py:4459
 msgid "Cannot convert currently running session"
 msgstr "Tidak dapat mengonversi sesi yang sedang berjalan"
 
-#: lib/minios_session.py:4181
+#: lib/minios_session.py:4464
 msgid "Cannot convert currently active session. Please activate another session first."
 msgstr "Tidak dapat mengonversi sesi yang sedang aktif. Harap aktifkan sesi lain terlebih dahulu."
 
-#: lib/minios_session.py:4229
+#: lib/minios_session.py:4512
 msgid "Session metadata is missing"
 msgstr "Metadata sesi tidak ditemukan"
 
-#: lib/minios_session.py:4245
+#: lib/minios_session.py:4528
 msgid "Session converted successfully from {} to {}"
 msgstr "Sesi berhasil dikonversi dari {} ke {}"
 
-#: lib/minios_session.py:4251
+#: lib/minios_session.py:4534
 msgid "Conversion failed: {}"
 msgstr "Konversi gagal: {}"
 
-#: lib/minios_session.py:4277 lib/minios_session_manager.py:900
+#: lib/minios_session.py:4564 lib/minios_session_manager.py:926
 msgid "No sessions found"
 msgstr "Tidak ada sesi ditemukan"
 
-#: lib/minios_session.py:4284 lib/minios_session_manager.py:1003
+#: lib/minios_session.py:4571 lib/minios_session_manager.py:1029
 msgid "ACTIVE"
 msgstr "AKTIF"
 
-#: lib/minios_session.py:4286 lib/minios_session_manager.py:1015
+#: lib/minios_session.py:4573 lib/minios_session_manager.py:1041
 msgid "RUNNING"
 msgstr "BERJALAN"
 
-#: lib/minios_session.py:4292 lib/minios_session_manager.py:939
+#: lib/minios_session.py:4579 lib/minios_session_manager.py:965
 msgid "Session"
 msgstr "Sesi"
 
-#: lib/minios_session.py:4293 lib/minios_session_manager.py:953
+#: lib/minios_session.py:4580 lib/minios_session_manager.py:979
 msgid "Mode:"
 msgstr "Mode:"
 
-#: lib/minios_session.py:4294 lib/minios_session_manager.py:1353
+#: lib/minios_session.py:4581 lib/minios_session_manager.py:1452
 msgid "Encryption:"
 msgstr "Enkripsi:"
 
-#: lib/minios_session.py:4295 lib/minios_session_manager.py:960
+#: lib/minios_session.py:4582 lib/minios_session_manager.py:986
 msgid "Version:"
 msgstr "Versi:"
 
-#: lib/minios_session.py:4296 lib/minios_session_manager.py:967
+#: lib/minios_session.py:4583 lib/minios_session_manager.py:993
 msgid "Edition:"
 msgstr "Edisi:"
 
-#: lib/minios_session.py:4297 lib/minios_session_manager.py:973
+#: lib/minios_session.py:4584 lib/minios_session_manager.py:999
 msgid "Union FS:"
 msgstr "Sistem Union:"
 
-#: lib/minios_session.py:4298 lib/minios_session_manager.py:980
+#: lib/minios_session.py:4585 lib/minios_session_manager.py:1006
 msgid "Size:"
 msgstr "Ukuran:"
 
-#: lib/minios_session.py:4312
+#: lib/minios_session.py:4599
 msgid "Total Size:"
 msgstr "Ukuran Total:"
 
-#: lib/minios_session.py:4314
+#: lib/minios_session.py:4601
 msgid "Last Modified:"
 msgstr "Terakhir Dimodifikasi:"
 
-#: lib/minios_session.py:4442 lib/minios_session.py:4447
-#: lib/minios_session.py:4466 lib/minios_session.py:4475
+#: lib/minios_session.py:4731 lib/minios_session.py:4736
+#: lib/minios_session.py:4755 lib/minios_session.py:4764
 msgid "LUKS passphrases do not match."
 msgstr "Passphrase LUKS tidak cocok."
 
-#: lib/minios_session.py:4444
+#: lib/minios_session.py:4733
 msgid "LUKS passphrase: "
 msgstr "Passphrase LUKS: "
 
-#: lib/minios_session.py:4445
+#: lib/minios_session.py:4734
 msgid "Confirm LUKS passphrase: "
 msgstr "Konfirmasi passphrase LUKS: "
 
-#: lib/minios_session.py:4451
+#: lib/minios_session.py:4740
 msgid "LUKS passphrase must not be empty."
 msgstr "Passphrase LUKS tidak boleh kosong."
 
-#: lib/minios_session.py:4458
+#: lib/minios_session.py:4747
 msgid "Source LUKS passphrase: "
 msgstr "Frasa sandi LUKS sumber: "
 
-#: lib/minios_session.py:4462
+#: lib/minios_session.py:4751
 msgid "Target LUKS passphrase: "
 msgstr "Frasa sandi LUKS target: "
 
-#: lib/minios_session.py:4464
+#: lib/minios_session.py:4753
 msgid "Confirm target LUKS passphrase: "
 msgstr "Konfirmasi frasa sandi LUKS target: "
 
-#: lib/minios_session.py:4477
+#: lib/minios_session.py:4766
 msgid "Source LUKS passphrase must not be empty."
 msgstr "Frasa sandi LUKS sumber tidak boleh kosong."
 
-#: lib/minios_session.py:4479
+#: lib/minios_session.py:4768
 msgid "Target LUKS passphrase must not be empty."
 msgstr "Frasa sandi LUKS target tidak boleh kosong."
 
-#: lib/minios_session.py:4494
+#: lib/minios_session.py:4783
 msgid "This tool requires root privileges. Please run with sudo or through pkexec."
 msgstr "Alat ini memerlukan hak istimewa root. Harap jalankan dengan sudo atau melalui pkexec."
 
-#: lib/minios_session.py:4505
+#: lib/minios_session.py:4794
 msgid "MiniOS Session Manager - Command line tool for managing persistent sessions"
 msgstr "Manajer Sesi MiniOS - Alat baris perintah untuk mengelola sesi persisten"
 
-#: lib/minios_session.py:4507
+#: lib/minios_session.py:4796
 msgid ""
 "\n"
 "GLOBAL OPTIONS:\n"
@@ -1147,7 +1221,8 @@ msgid ""
 "  native                    Direct filesystem changes (requires POSIX-compatible filesystem)\n"
 "  squashfs                  Compressed snapshot of the current live changes\n"
 "  dynfilefs                 Dynamic file system overlay (works on any filesystem)\n"
-"  dynblk                    Native format-1 block device (supported lower filesystems)\n"
+"  dynblk                    Compressed native format-1 block device\n"
+"  vmdk                      Split sparse VMDK block device (no compression)\n"
 "  raw                       Raw disk image (works on any filesystem, 4000MB default)\n"
 "\n"
 "COMMAND BEHAVIOR:\n"
@@ -1208,12 +1283,12 @@ msgid ""
 msgstr ""
 "\n"
 "OPSI GLOBAL:\n"
-"  --json                    Keluarkan hasil dalam format JSON (bisa digunakan dengan perintah apa pun)\n"
+"  --json                    Keluarkan hasil dalam format JSON (bisa digunakan pada perintah apa pun)\n"
 "  --sessions-dir PATH       Gunakan direktori sesi kustom, bukan default\n"
 "\n"
 "PERINTAH:\n"
 "  list                      Daftar semua sesi yang tersedia beserta informasi detail\n"
-"  active                    Tampilkan sesi yang sedang aktif (akan boot berikutnya)\n"
+"  active                    Tampilkan sesi aktif saat ini (akan digunakan boot berikutnya)\n"
 "  running                   Tampilkan sesi yang sedang berjalan (boot saat ini)\n"
 "  info                      Tampilkan tipe filesystem dan mode sesi yang kompatibel\n"
 "  activate SESSION_ID       Aktifkan sesi yang dipilih\n"
@@ -1224,33 +1299,34 @@ msgstr ""
 "  delete SESSION_ID         Hapus sesi yang dipilih\n"
 "  cleanup [--days N]        Hapus sesi lama (default: 30 hari)\n"
 "  status                    Periksa status dan izin direktori sesi\n"
-"  resize SESSION_ID SIZE    Perbesar sesi container\n"
+"  resize SESSION_ID SIZE    Perbesar sesi kontainer\n"
 "  export SESSION_ID PATH    Ekspor sesi ke arsip .tar.zst\n"
 "  import ARCHIVE            Impor sesi dari arsip .tar.zst\n"
 "  copy SESSION_ID           Salin sesi (opsional: --to-mode, --size)\n"
 "  convert SESSION_ID MODE   Konversi sesi ke mode lain (opsional: --size)\n"
 "\n"
 "MODE SESI:\n"
-"  native                    Perubahan filesystem langsung (memerlukan filesystem kompatibel POSIX)\n"
+"  native                    Perubahan langsung pada filesystem (memerlukan filesystem kompatibel POSIX)\n"
 "  squashfs                  Snapshot terkompresi dari perubahan live saat ini\n"
 "  dynfilefs                 Overlay sistem file dinamis (bisa di semua filesystem)\n"
-"  dynblk                    Format blok perangkat native format-1 (filesystem bawah yang didukung)\n"
-"  raw                       Citra disk mentah (bisa di semua filesystem, default 4000MB)\n"
+"  dynblk                    Format blok native terkompresi (format-1)\n"
+"  vmdk                      Perangkat blok VMDK sparse terpisah (tanpa kompresi)\n"
+"  raw                       Image disk mentah (bisa di semua filesystem, default 4000MB)\n"
 "\n"
 "PERILAKU PERINTAH:\n"
-"  • create tanpa MODE: Menggunakan mode native (bisa gagal di FAT32/NTFS/exFAT)\n"
-"  • create tanpa SIZE: Menggunakan 4000MB untuk mode tetap/container; SquashFS tidak memiliki ukuran tetap\n"
+"  • create tanpa MODE: Menggunakan mode native (mungkin gagal di FAT32/NTFS/exFAT)\n"
+"  • create tanpa SIZE: Menggunakan 4000MB untuk mode tetap/kontainer; SquashFS tidak memiliki ukuran tetap\n"
 "  • Penyimpanan berkala SquashFS menerima 30, 60, 120, 240, atau 480 menit; 0 menonaktifkan\n"
-"  • convert secara default menggantikan sumber; --new-session akan mempertahankannya\n"
-"  • cleanup tanpa --days: Menggunakan batas 30 hari untuk penghapusan\n"
-"  • cleanup melindungi sesi aktif dan running dari penghapusan\n"
-"  • delete eksplisit dapat menyerahkan sesi RAM-backed SquashFS yang sedang berjalan ke snapshot aktif boot saat ini\n"
+"  • convert secara default menggantikan sumber; --new-session mempertahankan sumber\n"
+"  • cleanup tanpa --days: Menggunakan ambang 30 hari untuk penghapusan\n"
+"  • cleanup melindungi sesi aktif dan berjalan dari penghapusan\n"
+"  • delete eksplisit dapat mengalihkan sesi RAM yang sedang berjalan berbasis SquashFS ke snapshot aktif boot saat ini\n"
 "\n"
 "CONTOH:\n"
 "\n"
 "  Penggunaan Dasar:\n"
 "    minios-session list                           Daftar semua sesi yang tersedia\n"
-"    minios-session active                         Tampilkan sesi yang akan boot berikutnya\n"
+"    minios-session active                         Tampilkan sesi yang akan digunakan boot berikutnya\n"
 "    minios-session running                        Tampilkan sesi yang sedang berjalan\n"
 "    minios-session info                           Tampilkan info kompatibilitas filesystem\n"
 "\n"
@@ -1258,7 +1334,7 @@ msgstr ""
 "    minios-session activate 2                     Atur sesi #2 sebagai default untuk boot berikutnya\n"
 "    minios-session settings 2 --shutdown on --autosave 60  Atur penyimpanan otomatis SquashFS\n"
 "    minios-session delete 3                       Hapus sesi #3 secara permanen\n"
-"    minios-session delete 1 --handoff             Serahkan SquashFS yang sedang berjalan ke snapshot aktif dan hapus #1\n"
+"    minios-session delete 1 --handoff             Alihkan SquashFS yang sedang berjalan ke snapshot aktif dan hapus #1\n"
 "    minios-session cleanup --days 30              Hapus sesi yang lebih lama dari 30 hari\n"
 "    minios-session cleanup                        Hapus sesi yang lebih lama dari 30 hari (default)\n"
 "\n"
@@ -1268,7 +1344,7 @@ msgstr ""
 "    minios-session create squashfs                Snapshot perubahan live saat ini ke sesi SquashFS\n"
 "    minios-session create dynfilefs               Buat sesi dynfilefs 4000MB (ukuran default)\n"
 "    minios-session create dynfilefs 8000          Buat sesi dynfilefs 8000MB\n"
-"    minios-session create raw 2000                Buat citra disk raw 2000MB\n"
+"    minios-session create raw 2000                Buat image disk mentah 2000MB\n"
 "\n"
 "  Operasi Sesi:\n"
 "    minios-session resize 2 4000                  Ubah ukuran sesi #2 menjadi 4000MB\n"
@@ -1280,12 +1356,12 @@ msgstr ""
 "\n"
 "  Penanganan Error:\n"
 "    minios-session create                         Bisa gagal di FAT32/NTFS/exFAT: \"Gunakan mode dynfilefs atau raw\"\n"
-"    minios-session create raw 5000                Akan gagal di FAT32: MiniOS membatasi container tetap hingga 4000MB\n"
+"    minios-session create raw 5000                Akan gagal di FAT32: MiniOS membatasi kontainer tetap hingga 4000MB\n"
 "\n"
 "  Output JSON (untuk otomasi):\n"
 "    minios-session --json list                    Daftar sesi dalam format JSON\n"
-"    minios-session active --json                  Dapatkan info sesi aktif dalam format JSON\n"
-"    minios-session info --json                    Dapatkan info sistem dalam format JSON\n"
+"    minios-session active --json                  Info sesi aktif dalam format JSON\n"
+"    minios-session info --json                    Info sistem dalam format JSON\n"
 "\n"
 "  Direktori Sesi Kustom:\n"
 "    minios-session --sessions-dir /mnt/usb/sessions list\n"
@@ -1293,1012 +1369,1068 @@ msgstr ""
 "\n"
 "        "
 
-#: lib/minios_session.py:4596 lib/minios_session.py:4604
+#: lib/minios_session.py:4886 lib/minios_session.py:4894
 msgid "Output in JSON format"
 msgstr "Keluaran dalam format JSON"
 
-#: lib/minios_session.py:4598 lib/minios_session.py:4606
+#: lib/minios_session.py:4888 lib/minios_session.py:4896
 msgid "Custom path to sessions directory"
 msgstr "Jalur kustom ke direktori sesi"
 
-#: lib/minios_session.py:4600
+#: lib/minios_session.py:4890
 msgid "Available commands"
 msgstr "Perintah yang tersedia"
 
-#: lib/minios_session.py:4609
+#: lib/minios_session.py:4899
 msgid "Read a LUKS passphrase from standard input"
 msgstr "Baca passphrase LUKS dari input standar"
 
-#: lib/minios_session.py:4612
+#: lib/minios_session.py:4902
 msgid "List all sessions"
 msgstr "Daftar semua sesi"
 
-#: lib/minios_session.py:4615
+#: lib/minios_session.py:4905
 msgid "Show active session"
 msgstr "Tampilkan sesi aktif"
 
-#: lib/minios_session.py:4618
+#: lib/minios_session.py:4908
 msgid "Show running session"
 msgstr "Tampilkan sesi yang sedang berjalan"
 
-#: lib/minios_session.py:4621
+#: lib/minios_session.py:4911
 msgid "Show filesystem and compatibility information"
 msgstr "Tampilkan informasi sistem berkas dan kompatibilitas"
 
-#: lib/minios_session.py:4624
+#: lib/minios_session.py:4914
 msgid "Activate a session"
 msgstr "Aktifkan sesi"
 
-#: lib/minios_session.py:4625
+#: lib/minios_session.py:4915
 msgid "Session ID to activate"
 msgstr "ID sesi untuk diaktifkan"
 
-#: lib/minios_session.py:4628
+#: lib/minios_session.py:4918
 msgid "Save a SquashFS session"
 msgstr "Simpan sesi SquashFS"
 
-#: lib/minios_session.py:4629
+#: lib/minios_session.py:4919
 msgid "Running SquashFS session ID to save"
 msgstr "ID sesi SquashFS yang sedang berjalan untuk disimpan"
 
-#: lib/minios_session.py:4631
+#: lib/minios_session.py:4921
 msgid "Stream save progress events with JSON output"
 msgstr "Streaming progres penyimpanan dengan output JSON"
 
-#: lib/minios_session.py:4636
+#: lib/minios_session.py:4926
 msgid "Create a new session"
 msgstr "Buat sesi baru"
 
-#: lib/minios_session.py:4638
+#: lib/minios_session.py:4928
 msgid "Session mode (default: native)"
 msgstr "Mode sesi (default: asli)"
 
-#: lib/minios_session.py:4640
+#: lib/minios_session.py:4930
 msgid "Size in MB, GB, or TB for container modes (default: 4000MB)"
 msgstr "Ukuran dalam MB, GB, atau TB untuk mode container (default: 4000MB)"
 
-#: lib/minios_session.py:4642
+#: lib/minios_session.py:4932
+msgid "Set the created session as the boot default"
+msgstr "Atur sesi yang dibuat sebagai default boot"
+
+#: lib/minios_session.py:4934
 msgid "Optional encryption layer (default: none)"
 msgstr "Lapisan enkripsi opsional (default: tidak ada)"
 
-#: lib/minios_session.py:4645
+#: lib/minios_session.py:4937
 msgid "DynBlk compression codec (not available with LUKS; default: none)"
 msgstr "Codec kompresi DynBlk (tidak tersedia dengan LUKS; default: none)"
 
-#: lib/minios_session.py:4647
+#: lib/minios_session.py:4939
 msgid "SquashFS shutdown save policy (default: shutdown)"
 msgstr "Kebijakan penyimpanan SquashFS saat shutdown (default: shutdown)"
 
-#: lib/minios_session.py:4651
+#: lib/minios_session.py:4943
 msgid "Periodic SquashFS save interval in minutes (0 disables it)"
 msgstr "Interval penyimpanan periodik SquashFS dalam menit (0 menonaktifkan)"
 
-#: lib/minios_session.py:4655
+#: lib/minios_session.py:4947
 msgid "Configure SquashFS automatic saving"
 msgstr "Konfigurasikan penyimpanan otomatis SquashFS"
 
-#: lib/minios_session.py:4656
+#: lib/minios_session.py:4948
 msgid "SquashFS session ID"
 msgstr "ID sesi SquashFS"
 
-#: lib/minios_session.py:4661
+#: lib/minios_session.py:4953
 msgid "Periodic save interval in minutes (0 disables it)"
 msgstr "Interval penyimpanan periodik dalam menit (0 menonaktifkan)"
 
-#: lib/minios_session.py:4668
+#: lib/minios_session.py:4960
 msgid "Delete a session"
 msgstr "Hapus sesi"
 
-#: lib/minios_session.py:4669
+#: lib/minios_session.py:4961
 msgid "Session ID to delete"
 msgstr "ID sesi untuk dihapus"
 
-#: lib/minios_session.py:4671
+#: lib/minios_session.py:4963
 msgid "Move a running RAM-backed SquashFS session to the active snapshot before deletion"
 msgstr "Pindahkan sesi SquashFS berbasis RAM yang sedang berjalan ke snapshot aktif sebelum dihapus"
 
-#: lib/minios_session.py:4674
+#: lib/minios_session.py:4966
 msgid "Clean up old sessions"
 msgstr "Bersihkan sesi lama"
 
-#: lib/minios_session.py:4676
+#: lib/minios_session.py:4968
 msgid "Delete sessions older than N days (default: 30)"
 msgstr "Hapus sesi yang lebih lama dari N hari (default: 30)"
 
-#: lib/minios_session.py:4679
+#: lib/minios_session.py:4971
 msgid "Check sessions directory status"
 msgstr "Periksa status direktori sesi"
 
-#: lib/minios_session.py:4682
+#: lib/minios_session.py:4974
+msgid "Reclaim free space in a DynBlk or VMDK session"
+msgstr "Reklamasi ruang kosong pada sesi DynBlk atau VMDK"
+
+#: lib/minios_session.py:4977
+msgid "Explicitly permit moving live data; increases flash writes"
+msgstr "Izinkan secara eksplisit pemindahan data live; meningkatkan penulisan ke flash"
+
+#: lib/minios_session.py:4979
 msgid "Resize a session"
 msgstr "Ubah ukuran sesi"
 
-#: lib/minios_session.py:4683
+#: lib/minios_session.py:4980
 msgid "Session ID to resize"
 msgstr "ID sesi yang akan diubah ukurannya"
 
-#: lib/minios_session.py:4684
+#: lib/minios_session.py:4981
 msgid "New size in MB, GB, or TB"
 msgstr "Ukuran baru dalam MB, GB, atau TB"
 
-#: lib/minios_session.py:4687
+#: lib/minios_session.py:4984
 msgid "Export session to archive"
 msgstr "Ekspor sesi ke arsip"
 
-#: lib/minios_session.py:4688
+#: lib/minios_session.py:4985
 msgid "Session ID to export"
 msgstr "ID sesi untuk diekspor"
 
-#: lib/minios_session.py:4689
+#: lib/minios_session.py:4986
 msgid "Output file or directory path"
 msgstr "Jalur berkas atau direktori keluaran"
 
-#: lib/minios_session.py:4690
+#: lib/minios_session.py:4987
 msgid "Skip archive verification"
 msgstr "Lewati verifikasi arsip"
 
-#: lib/minios_session.py:4693
+#: lib/minios_session.py:4990
 msgid "Import session from archive"
 msgstr "Impor sesi dari arsip"
 
-#: lib/minios_session.py:4694
+#: lib/minios_session.py:4991
 msgid "Path to session archive (.tar.zst)"
 msgstr "Jalur ke arsip sesi (.tar.zst)"
 
-#: lib/minios_session.py:4696
+#: lib/minios_session.py:4993
 msgid "Automatically convert to compatible mode"
 msgstr "Konversi otomatis ke mode yang kompatibel"
 
-#: lib/minios_session.py:4698
+#: lib/minios_session.py:4995
 msgid "Force specific session mode"
 msgstr "Paksa mode sesi tertentu"
 
-#: lib/minios_session.py:4700
+#: lib/minios_session.py:4997
 msgid "Force target encryption"
 msgstr "Paksa enkripsi target"
 
-#: lib/minios_session.py:4703 lib/minios_session.py:4719
-#: lib/minios_session.py:4737
+#: lib/minios_session.py:5000 lib/minios_session.py:5016
+#: lib/minios_session.py:5034
 msgid "DynBlk compression codec for a DynBlk target (not available with LUKS)"
 msgstr "Codec kompresi DynBlk untuk target DynBlk (tidak tersedia dengan LUKS)"
 
-#: lib/minios_session.py:4704
+#: lib/minios_session.py:5001
 msgid "Skip integrity verification"
 msgstr "Lewati verifikasi integritas"
 
-#: lib/minios_session.py:4706
+#: lib/minios_session.py:5003
 msgid "Skip compatibility checks"
 msgstr "Lewati pemeriksaan kompatibilitas"
 
-#: lib/minios_session.py:4709
+#: lib/minios_session.py:5006
 msgid "Copy a session"
 msgstr "Salin sesi"
 
-#: lib/minios_session.py:4710
+#: lib/minios_session.py:5007
 msgid "Session ID to copy"
 msgstr "ID sesi untuk disalin"
 
-#: lib/minios_session.py:4712
+#: lib/minios_session.py:5009
 msgid "Convert to different mode (optional)"
 msgstr "Konversi ke mode berbeda (opsional)"
 
-#: lib/minios_session.py:4714
+#: lib/minios_session.py:5011
 msgid "Target encryption (default: preserve source)"
 msgstr "Enkripsi target (default: mengikuti sumber)"
 
-#: lib/minios_session.py:4716 lib/minios_session.py:4732
+#: lib/minios_session.py:5013 lib/minios_session.py:5029
 msgid "Size for a container target, in MB, GB, or TB"
 msgstr "Ukuran untuk target container, dalam MB, GB, atau TB"
 
-#: lib/minios_session.py:4722
+#: lib/minios_session.py:5019
 msgid "Physically clone a detached session"
 msgstr "Clone secara fisik sesi yang terlepas"
 
-#: lib/minios_session.py:4724
+#: lib/minios_session.py:5021
 msgid "Session ID to clone"
 msgstr "ID sesi yang akan di-clone"
 
-#: lib/minios_session.py:4727
+#: lib/minios_session.py:5024
 msgid "Convert session mode"
 msgstr "Konversi mode sesi"
 
-#: lib/minios_session.py:4728
+#: lib/minios_session.py:5025
 msgid "Session ID to convert"
 msgstr "ID sesi untuk dikonversi"
 
-#: lib/minios_session.py:4730
+#: lib/minios_session.py:5027
 msgid "Target mode"
 msgstr "Mode target"
 
-#: lib/minios_session.py:4734
+#: lib/minios_session.py:5031
 msgid "Target encryption"
 msgstr "Enkripsi target"
 
-#: lib/minios_session.py:4739
+#: lib/minios_session.py:5036
 msgid "Create new session instead of in-place conversion"
 msgstr "Buat sesi baru alih-alih konversi di tempat"
 
-#: lib/minios_session.py:4783
+#: lib/minios_session.py:5080
 msgid "Could not find sessions directory."
 msgstr "Tidak dapat menemukan direktori sesi."
 
-#: lib/minios_session.py:4784 lib/minios_session.py:4789
+#: lib/minios_session.py:5081 lib/minios_session.py:5086
 msgid "This tool must be run from within a MiniOS live system with persistent sessions enabled."
 msgstr "Alat ini harus dijalankan dari dalam sistem live MiniOS dengan sesi persisten diaktifkan."
 
-#: lib/minios_session.py:4788
+#: lib/minios_session.py:5085
 msgid "Error: Could not find sessions directory."
 msgstr "Kesalahan: Tidak dapat menemukan direktori sesi."
 
-#: lib/minios_session.py:4806
+#: lib/minios_session.py:5103
 msgid "Active session: #{}"
 msgstr "Sesi aktif: #{}"
 
-#: lib/minios_session.py:4807 lib/minios_session.py:4823
+#: lib/minios_session.py:5104 lib/minios_session.py:5120
 msgid "Mode: {}"
 msgstr "Mode: {}"
 
-#: lib/minios_session.py:4808 lib/minios_session.py:4824
+#: lib/minios_session.py:5105 lib/minios_session.py:5121
 msgid "Version: {}"
 msgstr "Versi: {}"
 
-#: lib/minios_session.py:4809 lib/minios_session.py:4825
+#: lib/minios_session.py:5106 lib/minios_session.py:5122
 msgid "Edition: {}"
 msgstr "Edisi: {}"
 
-#: lib/minios_session.py:4810 lib/minios_session.py:4826
+#: lib/minios_session.py:5107 lib/minios_session.py:5123
 msgid "Union FS: {}"
 msgstr "Sistem Union: {}"
 
-#: lib/minios_session.py:4811 lib/minios_session.py:4827
+#: lib/minios_session.py:5108 lib/minios_session.py:5124
 msgid "Size: {}"
 msgstr "Ukuran: {}"
 
-#: lib/minios_session.py:4812 lib/minios_session.py:4829
+#: lib/minios_session.py:5109 lib/minios_session.py:5126
 msgid "Last Modified: {}"
 msgstr "Terakhir Dimodifikasi: {}"
 
-#: lib/minios_session.py:4814
+#: lib/minios_session.py:5111
 msgid "No active session found"
 msgstr "Tidak ada sesi aktif ditemukan"
 
-#: lib/minios_session.py:4822
+#: lib/minios_session.py:5119
 msgid "Running session: #{}"
 msgstr "Sesi berjalan: #{}"
 
-#: lib/minios_session.py:4831 lib/minios_session.py:5009
-#: lib/minios_session.py:5018
+#: lib/minios_session.py:5128 lib/minios_session.py:5314
+#: lib/minios_session.py:5323
 msgid "Status: {}"
 msgstr "Status: {}"
 
-#: lib/minios_session.py:4833
+#: lib/minios_session.py:5130
 msgid "No running session detected"
 msgstr "Tidak ada sesi berjalan terdeteksi"
 
-#: lib/minios_session.py:4841 lib/minios_session.py:5020
-#: lib/minios_session_manager.py:353
+#: lib/minios_session.py:5138 lib/minios_session.py:5325
+#: lib/minios_session_manager.py:369
 msgid "Error: {}"
 msgstr "Kesalahan: {}"
 
-#: lib/minios_session.py:4847
+#: lib/minios_session.py:5144
 msgid "MiniOS Media Information:"
 msgstr "Informasi Media MiniOS:"
 
-#: lib/minios_session.py:4850
+#: lib/minios_session.py:5147
 msgid "Filesystem Type: {}"
 msgstr "Tipe Sistem Berkas: {}"
 
-#: lib/minios_session.py:4851
+#: lib/minios_session.py:5148
 msgid "Device: {}"
 msgstr "Perangkat: {}"
 
-#: lib/minios_session.py:4852
+#: lib/minios_session.py:5149
 msgid "Mount Options: {}"
 msgstr "Opsi Mount: {}"
 
-#: lib/minios_session.py:4852
+#: lib/minios_session.py:5149
 msgid "none"
 msgstr "tidak ada"
 
-#: lib/minios_session.py:4853
+#: lib/minios_session.py:5150
 msgid "Read-only: {}"
 msgstr "Hanya-baca: {}"
 
-#: lib/minios_session.py:4853 lib/minios_session.py:4854
-#: lib/minios_session.py:4919
+#: lib/minios_session.py:5150 lib/minios_session.py:5151
+#: lib/minios_session.py:5216
 msgid "Yes"
 msgstr "Ya"
 
-#: lib/minios_session.py:4853 lib/minios_session.py:4854
-#: lib/minios_session.py:4919
+#: lib/minios_session.py:5150 lib/minios_session.py:5151
+#: lib/minios_session.py:5216
 msgid "No"
 msgstr "Tidak"
 
-#: lib/minios_session.py:4854
+#: lib/minios_session.py:5151
 msgid "POSIX Compatible: {}"
 msgstr "Kompatibel POSIX: {}"
 
-#: lib/minios_session.py:4857
+#: lib/minios_session.py:5154
 msgid "Compatible Session Modes:"
 msgstr "Mode Sesi Kompatibel:"
 
-#: lib/minios_session.py:4863
+#: lib/minios_session.py:5160
 msgid "  None (read-only media)"
 msgstr "  Tidak ada (media hanya-baca)"
 
-#: lib/minios_session.py:4868
+#: lib/minios_session.py:5165
 msgid "Filesystem Limitations:"
 msgstr "Batasan Sistem Berkas:"
 
-#: lib/minios_session.py:4870
+#: lib/minios_session.py:5167
 msgid "  • Maximum file size: {}MB ({:.1f}GB)"
 msgstr "  • Ukuran berkas maksimum: {}MB ({:.1f}GB)"
 
-#: lib/minios_session.py:4873
+#: lib/minios_session.py:5170
 msgid "  • No POSIX features (no native mode support)"
 msgstr "  • Tidak ada fitur POSIX (tidak ada dukungan mode asli)"
 
-#: lib/minios_session.py:4875
+#: lib/minios_session.py:5172
 msgid "  • Case-insensitive filenames"
 msgstr "  • Nama berkas tidak peka huruf besar/kecil"
 
-#: lib/minios_session.py:4877
+#: lib/minios_session.py:5174
 msgid "No known limitations"
 msgstr "Tidak ada batasan yang diketahui"
 
-#: lib/minios_session.py:4918
+#: lib/minios_session.py:5215
 msgid "Save at shutdown: {}"
 msgstr "Simpan saat shutdown: {}"
 
-#: lib/minios_session.py:4920
+#: lib/minios_session.py:5217
 msgid "Periodic save: {} minutes"
 msgstr "Penyimpanan periodik: {} menit"
 
-#: lib/minios_session.py:4921
+#: lib/minios_session.py:5218
 msgid "Periodic save: Off"
 msgstr "Penyimpanan periodik: Mati"
 
-#: lib/minios_session.py:4937
+#: lib/minios_session.py:5234
 msgid "--progress requires --json"
 msgstr "--progress memerlukan --json"
 
-#: lib/minios_session.py:4979 lib/minios_session.py:4983
+#: lib/minios_session.py:5276 lib/minios_session.py:5280
 msgid "Cleanup completed: {} sessions deleted"
 msgstr "Pembersihan selesai: {} sesi dihapus"
 
-#: lib/minios_session.py:4985
+#: lib/minios_session.py:5282
 msgid "Errors:"
 msgstr "Kesalahan:"
 
-#: lib/minios_session.py:5007
+#: lib/minios_session.py:5312
 msgid "Sessions directory: {}"
 msgstr "Direktori sesi: {}"
 
-#: lib/minios_session.py:5009
+#: lib/minios_session.py:5314
 msgid "Found"
 msgstr "Ditemukan"
 
-#: lib/minios_session.py:5011 lib/minios_session.py:5013
+#: lib/minios_session.py:5316 lib/minios_session.py:5318
 msgid "Access: {}"
 msgstr "Akses: {}"
 
-#: lib/minios_session.py:5011
+#: lib/minios_session.py:5316
 msgid "Writable"
 msgstr "Dapat ditulis"
 
-#: lib/minios_session.py:5013
+#: lib/minios_session.py:5318
 msgid "Read-only"
 msgstr "Hanya-baca"
 
-#: lib/minios_session.py:5015
+#: lib/minios_session.py:5320
 msgid "Reason: {}"
 msgstr "Alasan: {}"
 
-#: lib/minios_session.py:5016
+#: lib/minios_session.py:5321
 msgid "Filesystem type: {}"
 msgstr "Tipe Sistem Berkas: {}"
 
-#: lib/minios_session.py:5018
+#: lib/minios_session.py:5323
 msgid "Not found"
 msgstr "Tidak ditemukan"
 
-#: lib/minios_session_manager.py:145 lib/minios_session_manager.py:175
-#: lib/minios_session_manager.py:205
+#: lib/minios_session_manager.py:155 lib/minios_session_manager.py:185
+#: lib/minios_session_manager.py:216
 msgid "Operation cancelled"
 msgstr "Operasi dibatalkan"
 
-#: lib/minios_session_manager.py:237
+#: lib/minios_session_manager.py:248
 msgid "LUKS Passphrase"
 msgstr "Passphrase LUKS"
 
-#: lib/minios_session_manager.py:240 lib/minios_session_manager.py:1703
+#: lib/minios_session_manager.py:251 lib/minios_session_manager.py:1800
 msgid "Continue"
 msgstr "Lanjutkan"
 
-#: lib/minios_session_manager.py:244
+#: lib/minios_session_manager.py:255
 msgid "Passphrase:"
 msgstr "Passphrase:"
 
-#: lib/minios_session_manager.py:250
+#: lib/minios_session_manager.py:261
 msgid "Confirm passphrase:"
 msgstr "Konfirmasi passphrase:"
 
-#: lib/minios_session_manager.py:260
+#: lib/minios_session_manager.py:271
 msgid "LUKS passphrases do not match or are empty."
 msgstr "Passphrase LUKS tidak cocok atau kosong."
 
-#: lib/minios_session_manager.py:350
+#: lib/minios_session_manager.py:366
 msgid "Checking session status..."
 msgstr "Memeriksa status sesi..."
 
-#: lib/minios_session_manager.py:354 lib/minios_session_manager.py:457
+#: lib/minios_session_manager.py:370 lib/minios_session_manager.py:473
 msgid "Unknown error"
 msgstr "Kesalahan tidak diketahui"
 
-#: lib/minios_session_manager.py:357
+#: lib/minios_session_manager.py:373
 msgid "Sessions directory is writable"
 msgstr "Direktori sesi dapat ditulis"
 
-#: lib/minios_session_manager.py:366
+#: lib/minios_session_manager.py:382
 msgid "Persistent sessions are unavailable — the system is running without changes storage."
 msgstr "Sesi persisten tidak tersedia — sistem berjalan tanpa penyimpanan perubahan."
 
-#: lib/minios_session_manager.py:376
+#: lib/minios_session_manager.py:392
 msgid "Retry"
 msgstr "Coba lagi"
 
-#: lib/minios_session_manager.py:490
+#: lib/minios_session_manager.py:506
 msgid "Persistence is read-only (out of space)"
 msgstr "Persistensi hanya-baca (ruang habis)"
 
-#: lib/minios_session_manager.py:499
+#: lib/minios_session_manager.py:515
 msgid "Low space on persistence device ({} MB free)"
 msgstr "Ruang pada perangkat persistensi hampir habis ({} MB tersedia)"
 
-#: lib/minios_session_manager.py:505
+#: lib/minios_session_manager.py:521
 msgid "{} startup warnings - click to review"
 msgstr "{} peringatan startup - klik untuk meninjau"
 
-#: lib/minios_session_manager.py:546 lib/minios_session_ui.py:31
+#: lib/minios_session_manager.py:562 lib/minios_session_ui.py:31
 #: share/applications/minios-session-manager.desktop:4
 msgid "MiniOS Session Manager"
 msgstr "Manajer Sesi MiniOS"
 
-#: lib/minios_session_manager.py:593 lib/minios_session_manager.py:1832
+#: lib/minios_session_manager.py:609 lib/minios_session_manager.py:1929
 msgid "Loading sessions..."
 msgstr "Memuat sesi..."
 
-#: lib/minios_session_manager.py:626 lib/minios_session_manager.py:1280
+#: lib/minios_session_manager.py:642 lib/minios_session_manager.py:1371
 msgid "Create"
 msgstr "Buat"
 
-#: lib/minios_session_manager.py:639 lib/minios_session_manager.py:2104
+#: lib/minios_session_manager.py:655 lib/minios_session_manager.py:2201
 msgid "Import"
 msgstr "Impor"
 
-#: lib/minios_session_manager.py:651
+#: lib/minios_session_manager.py:667
 msgid "Cleanup"
 msgstr "Bersihkan"
 
-#: lib/minios_session_manager.py:731
+#: lib/minios_session_manager.py:747
 msgid "Error fetching session data: {}"
 msgstr "Kesalahan mengambil data sesi: {}"
 
-#: lib/minios_session_manager.py:814
+#: lib/minios_session_manager.py:838
 msgid "Failed to get session list: {}"
 msgstr "Gagal mendapatkan daftar sesi: {}"
 
-#: lib/minios_session_manager.py:823 lib/minios_session_manager.py:828
+#: lib/minios_session_manager.py:847 lib/minios_session_manager.py:852
 msgid "Failed to parse session list JSON: {}"
 msgstr "Gagal menguraikan JSON daftar sesi: {}"
 
-#: lib/minios_session_manager.py:986
+#: lib/minios_session_manager.py:1012
 msgid "Modified:"
 msgstr "Dimodifikasi:"
 
-#: lib/minios_session_manager.py:1006
+#: lib/minios_session_manager.py:1032
 msgid "AVAILABLE"
 msgstr "TERSEDIA"
 
-#: lib/minios_session_manager.py:1047
+#: lib/minios_session_manager.py:1073
 msgid "_Activate Session"
 msgstr "_Aktifkan Sesi"
 
-#: lib/minios_session_manager.py:1052
+#: lib/minios_session_manager.py:1078
 msgid "_Save Now"
 msgstr "_Simpan Sekarang"
 
-#: lib/minios_session_manager.py:1056
+#: lib/minios_session_manager.py:1082
 msgid "Save _Settings..."
 msgstr "Pengaturan _Penyimpanan..."
 
-#: lib/minios_session_manager.py:1061
+#: lib/minios_session_manager.py:1087
 msgid "_Resize Session"
 msgstr "_Ubah Ukuran Sesi"
 
-#: lib/minios_session_manager.py:1071
+#: lib/minios_session_manager.py:1097
 msgid "_Export Session"
 msgstr "_Ekspor Sesi"
 
-#: lib/minios_session_manager.py:1077
+#: lib/minios_session_manager.py:1103
 msgid "_Copy Session"
 msgstr "_Salin Sesi"
 
-#: lib/minios_session_manager.py:1082
+#: lib/minios_session_manager.py:1108
 msgid "C_lone Session"
 msgstr "C_lone Sesi"
 
-#: lib/minios_session_manager.py:1088
+#: lib/minios_session_manager.py:1114
 msgid "Con_vert Session"
 msgstr "Kon_versi Sesi"
 
-#: lib/minios_session_manager.py:1098
+#: lib/minios_session_manager.py:1124
 msgid "_Open Folder"
 msgstr "_Buka Folder"
 
-#: lib/minios_session_manager.py:1108
+#: lib/minios_session_manager.py:1134
 msgid "_Delete Session"
 msgstr "_Hapus Sesi"
 
-#: lib/minios_session_manager.py:1215
+#: lib/minios_session_manager.py:1139
+msgid "_Free Space..."
+msgstr "_Ruang Kosong..."
+
+#: lib/minios_session_manager.py:1233
+msgid "Free Space — Session {}"
+msgstr "Ruang Kosong — Sesi {}"
+
+#: lib/minios_session_manager.py:1236 lib/minios_session_manager.py:1237
+msgid "Free Space"
+msgstr "Ruang Kosong"
+
+#: lib/minios_session_manager.py:1242
+msgid "Return unused container space without conversion. By default, live data is not moved. On exFAT, free space inside the file may remain allocated."
+msgstr "Kembalikan ruang kontainer yang tidak terpakai tanpa konversi. Secara default, data live tidak dipindahkan. Pada exFAT, ruang kosong di dalam file mungkin tetap teralokasi."
+
+#: lib/minios_session_manager.py:1248
+msgid "Also compact by moving live data (additional flash writes)"
+msgstr "Juga kompaksi dengan memindahkan data live (penulisan flash tambahan)"
+
+#: lib/minios_session_manager.py:1253
+msgid "Encrypted session: only known free space is reclaimed. Discard through LUKS is not enabled automatically."
+msgstr "Sesi terenkripsi: hanya ruang kosong yang diketahui yang direklamasi. Discard melalui LUKS tidak diaktifkan secara otomatis."
+
+#: lib/minios_session_manager.py:1267
+msgid "Reclaiming session space..."
+msgstr "Sedang mereklamasi ruang sesi..."
+
+#: lib/minios_session_manager.py:1277
+msgid "Space reclamation finished."
+msgstr "Reklamasi ruang selesai."
+
+#: lib/minios_session_manager.py:1279
+msgid "Invalid response from the session backend."
+msgstr "Respon tidak valid dari backend sesi."
+
+#: lib/minios_session_manager.py:1306
 msgid "Cloning session, please wait..."
 msgstr "Sedang menyalin sesi, mohon tunggu..."
 
-#: lib/minios_session_manager.py:1222
+#: lib/minios_session_manager.py:1313
 msgid "Session cloned successfully"
 msgstr "Sesi berhasil di-clone"
 
-#: lib/minios_session_manager.py:1227 lib/minios_session_manager.py:1229
+#: lib/minios_session_manager.py:1318 lib/minios_session_manager.py:1320
 msgid "Clone failed"
 msgstr "Clone gagal"
 
-#: lib/minios_session_manager.py:1247
+#: lib/minios_session_manager.py:1338
 msgid "Session folder not found"
 msgstr "Folder sesi tidak ditemukan"
 
-#: lib/minios_session_manager.py:1249
+#: lib/minios_session_manager.py:1340
 msgid "Failed to open folder: {}"
 msgstr "Gagal membuka folder: {}"
 
-#: lib/minios_session_manager.py:1256
+#: lib/minios_session_manager.py:1347
 msgid "Sessions directory is not writable. Cannot create new sessions."
 msgstr "Direktori sesi tidak dapat ditulis. Tidak dapat membuat sesi baru."
 
-#: lib/minios_session_manager.py:1273
+#: lib/minios_session_manager.py:1364
 msgid "Create New Session"
 msgstr "Buat Sesi Baru"
 
-#: lib/minios_session_manager.py:1291
+#: lib/minios_session_manager.py:1382
 msgid "Detected filesystem:"
 msgstr "Sistem berkas terdeteksi:"
 
-#: lib/minios_session_manager.py:1295
+#: lib/minios_session_manager.py:1386
 msgid "Select session mode:"
 msgstr "Pilih mode sesi:"
 
-#: lib/minios_session_manager.py:1303
+#: lib/minios_session_manager.py:1394
 msgid "Native Mode"
 msgstr "Mode Asli"
 
-#: lib/minios_session_manager.py:1304
+#: lib/minios_session_manager.py:1395
 msgid "Direct storage on POSIX filesystems"
 msgstr "Penyimpanan langsung pada sistem berkas POSIX"
 
-#: lib/minios_session_manager.py:1311
+#: lib/minios_session_manager.py:1402
 msgid "Native Mode (not compatible)"
 msgstr "Mode Asli (tidak kompatibel)"
 
-#: lib/minios_session_manager.py:1312
+#: lib/minios_session_manager.py:1403
 msgid "Not available: requires POSIX filesystem"
 msgstr "Tidak tersedia: membutuhkan sistem berkas POSIX"
 
-#: lib/minios_session_manager.py:1318
+#: lib/minios_session_manager.py:1409
 msgid "SquashFS Mode"
 msgstr "Mode SquashFS"
 
-#: lib/minios_session_manager.py:1319
+#: lib/minios_session_manager.py:1410
 msgid "Compressed snapshot of current live changes"
 msgstr "Snapshot terkompresi dari perubahan live saat ini"
 
-#: lib/minios_session_manager.py:1327
+#: lib/minios_session_manager.py:1418
 msgid "DynFileFS Mode"
 msgstr "Mode DynFileFS"
 
-#: lib/minios_session_manager.py:1328
+#: lib/minios_session_manager.py:1419
 msgid "Dynamic files"
 msgstr "Berkas dinamis"
 
-#: lib/minios_session_manager.py:1336
+#: lib/minios_session_manager.py:1427
 msgid "DynBlk Mode"
 msgstr "Mode DynBlk"
 
-#: lib/minios_session_manager.py:1337
+#: lib/minios_session_manager.py:1428
 msgid "Native compressed block-device container"
 msgstr "Container block-device terkompresi native"
 
-#: lib/minios_session_manager.py:1345
+#: lib/minios_session_manager.py:1435
+msgid "VMDK Mode"
+msgstr "Mode VMDK"
+
+#: lib/minios_session_manager.py:1436
+msgid "Split sparse VMDK image on the DynBlk driver; no compression"
+msgstr "Image VMDK sparse terpisah pada driver DynBlk; tanpa kompresi"
+
+#: lib/minios_session_manager.py:1444
 msgid "Raw Mode"
 msgstr "Mode Raw"
 
-#: lib/minios_session_manager.py:1346
+#: lib/minios_session_manager.py:1445
 msgid "Static image files"
 msgstr "Berkas citra statis"
 
-#: lib/minios_session_manager.py:1355 lib/minios_session_manager.py:2141
-#: lib/minios_session_manager.py:2276 lib/minios_session_manager.py:2450
+#: lib/minios_session_manager.py:1454 lib/minios_session_manager.py:2238
+#: lib/minios_session_manager.py:2373 lib/minios_session_manager.py:2547
 msgid "None"
 msgstr "Tidak ada"
 
-#: lib/minios_session_manager.py:1357 lib/minios_session_manager.py:2143
-#: lib/minios_session_manager.py:2277 lib/minios_session_manager.py:2451
+#: lib/minios_session_manager.py:1456 lib/minios_session_manager.py:2240
+#: lib/minios_session_manager.py:2374 lib/minios_session_manager.py:2548
 msgid "LUKS2"
 msgstr "LUKS2"
 
-#: lib/minios_session_manager.py:1363 lib/minios_session_manager.py:2149
-#: lib/minios_session_manager.py:2283 lib/minios_session_manager.py:2457
+#: lib/minios_session_manager.py:1462 lib/minios_session_manager.py:2246
+#: lib/minios_session_manager.py:2380 lib/minios_session_manager.py:2554
 msgid "DynBlk compression:"
 msgstr "Kompresi DynBlk:"
 
-#: lib/minios_session_manager.py:1377 lib/minios_session_manager.py:1856
+#: lib/minios_session_manager.py:1475 lib/minios_session_manager.py:1953
 msgid "Save automatically at shutdown (recommended)"
 msgstr "Simpan otomatis saat shutdown (disarankan)"
 
-#: lib/minios_session_manager.py:1388 lib/minios_session_manager.py:1865
+#: lib/minios_session_manager.py:1486 lib/minios_session_manager.py:1962
 msgid "Periodic save:"
 msgstr "Penyimpanan periodik:"
 
-#: lib/minios_session_manager.py:1399 lib/minios_session_manager.py:1877
+#: lib/minios_session_manager.py:1497 lib/minios_session_manager.py:1974
 msgid "Periodic saving increases CPU usage and writes to storage. An interval of 1 hour or longer is recommended."
 msgstr "Penyimpanan periodik meningkatkan penggunaan CPU dan penulisan ke media penyimpanan. Disarankan interval minimal 1 jam atau lebih lama."
 
-#: lib/minios_session_manager.py:1411 lib/minios_session_manager.py:2293
-#: lib/minios_session_manager.py:2467
+#: lib/minios_session_manager.py:1509 lib/minios_session_manager.py:2390
+#: lib/minios_session_manager.py:2564
 msgid "Size (MB):"
 msgstr "Ukuran (MB):"
 
-#: lib/minios_session_manager.py:1420 lib/minios_session_manager.py:1491
+#: lib/minios_session_manager.py:1518 lib/minios_session_manager.py:1589
 msgid "Available for container modes"
 msgstr "Tersedia untuk mode container"
 
-#: lib/minios_session_manager.py:1452 lib/minios_session_manager.py:1887
+#: lib/minios_session_manager.py:1551 lib/minios_session_manager.py:1984
 msgid "You can also save manually at any time using Save Now."
 msgstr "Anda juga dapat menyimpan secara manual kapan saja menggunakan Simpan Sekarang."
 
-#: lib/minios_session_manager.py:1454 lib/minios_session_manager.py:1889
+#: lib/minios_session_manager.py:1553 lib/minios_session_manager.py:1986
 msgid "Changes since the last save are discarded when the computer is turned off."
 msgstr "Perubahan sejak penyimpanan terakhir akan hilang jika komputer dimatikan."
 
-#: lib/minios_session_manager.py:1471
+#: lib/minios_session_manager.py:1570
 msgid "Maximum {} MB on FAT32"
 msgstr "Maksimum {} MB pada FAT32"
 
-#: lib/minios_session_manager.py:1481
-msgid "Thin container: default 16 GiB, maximum 512 GiB"
-msgstr "Thin container: default 16 GiB, maksimum 512 GiB"
+#: lib/minios_session_manager.py:1579
+msgid "Thin container: default 16 GiB, backend maximum {} MiB"
+msgstr "Kontainer tipis: default 16 GiB, maksimum backend {} MiB"
 
-#: lib/minios_session_manager.py:1485
+#: lib/minios_session_manager.py:1583
 msgid "Thin container: backing storage grows on demand"
 msgstr "Container tipis: penyimpanan belakang bertambah sesuai kebutuhan"
 
-#: lib/minios_session_manager.py:1488
+#: lib/minios_session_manager.py:1586
 msgid "Fixed-size image"
 msgstr "Citra berukuran tetap"
 
-#: lib/minios_session_manager.py:1540
+#: lib/minios_session_manager.py:1637
 msgid "Creating new session, please wait..."
 msgstr "Membuat sesi baru, mohon tunggu..."
 
-#: lib/minios_session_manager.py:1556
+#: lib/minios_session_manager.py:1653
 msgid "Save Now is available only for the running SquashFS session."
 msgstr "Simpan Sekarang hanya tersedia untuk sesi SquashFS yang sedang berjalan."
 
-#: lib/minios_session_manager.py:1617
+#: lib/minios_session_manager.py:1714
 msgid "Sessions directory is not writable. Cannot activate sessions."
 msgstr "Direktori sesi tidak dapat ditulis. Tidak dapat mengaktifkan sesi."
 
-#: lib/minios_session_manager.py:1623
+#: lib/minios_session_manager.py:1720
 msgid "Activating session, please wait..."
 msgstr "Mengaktifkan sesi, mohon tunggu..."
 
-#: lib/minios_session_manager.py:1629
+#: lib/minios_session_manager.py:1726
 msgid "Session activated successfully"
 msgstr "Sesi berhasil diaktifkan"
 
-#: lib/minios_session_manager.py:1630
+#: lib/minios_session_manager.py:1727
 msgid "Failed to activate session"
 msgstr "Gagal mengaktifkan sesi"
 
-#: lib/minios_session_manager.py:1635
+#: lib/minios_session_manager.py:1732
 msgid "Sessions directory is not writable. Cannot delete sessions."
 msgstr "Direktori sesi tidak dapat ditulis. Tidak dapat menghapus sesi."
 
-#: lib/minios_session_manager.py:1651
+#: lib/minios_session_manager.py:1748
 msgid "Create and activate another SquashFS session before deleting the running SquashFS session."
 msgstr "Buat dan aktifkan sesi SquashFS lain sebelum menghapus sesi SquashFS yang sedang berjalan."
 
-#: lib/minios_session_manager.py:1654
+#: lib/minios_session_manager.py:1751
 msgid "Delete running SquashFS session?"
 msgstr "Hapus sesi SquashFS yang sedang berjalan?"
 
-#: lib/minios_session_manager.py:1656
+#: lib/minios_session_manager.py:1753
 msgid "The current system is already running from RAM. Session #{} will become the save target for this boot. Future manual and automatic saves will be written to it. Session #{} will then be permanently deleted."
 msgstr "Sistem saat ini sudah berjalan dari RAM. Sesi #{} akan menjadi target penyimpanan untuk boot ini. Penyimpanan manual dan otomatis berikutnya akan ditulis ke sesi tersebut. Sesi #{} kemudian akan dihapus secara permanen."
 
-#: lib/minios_session_manager.py:1660
+#: lib/minios_session_manager.py:1757
 msgid "Delete and Continue"
 msgstr "Hapus dan Lanjutkan"
 
-#: lib/minios_session_manager.py:1662
+#: lib/minios_session_manager.py:1759
 msgid "Delete this session?"
 msgstr "Hapus sesi ini?"
 
-#: lib/minios_session_manager.py:1663
+#: lib/minios_session_manager.py:1760
 msgid "Session #{} and all of its data will be permanently deleted. This action cannot be undone."
 msgstr "Sesi #{} dan seluruh datanya akan dihapus permanen. Tindakan ini tidak dapat dibatalkan."
 
-#: lib/minios_session_manager.py:1665
+#: lib/minios_session_manager.py:1762
 msgid "Delete Session"
 msgstr "Hapus Sesi"
 
-#: lib/minios_session_manager.py:1669
+#: lib/minios_session_manager.py:1766
 msgid "Keep Session"
 msgstr "Pertahankan Sesi"
 
-#: lib/minios_session_manager.py:1673
+#: lib/minios_session_manager.py:1770
 msgid "Switching save target and deleting session..."
 msgstr "Mengganti target penyimpanan dan menghapus sesi..."
 
-#: lib/minios_session_manager.py:1674
+#: lib/minios_session_manager.py:1771
 msgid "Deleting session, please wait..."
 msgstr "Menghapus sesi, mohon tunggu..."
 
-#: lib/minios_session_manager.py:1684
+#: lib/minios_session_manager.py:1781
 msgid "Session deleted successfully"
 msgstr "Sesi berhasil dihapus"
 
-#: lib/minios_session_manager.py:1685
+#: lib/minios_session_manager.py:1782
 msgid "Failed to delete session"
 msgstr "Gagal menghapus sesi"
 
-#: lib/minios_session_manager.py:1691
+#: lib/minios_session_manager.py:1788
 msgid "Sessions directory is not writable. Cannot cleanup sessions."
 msgstr "Direktori sesi tidak dapat ditulis. Tidak dapat membersihkan sesi."
 
-#: lib/minios_session_manager.py:1696
+#: lib/minios_session_manager.py:1793
 msgid "Cleanup Old Sessions"
 msgstr "Bersihkan Sesi Lama"
 
-#: lib/minios_session_manager.py:1712
+#: lib/minios_session_manager.py:1809
 msgid "Delete sessions older than how many days?"
 msgstr "Hapus sesi yang lebih lama dari berapa hari?"
 
-#: lib/minios_session_manager.py:1732
+#: lib/minios_session_manager.py:1829
 msgid "Delete old sessions?"
 msgstr "Hapus sesi lama?"
 
-#: lib/minios_session_manager.py:1733
+#: lib/minios_session_manager.py:1830
 msgid "All sessions older than {} days will be permanently deleted."
 msgstr "Semua sesi yang lebih lama dari {} hari akan dihapus permanen."
 
-#: lib/minios_session_manager.py:1736
+#: lib/minios_session_manager.py:1833
 msgid "Delete Old Sessions"
 msgstr "Hapus Sesi Lama"
 
-#: lib/minios_session_manager.py:1738
+#: lib/minios_session_manager.py:1835
 msgid "Cleaning up old sessions, please wait..."
 msgstr "Membersihkan sesi lama, mohon tunggu..."
 
-#: lib/minios_session_manager.py:1745
+#: lib/minios_session_manager.py:1842
 msgid "Cleanup completed successfully"
 msgstr "Pembersihan berhasil diselesaikan"
 
-#: lib/minios_session_manager.py:1746
+#: lib/minios_session_manager.py:1843
 msgid "Cleanup failed"
 msgstr "Pembersihan gagal"
 
-#: lib/minios_session_manager.py:1754
+#: lib/minios_session_manager.py:1851
 msgid "Something went wrong"
 msgstr "Terjadi kesalahan"
 
-#: lib/minios_session_manager.py:1758
+#: lib/minios_session_manager.py:1855
 msgid "Completed"
 msgstr "Selesai"
 
-#: lib/minios_session_manager.py:1792
+#: lib/minios_session_manager.py:1889
 msgid "Failed to create session"
 msgstr "Gagal membuat sesi"
 
-#: lib/minios_session_manager.py:1841
+#: lib/minios_session_manager.py:1938
 msgid "Save settings are available only for SquashFS sessions."
 msgstr "Pengaturan penyimpanan hanya tersedia untuk sesi SquashFS."
 
-#: lib/minios_session_manager.py:1844
+#: lib/minios_session_manager.py:1941
 msgid "SquashFS Save Settings"
 msgstr "Pengaturan Penyimpanan SquashFS"
 
-#: lib/minios_session_manager.py:1847
+#: lib/minios_session_manager.py:1944
 msgid "Apply"
 msgstr "Terapkan"
 
-#: lib/minios_session_manager.py:1907
+#: lib/minios_session_manager.py:2004
 msgid "Updating save settings..."
 msgstr "Memperbarui pengaturan penyimpanan..."
 
-#: lib/minios_session_manager.py:1914
+#: lib/minios_session_manager.py:2011
 msgid "Save settings updated"
 msgstr "Pengaturan penyimpanan telah diperbarui"
 
-#: lib/minios_session_manager.py:1934
+#: lib/minios_session_manager.py:2031
 msgid "Cannot resize session while it is running. Resize operation is not allowed for the currently active session."
 msgstr "Tidak dapat mengubah ukuran sesi saat sedang berjalan. Operasi pengubahan ukuran tidak diizinkan untuk sesi yang sedang aktif."
 
-#: lib/minios_session_manager.py:1953 lib/minios_session_manager.py:2403
+#: lib/minios_session_manager.py:2050 lib/minios_session_manager.py:2500
 msgid "Failed to parse session information"
 msgstr "Gagal menguraikan informasi sesi"
 
-#: lib/minios_session_manager.py:1958
+#: lib/minios_session_manager.py:2055
 msgid "Resize Session {}"
 msgstr "Ubah ukuran sesi {}"
 
-#: lib/minios_session_manager.py:1965
+#: lib/minios_session_manager.py:2062
 msgid "Resize"
 msgstr "Ubah Ukuran"
 
-#: lib/minios_session_manager.py:1977
+#: lib/minios_session_manager.py:2074
 msgid "Session:"
 msgstr "Sesi:"
 
-#: lib/minios_session_manager.py:1981
+#: lib/minios_session_manager.py:2078
 msgid "New size (MB):"
 msgstr "Ukuran baru (MB):"
 
-#: lib/minios_session_manager.py:2007
+#: lib/minios_session_manager.py:2104
 msgid "Resizing session, please wait..."
 msgstr "Mengubah ukuran sesi, mohon tunggu..."
 
-#: lib/minios_session_manager.py:2028 lib/minios_session_manager.py:2030
-#: lib/minios_session_manager.py:2032
+#: lib/minios_session_manager.py:2125 lib/minios_session_manager.py:2127
+#: lib/minios_session_manager.py:2129
 msgid "Resize failed"
 msgstr "Pengubahan ukuran gagal"
 
-#: lib/minios_session_manager.py:2038
+#: lib/minios_session_manager.py:2135
 msgid "Export Session {}"
 msgstr "Ekspor Sesi {}"
 
-#: lib/minios_session_manager.py:2039 lib/minios_session_manager.py:2088
+#: lib/minios_session_manager.py:2136 lib/minios_session_manager.py:2185
 msgid "TAR.ZSTD archives (*.tar.zst)"
 msgstr "Arsip TAR.ZSTD (*.tar.zst)"
 
-#: lib/minios_session_manager.py:2040 lib/minios_session_manager.py:2089
+#: lib/minios_session_manager.py:2137 lib/minios_session_manager.py:2186
 msgid "All files"
 msgstr "Semua berkas"
 
-#: lib/minios_session_manager.py:2042
+#: lib/minios_session_manager.py:2139
 msgid "Export"
 msgstr "Ekspor"
 
-#: lib/minios_session_manager.py:2051
+#: lib/minios_session_manager.py:2148
 msgid "Exporting session, please wait..."
 msgstr "Mengekspor sesi, mohon tunggu..."
 
-#: lib/minios_session_manager.py:2063
+#: lib/minios_session_manager.py:2160
 msgid "Session exported successfully"
 msgstr "Sesi berhasil diekspor"
 
-#: lib/minios_session_manager.py:2068 lib/minios_session_manager.py:2070
-#: lib/minios_session_manager.py:2072
+#: lib/minios_session_manager.py:2165 lib/minios_session_manager.py:2167
+#: lib/minios_session_manager.py:2169
 msgid "Export failed"
 msgstr "Ekspor gagal"
 
-#: lib/minios_session_manager.py:2079
+#: lib/minios_session_manager.py:2176
 msgid "Sessions directory is not writable. Cannot import sessions."
 msgstr "Direktori sesi tidak dapat ditulis. Tidak dapat mengimpor sesi."
 
-#: lib/minios_session_manager.py:2087
+#: lib/minios_session_manager.py:2184
 msgid "Import Session"
 msgstr "Impor Sesi"
 
-#: lib/minios_session_manager.py:2090
+#: lib/minios_session_manager.py:2187
 msgid "Open"
 msgstr "Buka"
 
-#: lib/minios_session_manager.py:2097
+#: lib/minios_session_manager.py:2194
 msgid "Import Options"
 msgstr "Opsi Impor"
 
-#: lib/minios_session_manager.py:2115
+#: lib/minios_session_manager.py:2212
 msgid "Archive:"
 msgstr "Arsip:"
 
-#: lib/minios_session_manager.py:2119
+#: lib/minios_session_manager.py:2216
 msgid "Auto-convert to compatible mode if needed"
 msgstr "Konversi otomatis ke mode yang kompatibel jika diperlukan"
 
-#: lib/minios_session_manager.py:2125
+#: lib/minios_session_manager.py:2222
 msgid "Force import to mode:"
 msgstr "Paksa impor ke mode:"
 
-#: lib/minios_session_manager.py:2127
+#: lib/minios_session_manager.py:2224
 msgid "Auto (from metadata)"
 msgstr "Otomatis (dari metadata)"
 
-#: lib/minios_session_manager.py:2139 lib/minios_session_manager.py:2274
-#: lib/minios_session_manager.py:2448
+#: lib/minios_session_manager.py:2236 lib/minios_session_manager.py:2371
+#: lib/minios_session_manager.py:2545
 msgid "Target encryption:"
 msgstr "Enkripsi target:"
 
-#: lib/minios_session_manager.py:2191
+#: lib/minios_session_manager.py:2288
 msgid "Importing session, please wait..."
 msgstr "Mengimpor sesi, mohon tunggu..."
 
-#: lib/minios_session_manager.py:2213
+#: lib/minios_session_manager.py:2310
 msgid "Session imported successfully"
 msgstr "Sesi berhasil diimpor"
 
-#: lib/minios_session_manager.py:2219 lib/minios_session_manager.py:2221
-#: lib/minios_session_manager.py:2223
+#: lib/minios_session_manager.py:2316 lib/minios_session_manager.py:2318
+#: lib/minios_session_manager.py:2320
 msgid "Import failed"
 msgstr "Impor gagal"
 
-#: lib/minios_session_manager.py:2233
+#: lib/minios_session_manager.py:2330
 msgid "Copy Session {}"
 msgstr "Salin Sesi {}"
 
-#: lib/minios_session_manager.py:2240
+#: lib/minios_session_manager.py:2337
 msgid "Copy"
 msgstr "Salin"
 
-#: lib/minios_session_manager.py:2251
+#: lib/minios_session_manager.py:2348
 msgid "Copy session:"
 msgstr "Salin sesi:"
 
-#: lib/minios_session_manager.py:2255
+#: lib/minios_session_manager.py:2352
 msgid "Convert to different mode"
 msgstr "Konversi ke mode berbeda"
 
-#: lib/minios_session_manager.py:2260 lib/minios_session_manager.py:2435
+#: lib/minios_session_manager.py:2357 lib/minios_session_manager.py:2532
 msgid "Target mode:"
 msgstr "Mode target:"
 
-#: lib/minios_session_manager.py:2355
+#: lib/minios_session_manager.py:2452
 msgid "Copying session, please wait..."
 msgstr "Menyalin sesi, mohon tunggu..."
 
-#: lib/minios_session_manager.py:2378
+#: lib/minios_session_manager.py:2475
 msgid "Session copied successfully"
 msgstr "Sesi berhasil disalin"
 
-#: lib/minios_session_manager.py:2384 lib/minios_session_manager.py:2386
-#: lib/minios_session_manager.py:2388
+#: lib/minios_session_manager.py:2481 lib/minios_session_manager.py:2483
+#: lib/minios_session_manager.py:2485
 msgid "Copy failed"
 msgstr "Penyalinan gagal"
 
-#: lib/minios_session_manager.py:2408
+#: lib/minios_session_manager.py:2505
 msgid "Convert Session {}"
 msgstr "Konversi Sesi {}"
 
-#: lib/minios_session_manager.py:2415
+#: lib/minios_session_manager.py:2512
 msgid "Convert"
 msgstr "Konversi"
 
-#: lib/minios_session_manager.py:2426
+#: lib/minios_session_manager.py:2523
 msgid "Convert session:"
 msgstr "Konversi sesi:"
 
-#: lib/minios_session_manager.py:2431
+#: lib/minios_session_manager.py:2528
 msgid "Current mode: {}"
 msgstr "Mode saat ini: {}"
 
-#: lib/minios_session_manager.py:2542
+#: lib/minios_session_manager.py:2639
 msgid "Converting session, please wait..."
 msgstr "Mengonversi sesi, mohon tunggu..."
 
-#: lib/minios_session_manager.py:2562
+#: lib/minios_session_manager.py:2659
 msgid "Session converted successfully"
 msgstr "Sesi berhasil dikonversi"
 
-#: lib/minios_session_manager.py:2568 lib/minios_session_manager.py:2570
-#: lib/minios_session_manager.py:2572
+#: lib/minios_session_manager.py:2665 lib/minios_session_manager.py:2667
+#: lib/minios_session_manager.py:2669
 msgid "Convert failed"
 msgstr "Konversi gagal"
 
@@ -2355,75 +2487,3 @@ msgstr "Jalankan operasi CLI Manajer Sesi MiniOS"
 #: share/polkit/dev.minios.session-manager.policy:20
 msgid "Authentication is required to perform session operations"
 msgstr "Diperlukan otentikasi untuk menjalankan operasi sesi"
-
-#~ msgid "dynblk operation failed"
-#~ msgstr "Operasi dynblk gagal"
-
-#~ msgid "Invalid dynblk device response"
-#~ msgstr "Respons perangkat dynblk tidak valid"
-
-#~ msgid "Invalid dynblk status response"
-#~ msgstr "Respons status dynblk tidak valid"
-
-#~ msgid "Invalid dynblk backing namespace"
-#~ msgstr "Namespace backing dynblk tidak valid"
-
-#~ msgid "dynblk backing volume is missing"
-#~ msgstr "Volume backing dynblk tidak ditemukan"
-
-#~ msgid "Invalid dynblk backing file"
-#~ msgstr "File backing dynblk tidak valid"
-
-#~ msgid "dynblk backing namespace changed during operation"
-#~ msgstr "Namespace backing dynblk berubah selama operasi"
-
-#~ msgid "dynblk backing file changed during operation"
-#~ msgstr "File backing dynblk berubah selama operasi"
-
-#~ msgid "dynblk session is attached or busy"
-#~ msgstr "Sesi dynblk sedang terpasang atau sibuk"
-
-#~ msgid "Failed to create dynblk session"
-#~ msgstr "Gagal membuat sesi dynblk"
-
-#~ msgid "Failed to format dynblk device: {}"
-#~ msgstr "Gagal memformat perangkat dynblk: {}"
-
-#~ msgid "dynblk session created successfully"
-#~ msgstr "Sesi dynblk berhasil dibuat"
-
-#~ msgid "Failed to create dynblk session: {}"
-#~ msgstr "Gagal membuat sesi dynblk: {}"
-
-#~ msgid "dynblk was created but could not be detached: {}"
-#~ msgstr "dynblk berhasil dibuat tetapi tidak dapat dilepas: {}"
-
-#~ msgid "dynblk volume000.db not found"
-#~ msgstr "dynblk volume000.db tidak ditemukan"
-
-#~ msgid "Failed to mount dynblk device"
-#~ msgstr "Gagal me-mount perangkat dynblk"
-
-#~ msgid "Failed to unmount dynblk session; device was left attached."
-#~ msgstr "Gagal melepaskan sesi dynblk; perangkat masih terpasang."
-
-#~ msgid "Failed to detach dynblk after session operation: {}"
-#~ msgstr "Gagal melepaskan dynblk setelah operasi sesi: {}"
-
-#~ msgid "dynblk is not available on this system."
-#~ msgstr "dynblk tidak tersedia di sistem ini."
-
-#~ msgid "dynblk virtual size cannot exceed 512 GiB."
-#~ msgstr "Ukuran virtual dynblk tidak boleh melebihi 512 GiB."
-
-#~ msgid "Filesystem check failed before dynblk resize: {}"
-#~ msgstr "Pemeriksaan filesystem gagal sebelum resize dynblk: {}"
-
-#~ msgid "Failed to resize dynblk filesystem: {}"
-#~ msgstr "Gagal mengubah ukuran filesystem dynblk: {}"
-
-#~ msgid "Failed to detach dynblk after resize: {}"
-#~ msgstr "Gagal melepaskan dynblk setelah resize: {}"
-
-#~ msgid "Dynblk Mode"
-#~ msgstr "Mode Dynblk"
