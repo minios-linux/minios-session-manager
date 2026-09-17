@@ -2450,19 +2450,21 @@ class SessionManager:
         return success, str(message), capture
 
     def create_session(self, session_mode="native", size_mb=None, password=None,
-                       policy=None, autosave=0, encryption='none', compression='none'):
+                       policy=None, autosave=0, encryption='none', compression='none',
+                       activate=False):
         """Create a session while serializing its tree and metadata publication."""
         try:
             with self._mutation_lock():
                 return self._create_session_locked(
                     session_mode=session_mode, size_mb=size_mb, password=password,
                     policy=policy, autosave=autosave, encryption=encryption,
-                    compression=compression)
+                    compression=compression, activate=activate)
         except Exception as error:
             return False, _("Error creating session: {}").format(str(error))
 
     def _create_session_locked(self, session_mode="native", size_mb=None, password=None,
-                               policy=None, autosave=0, encryption='none', compression='none'):
+                               policy=None, autosave=0, encryption='none', compression='none',
+                               activate=False):
         """Create a new session."""
         if not self.sessions_dir:
             return False, _("Sessions directory not found")
@@ -2517,7 +2519,10 @@ class SessionManager:
         # unrelated 4000 MB container default on snapshot creation.
         if session_mode != "squashfs":
             required_mb = size_mb if size_mb else self.DEFAULT_CONTAINER_SIZE_MB
-            if session_mode == "dynfilefs":
+            if session_mode == "native":
+                # An empty directory needs metadata, not a 4000 MB image.
+                required_mb = 1
+            elif session_mode == "dynfilefs":
                 required_mb = min(required_mb, self.DYNFILEFS_INITIAL_MB)
             elif session_mode == "dynblk":
                 required_mb = min(required_mb, self.DYNBLK_INITIAL_MB)
@@ -2681,6 +2686,10 @@ class SessionManager:
                 elif session_mode in ["dynfilefs", "dynblk", "raw"] and size_mb:
                     session_record["size"] = size_mb
                 metadata["sessions"][new_id] = session_record
+                if activate:
+                    # Publish the boot default together with the completed session.
+                    # Do not change the currently running session.
+                    metadata["default"] = new_id
                 metadata_updated = self._write_sessions_metadata(metadata)
             if metadata_updated:
                 self._invalidate_size_cache(new_id)
@@ -4638,6 +4647,8 @@ EXAMPLES:
                               default='native', help=_('Session mode (default: native)'))
     create_parser.add_argument('size', nargs='?', type=parse_perch_size, metavar='SIZE',
                               help=_('Size in MB, GB, or TB for container modes (default: 4000MB)'))
+    create_parser.add_argument('--activate', action='store_true',
+                               help=_('Set the created session as the boot default'))
     create_parser.add_argument('--encryption', choices=('none', 'luks'), default='none',
                               help=_('Optional encryption layer (default: none)'))
     create_parser.add_argument('--compression', choices=SessionManager.DYNBLK_COMPRESSION_CODECS,
@@ -4895,7 +4906,7 @@ EXAMPLES:
             success, message = manager.create_session(
                 args.mode, args.size, password=password, policy=args.policy,
                 autosave=args.autosave, encryption=args.encryption,
-                compression=args.compression)
+                compression=args.compression, activate=args.activate)
         if args.json:
             result = {"success": success, "message": message}
             print(json.dumps(result))

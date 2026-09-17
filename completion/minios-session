@@ -117,7 +117,7 @@ _minios_session() {
                     ;;
                 *)
                     if [[ ${cur} == -* ]]; then
-                        local create_opts="--help --json --sessions-dir --policy --autosave --encryption --compression${luks_opt}"
+                        local create_opts="--activate --help --json --sessions-dir --policy --autosave --encryption --compression${luks_opt}"
                         COMPREPLY=($(compgen -W "${create_opts}" -- ${cur}))
                     elif [[ $arg_count -eq 0 ]]; then
                         # First argument: mode

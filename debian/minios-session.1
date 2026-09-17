@@ -1,4 +1,4 @@
-.TH MINIOS-SESSION 1 "September 2026" "MiniOS Session Manager 2.1.0" "User Commands"
+.TH MINIOS-SESSION 1 "September 2026" "MiniOS Session Manager 2.2.0" "User Commands"
 .SH NAME
 minios-session \- command-line interface for managing MiniOS persistent sessions
 .SH SYNOPSIS
@@ -37,9 +37,18 @@ Activate the specified session by setting it as the default session. This change
 ID of the session to activate
 .RE
 .TP
-.B create [\fImode\fR] [\fIsize\fR] [\-\-encryption none|luks] [\-\-compression CODEC]
+.B create [\fImode\fR] [\fIsize\fR] [\-\-encryption none|luks] [\-\-compression CODEC] [\-\-activate]
 Create a new session with the specified mode and optional size. The new session will be automatically assigned the next available ID. The tool automatically detects the filesystem type and only allows compatible session modes.
+With --activate, the new session and its selection as boot default are published
+together. The running session is not changed. Use --sessions-dir to create a
+session on another mounted MiniOS installation.
 .RS
+.TP
+\fB\-\-activate\fR (optional)
+Select the completed session as the boot default in the same metadata update.
+The running-session selector is preserved. Combine with --sessions-dir to
+create and select a session on a target installation medium. Without this
+option, the current boot default is unchanged.
 .TP
 \fImode\fR (optional)
 Session mode: native, squashfs, dynfilefs, dynblk, or raw (default: native). DynBlk is exposed only when its userspace utility, kernel module, and initrd capability marker are available.

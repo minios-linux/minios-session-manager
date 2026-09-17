@@ -1,3 +1,11 @@
+minios-session-manager (2.2.0) unstable; urgency=medium
+
+  * Add create --activate to publish a new session and its boot selection
+    together without changing the running session.
+  * Reserve only metadata space when creating an empty native session.
+
+ -- crims0n <crims0n@minios.dev>  Thu, 17 Sep 2026 16:24:37 +0300
+
 minios-session-manager (2.1.0) unstable; urgency=medium
 
   * Add DynBlk compression selection for create, import, copy, and conversion

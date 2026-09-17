@@ -60,6 +60,8 @@ minios-session resize <id> 8GB
   creation captures the current live changes and activation selects the snapshot
   for the next boot
 
+## Persistence and session operations
+
 SquashFS can save automatically at shutdown (enabled by default) and can also
 save periodically every 30, 60, 120, 240, or 480 minutes. These settings are
 independent, and **Save Now** remains available at any time from the tray icon or
@@ -118,9 +120,37 @@ matching kernel module are available.
 
 Encrypted exports contain decrypted logical session files, not the encrypted
 backend. Importing with `--force-encryption luks` creates a fresh encrypted
-backend.
-Only `.tar.zst` imports are accepted; archive paths and file types are validated
-and extraction is bounded.
+backend. Only `.tar.zst` imports are accepted; archive paths and file types are
+validated and extraction is bounded.
+
+## Creating a session on another MiniOS installation
+
+Use `minios-session create MODE [SIZE] --sessions-dir /mnt/target/minios/changes --activate` after the target partition is mounted and the changes directory
+exists. `--activate` publishes the boot default together with the new session;
+it does not switch the running system. Without it, creation keeps the previous
+default. The installer uses this same backend rather than duplicating storage
+creation or changing persistence kernel parameters.
+
+## Target-media session creation
+
+Installers can use the same CLI backend without changing sessions on the
+running live medium. Create the target directory first, then explicitly scope
+the operation to it:
+
+```bash
+minios-session create native --sessions-dir /mnt/target/minios/changes --activate --json
+minios-session create dynblk 16GB --compression zstd \
+  --sessions-dir /mnt/target/minios/changes --activate --json
+```
+
+`--activate` publishes the completed session and its boot-default selection in
+one metadata update under the session mutation lock. It does not change the
+`running` selector. Without this option, `create` retains its existing behavior
+and leaves the boot default unchanged. The directory must already exist.
+
+Encrypted creation uses the existing `--encryption luks --password-stdin`
+interface: supply the passphrase and confirmation as two stdin lines. The
+installer does not implement a second storage creator or metadata writer.
 
 ## Build
 
