@@ -54,14 +54,13 @@ DYNBLK_COMPRESSION_CODECS = (
 )
 
 
-def runtime_dynblk_compression_codecs(initramfs_root='/run/initramfs', kernel=None):
+def _dynblk_codecs_from_tree(initramfs_root, kernel):
     """Return DynBlk crypto_comp providers available to the boot initramfs."""
     modprobe = shutil.which('modprobe')
     if not modprobe:
         modprobe = next(
             (path for path in ('/usr/sbin/modprobe', '/sbin/modprobe')
              if os.access(path, os.X_OK)), None)
-    kernel = kernel or os.uname().release
     if not modprobe or not kernel:
         return ('none',)
 
@@ -106,6 +105,70 @@ def runtime_dynblk_compression_codecs(initramfs_root='/run/initramfs', kernel=No
                     available.add(codec)
             supported.intersection_update(available)
     return tuple(codec for codec in DYNBLK_COMPRESSION_CODECS if codec in supported)
+
+
+DYNBLK_BOOT_DIRECTORIES = (
+    '/run/initramfs/memory/data/minios/boot',
+    '/lib/live/mount/medium/minios/boot',
+)
+
+
+def _dynblk_module_tree_present(root, kernel):
+    return any(os.path.isdir(os.path.join(root, prefix, relative, kernel))
+               for prefix in ('', 'main', 'early')
+               for relative in ('lib/modules', 'usr/lib/modules'))
+
+
+def _unpack_dynblk_initrd(image, destination):
+    image = os.path.realpath(image)
+    tool = shutil.which('unmkinitramfs')
+    command = [tool, image, destination] if tool else None
+    if command is None:
+        tool = shutil.which('lsinitrd')
+        if not tool:
+            return False
+        command = [tool, '--unpack', image]
+    try:
+        return subprocess.run(command, cwd=destination,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                              check=False, timeout=30).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def runtime_dynblk_compression_codecs(initramfs_root='/run/initramfs', kernel=None):
+    """Check real boot providers, including after LiveKit discards its modules."""
+    kernel = kernel or os.uname().release
+    if not kernel or '/' in kernel or kernel in ('.', '..'):
+        return ('none',)
+    if (os.path.normpath(initramfs_root) != '/run/initramfs' or
+            _dynblk_module_tree_present(initramfs_root, kernel)):
+        return _dynblk_codecs_from_tree(initramfs_root, kernel)
+
+    # Do not equate a missing retained tree with missing kernel support, and
+    # do not infer next-boot support from the full system module tree alone.
+    current = set(_dynblk_codecs_from_tree('/', kernel))
+    if current == {'none'}:
+        return ('none',)
+    names = ('initrfs-{}.img'.format(kernel), 'initrd-{}.img'.format(kernel),
+             'initrd.img-{}'.format(kernel), 'initrfs.img', 'initrd.img')
+    seen = set()
+    for directory in DYNBLK_BOOT_DIRECTORIES:
+        boot = os.path.realpath(directory)
+        for name in names:
+            image = os.path.realpath(os.path.join(boot, name))
+            if (image in seen or not os.path.isfile(image) or
+                    os.path.dirname(image) != boot):
+                continue
+            seen.add(image)
+            with tempfile.TemporaryDirectory(prefix='minios-boot-codecs-') as extracted:
+                if not _unpack_dynblk_initrd(image, extracted):
+                    return ('none',)
+                if not _dynblk_module_tree_present(extracted, kernel):
+                    continue
+                boot_codecs = _dynblk_codecs_from_tree(extracted, kernel)
+                return tuple(codec for codec in boot_codecs if codec in current)
+    return ('none',)
 
 
 def initrd_has_capability(marker, capability):

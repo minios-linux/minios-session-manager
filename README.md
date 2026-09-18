@@ -84,7 +84,7 @@ Raw, DynFileFS, DynBlk, and VMDK may optionally use LUKS2 encryption. `copy` is 
 
 Export, copy, clone, conversion, and resize reject the running session; `reclaim` supports running DynBlk/VMDK sessions. SquashFS uses its own capture and save path; its export/import/copy/clone/conversion workflows are not provided by these generic session operations.
 
-DynBlk creation offers only codecs that the current boot kernel/initramfs can provide through the Linux `crypto_comp` API. Session Manager inspects the kmod metadata under `/run/initramfs` for the running kernel, so built-in providers and modules with their dependencies are both detected without loading anything. Known codecs are `none`, `lz4`, `lz4hc`, `lzo`, `lzo-rle`, `zstd`, `deflate`, and `842`; unavailable codecs are omitted. The selection applies to new DynBlk containers, including import/copy/convert targets, and is unavailable with LUKS.
+DynBlk creation offers only codecs that the current boot kernel/initramfs can provide through the Linux `crypto_comp` API. Session Manager inspects kmod metadata for the running kernel. When LiveKit has removed the retained module tree from `/run/initramfs`, it checks the matching boot image on the live medium and intersects its providers with the running system. Images are unpacked with `unmkinitramfs` or Dracut's `lsinitrd --unpack`; built-in providers and module dependencies are detected without loading anything. Known codecs are `none`, `lz4`, `lz4hc`, `lzo`, `lzo-rle`, `zstd`, `deflate`, and `842`; unavailable codecs are omitted. The selection applies to new DynBlk containers, including import/copy/convert targets, and is unavailable with LUKS.
 
 ## Filesystem support and sizes
 

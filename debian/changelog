@@ -1,3 +1,10 @@
+minios-session-manager (2.3.1) unstable; urgency=medium
+
+  * Restore DynBlk compression choices after LiveKit cleanup by checking
+    the matching boot image and running kernel providers.
+
+ -- crims0n <crims0n@minios.dev>  Fri, 18 Sep 2026 15:39:06 +0300
+
 minios-session-manager (2.3.0) unstable; urgency=medium
 
   * Add split sparse VMDK sessions backed by DynBlk, including create, resize,
