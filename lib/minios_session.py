@@ -360,16 +360,18 @@ class SessionManager:
         if not self.sessions_dir:
             raise OSError("sessions directory not found")
         if self._lock_depth == 0:
-            lock_path = os.path.join(self.sessions_dir, '.session.lock')
-            flags = os.O_CREAT | os.O_RDWR | getattr(os, 'O_NOFOLLOW', 0)
-            self._lock_fd = os.open(lock_path, flags, 0o600)
+            # Lock the directory inode itself. FAT/exFAT synthesize ownership
+            # and mode bits from mount options, so a lock file cannot safely
+            # use POSIX uid/mode as an admission rule. O_NOFOLLOW keeps path
+            # replacement by a symlink out of the locking contract.
+            flags = (os.O_RDONLY | os.O_DIRECTORY |
+                     getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_CLOEXEC', 0))
+            self._lock_fd = os.open(self.sessions_dir, flags)
             lock_stat = os.fstat(self._lock_fd)
-            if (not stat.S_ISREG(lock_stat.st_mode) or lock_stat.st_uid != os.geteuid()
-                    or lock_stat.st_nlink != 1):
+            if not stat.S_ISDIR(lock_stat.st_mode):
                 os.close(self._lock_fd)
                 self._lock_fd = None
-                raise OSError("unsafe session lock file")
-            os.fchmod(self._lock_fd, 0o600)
+                raise OSError("unsafe sessions directory")
             fcntl.flock(self._lock_fd, fcntl.LOCK_EX)
         self._lock_depth += 1
         try:

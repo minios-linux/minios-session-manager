@@ -1,3 +1,10 @@
+minios-session-manager (2.3.2) unstable; urgency=medium
+
+  * Allow session metadata locking on FAT/exFAT and other user-mounted media by
+    locking the sessions directory inode instead of a synthetic-ownership lock file.
+
+ -- crims0n <crims0n@minios.dev>  Fri, 18 Sep 2026 18:10:44 +0300
+
 minios-session-manager (2.3.1) unstable; urgency=medium
 
   * Restore DynBlk compression choices after LiveKit cleanup by checking

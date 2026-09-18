@@ -1156,11 +1156,28 @@ class TestAuditRegressions:
             '1', to_mode='raw', size_mb=100, source_password=None,
             target_password=None, to_encryption='none')
 
-    def test_lock_rejects_symlink(self, temp_sessions_dir):
+    def test_mutation_lock_uses_directory_inode(self, temp_sessions_dir):
         from minios_session import SessionManager
 
         sm = SessionManager(custom_sessions_dir=temp_sessions_dir)
-        os.symlink('/tmp', os.path.join(temp_sessions_dir, '.session.lock'))
+        with sm._mutation_lock():
+            other = os.open(temp_sessions_dir, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                with pytest.raises(BlockingIOError):
+                    fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            finally:
+                os.close(other)
+        assert not os.path.exists(os.path.join(temp_sessions_dir, '.session.lock'))
+
+    def test_mutation_lock_rejects_replaced_directory_symlink(self, tmp_path):
+        from minios_session import SessionManager
+
+        sessions = tmp_path / 'sessions'
+        sessions.mkdir()
+        sm = SessionManager(custom_sessions_dir=str(sessions))
+        real = tmp_path / 'real-sessions'
+        sessions.rename(real)
+        sessions.symlink_to(real, target_is_directory=True)
         with pytest.raises(OSError):
             with sm._mutation_lock():
                 pass
