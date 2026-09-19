@@ -52,6 +52,38 @@ LUKS_LAYER_CAPABILITY = 'luks-layer-v1'
 DYNBLK_COMPRESSION_CODECS = (
     'none', 'lz4', 'lz4hc', 'lzo', 'lzo-rle', 'zstd', 'deflate', '842',
 )
+SECURE_BOOT_GUID = '8be4df61-93ca-11d2-aa0d-00e098032b8c'
+SECURE_BOOT_DYNBLK_ERROR = _(
+    'DynBlk and VMDK session storage are unavailable while Secure Boot is enabled.')
+
+
+def secure_boot_enabled(efivars_dir=None):
+    """Return whether UEFI Secure Boot is enabled for the running system."""
+    override = efivars_dir or os.environ.get('MINIOS_EFIVARS_DIR')
+    directory = override or '/sys/firmware/efi/efivars'
+    variable = os.path.join(directory, 'SecureBoot-' + SECURE_BOOT_GUID)
+    try:
+        with open(variable, 'rb') as stream:
+            data = stream.read(5)
+        if len(data) >= 5:
+            return data[4] == 1
+    except OSError:
+        pass
+    if override:
+        return False
+    mokutil = shutil.which('mokutil')
+    if not mokutil:
+        return False
+    try:
+        env = dict(os.environ)
+        env['LC_ALL'] = 'C'
+        result = subprocess.run(
+            [mokutil, '--sb-state'], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            timeout=5, env=env)
+        text = (result.stdout + result.stderr).decode('utf-8', errors='replace')
+        return result.returncode == 0 and 'SecureBoot enabled' in text
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 def _dynblk_codecs_from_tree(initramfs_root, kernel):
@@ -939,7 +971,9 @@ class SessionManager:
         return runtime_dynblk_compression_codecs()
 
     def _check_dynblk_available(self):
-        """Require dynblk in both the running system and the boot initramfs."""
+        """Require loadable DynBlk support outside Secure Boot."""
+        if secure_boot_enabled():
+            return False
         if not shutil.which('dynblk') or not os.path.isfile(INITRD_DYNBLK_MARKER):
             return False
         # An already loaded module is sufficient. Otherwise require the module
@@ -1325,6 +1359,8 @@ class SessionManager:
             return False, error or _("Failed to determine filesystem information")
         if fs_info.get('is_readonly'):
             return False, _("Sessions directory is read-only")
+        if mode in ('dynblk', 'vmdk') and secure_boot_enabled():
+            return False, SECURE_BOOT_DYNBLK_ERROR
         if mode not in self._get_compatible_session_modes(fs_info):
             return False, _("Session mode '{}' is not compatible with {} filesystem").format(mode, fs_info['type'])
         if size_mb is not None and size_mb <= 0:

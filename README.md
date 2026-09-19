@@ -109,7 +109,7 @@ Both DynBlk formats keep tables on disk and a bounded metadata cache in RAM (def
 
 ## Availability and encryption
 
-The GUI offers compatible modes reported by the backend; explicit CLI requests are validated before creation. DynBlk requires the `dynblk` utility, a loaded or discoverable module, and `/run/initramfs/etc/minios-initramfs-dynblk`. VMDK additionally requires `vmdk-session-v1` in that marker and support for `dynblk limits --format vmdk`. Update the driver, CLI, session tools and boot initrd together; updating the GUI alone does not add VMDK boot support.
+The GUI offers compatible modes reported by the backend; explicit CLI requests are validated before creation. DynBlk requires the `dynblk` utility, a loaded or discoverable module, and `/run/initramfs/etc/minios-initramfs-dynblk`. VMDK additionally requires `vmdk-session-v1` in that marker and support for `dynblk limits --format vmdk`. When UEFI Secure Boot is enabled, DynBlk and VMDK creation is disabled because MiniOS does not sign the external DynBlk kernel module. Update the driver, CLI, session tools and boot initrd together; updating the GUI alone does not add VMDK boot support.
 
 LUKS2 requires cryptsetup, the selected backend's tools, and `luks-layer-v1` in `/run/initramfs/etc/minios-initramfs-crypt`. Raw and DynFileFS also use a loop device; DynBlk and VMDK pass `/dev/dynblkN` directly to cryptsetup. Their stack is `ext4 -> LUKS2/dm-crypt -> /dev/dynblkN -> backing files`. VMDK encryption means LUKS2 inside an ordinary VMDK, not VMware's native image encryption. Inner filesystem contents and metadata are encrypted; the VMDK descriptor, backend mappings, filenames and external session metadata remain outside LUKS.
 

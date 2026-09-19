@@ -1,4 +1,4 @@
-.TH MINIOS-SESSION 1 "September 2026" "MiniOS Session Manager 2.3.2" "User Commands"
+.TH MINIOS-SESSION 1 "September 2026" "MiniOS Session Manager 2.3.3" "User Commands"
 .SH NAME
 minios-session \- command-line interface for managing MiniOS persistent sessions
 .SH SYNOPSIS
@@ -230,7 +230,7 @@ without days: Uses 30-day threshold for session deletion
 Active sessions are protected from deletion and in-place conversion. Running
 sessions are protected from deletion, export, copy, resize, and conversion.
 .SH SESSION MODES
-MiniOS supports five persistence storage modes:
+MiniOS supports six persistence storage modes:
 .TP
 .B native
 Direct storage on POSIX-compatible filesystems (ext4, btrfs, etc.). This is the default and most efficient mode for compatible filesystems.
@@ -241,11 +241,14 @@ Dynamic file-based storage suitable for non-POSIX filesystems (FAT32, NTFS, exFA
 .B dynblk
 Format-1 kernel block storage backed by thin volumeNNN.db files. The mode is available only when the running system has the dynblk utility and module and the initramfs advertises dynblk resume support. Its virtual size defaults to 16GiB and is limited by the installed backend (dynblk limits).
 .TP
+.B vmdk
+Standard split sparse VMDK storage exposed through the DynBlk driver. It uses the same virtual-size policy as DynBlk and does not support backend compression.
+.TP
 .B raw
 Fixed-size image file storage compatible with any filesystem. Requires pre-allocation of storage space.
 .TP
 .B Encryption
-Raw, DynFileFS, and DynBlk may optionally use LUKS2 encryption. Passphrases are
+Raw, DynFileFS, DynBlk, and VMDK may optionally use LUKS2 encryption. Passphrases are
 read interactively or from standard input with \fB--password-stdin\fR and are
 never recorded in metadata. Encrypted-to-encrypted logical copy and conversion
 read the source passphrase first, followed by the target passphrase twice.
@@ -261,12 +264,14 @@ Native mode and available container modes are supported. DynBlk is admitted on e
 requires cryptsetup and the backend-specific initrd capabilities.
 .TP
 .B FAT32, NTFS, and exFAT
-DynFileFS and Raw are supported on writable media. DynBlk is also offered on vfat, exFAT, and ntfs3 when its capability check succeeds. Encryption is supported
+DynFileFS and Raw are supported on writable media. DynBlk and VMDK are also offered on vfat, exFAT, and ntfs3 when their capability checks succeed. Encryption is supported
 when its backend-specific capability check succeeds; fixed Raw files are limited
 to 4000MB on FAT32 whether encrypted or not. Native mode is unsupported.
 .TP
 .B Read-only Media
 No session creation possible. Sessions can only be activated or listed.
+.PP
+Under UEFI Secure Boot, DynBlk and VMDK creation is disabled because MiniOS does not sign the external DynBlk kernel module.
 .PP
 Use the
 .B info

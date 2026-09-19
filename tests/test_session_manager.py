@@ -2503,7 +2503,8 @@ def test_dynblk_capability_requires_initrd_marker_and_module(temp_sessions_dir):
 
     sm = SessionManager.__new__(SessionManager)
     completed = SimpleNamespace(returncode=0)
-    with patch('minios_session.shutil.which', side_effect=lambda name: '/usr/bin/' + name), \
+    with patch('minios_session.secure_boot_enabled', return_value=False), \
+         patch('minios_session.shutil.which', side_effect=lambda name: '/usr/bin/' + name), \
          patch('minios_session.os.path.isfile', side_effect=lambda path: path == INITRD_DYNBLK_MARKER), \
          patch('minios_session.subprocess.run', return_value=completed) as run:
         assert sm._check_dynblk_available() is True
@@ -2511,6 +2512,34 @@ def test_dynblk_capability_requires_initrd_marker_and_module(temp_sessions_dir):
             ['modinfo', 'dynblk'], stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL)
 
-    with patch('minios_session.shutil.which', return_value='/usr/bin/tool'), \
+    with patch('minios_session.secure_boot_enabled', return_value=False), \
+         patch('minios_session.shutil.which', return_value='/usr/bin/tool'), \
          patch('minios_session.os.path.isfile', return_value=False):
         assert sm._check_dynblk_available() is False
+
+
+def test_secure_boot_efivar_disables_dynblk_before_module_probe(tmp_path):
+    from minios_session import SECURE_BOOT_GUID, SessionManager, secure_boot_enabled
+
+    efivars = tmp_path / 'efivars'
+    efivars.mkdir()
+    variable = efivars / ('SecureBoot-' + SECURE_BOOT_GUID)
+    variable.write_bytes(b'\x07\x00\x00\x00\x01')
+    assert secure_boot_enabled(str(efivars)) is True
+
+    sm = SessionManager.__new__(SessionManager)
+    with patch('minios_session.secure_boot_enabled', return_value=True), \
+         patch('minios_session.subprocess.run') as run:
+        assert sm._check_dynblk_available() is False
+        run.assert_not_called()
+
+    sm._detect_filesystem_type = lambda: ({
+        'type': 'ext4', 'is_readonly': False, 'is_posix_compatible': True,
+    }, None)
+    with patch('minios_session.secure_boot_enabled', return_value=True):
+        valid, message = sm._validate_target_mode('dynblk', 16384)
+        assert valid is False
+        assert 'Secure Boot' in message
+
+    variable.write_bytes(b'\x07\x00\x00\x00\x00')
+    assert secure_boot_enabled(str(efivars)) is False

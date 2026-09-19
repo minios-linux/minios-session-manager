@@ -1,3 +1,9 @@
+minios-session-manager (2.3.3) unstable; urgency=medium
+
+  * Disable DynBlk and VMDK session creation while UEFI Secure Boot is enabled.
+
+ -- crims0n <crims0n@minios.dev>  Sat, 19 Sep 2026 03:22:29 +0300
+
 minios-session-manager (2.3.2) unstable; urgency=medium
 
   * Allow session metadata locking on FAT/exFAT and other user-mounted media by
