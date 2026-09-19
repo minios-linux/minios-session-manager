@@ -53,7 +53,7 @@ sudo minios-session convert SESSION_ID dynblk --size 16384 --new-session
 # Grow a non-running container
 sudo minios-session resize SESSION_ID 32768
 
-# Reclaim DynBlk or VMDK space without moving live data
+# Reclaim DynFileFS, DynBlk or VMDK space without moving live data
 sudo minios-session reclaim SESSION_ID --json
 ```
 
@@ -82,7 +82,7 @@ All running-session SquashFS saves are delegated to the core MiniOS Tools `minio
 
 Raw, DynFileFS, DynBlk, and VMDK may optionally use LUKS2 encryption. `copy` is a logical filesystem copy that creates fresh filesystem and LUKS identities and may change backend, capacity, or encryption. `clone` physically copies a detached backend and preserves its LUKS header, keyslots, LUKS UUID, and ext4 UUID. `convert` replaces the source by default; use `--new-session` to preserve it. In-place conversion requires selecting another boot-default session first.
 
-Export, copy, clone, conversion, and resize reject the running session; `reclaim` supports running DynBlk/VMDK sessions. SquashFS uses its own capture and save path; its export/import/copy/clone/conversion workflows are not provided by these generic session operations.
+Export, copy, clone, conversion, and resize reject the running session; `reclaim` supports running DynFileFS/DynBlk/VMDK sessions. SquashFS uses its own capture and save path; its export/import/copy/clone/conversion workflows are not provided by these generic session operations.
 
 DynBlk creation offers only codecs that the current boot kernel/initramfs can provide through the Linux `crypto_comp` API. Session Manager inspects kmod metadata for the running kernel. When LiveKit has removed the retained module tree from `/run/initramfs`, it checks the matching boot image on the live medium and intersects its providers with the running system. Images are unpacked with `unmkinitramfs` or Dracut's `lsinitrd --unpack`; built-in providers and module dependencies are detected without loading anything. Known codecs are `none`, `lz4`, `lz4hc`, `lzo`, `lzo-rle`, `zstd`, `deflate`, and `842`; unavailable codecs are omitted. The selection applies to new DynBlk containers, including import/copy/convert targets, and is unavailable with LUKS.
 
@@ -117,9 +117,11 @@ Encrypted creation prompts for a passphrase and confirmation, or accepts two std
 
 Encrypted exports contain **decrypted logical files**, not an encrypted archive. Import defaults to an unencrypted destination even for an encrypted source; `--force-encryption luks` creates a fresh encrypted backend. Only `.tar.zst` session archives are accepted; paths and types are validated and extraction is bounded.
 
-## Returning unused DynBlk and VMDK space
+## Returning unused DynFileFS, DynBlk and VMDK space
 
-Right-click a DynBlk or VMDK session and choose **Free Space...**. For plaintext sessions, the backend runs FITRIM on the actual inner ext4, not the combined AUFS/OverlayFS root, then calls `dynblk reclaim`. Detached plaintext sessions are temporarily attached and mounted. Running sessions keep their device; it is validated against protected current-boot state.
+Right-click a DynFileFS, DynBlk or VMDK session and choose **Free Space...**. For plaintext sessions, the backend runs FITRIM on the actual inner ext4, not the combined AUFS/OverlayFS root, then invokes the owning backend's reclaim command. Detached plaintext sessions are temporarily attached and mounted. Running DynBlk/VMDK sessions keep their device; it is validated against protected current-boot state.
+
+DynFileFS reclamation requires version 4.6.0 or later; the backend checks command support before mounting or trimming. Older versions remain usable for existing session operations. Running sessions are supported: a short-lived worker creates a recursively private mount namespace to access `virtual.dat` below MiniOS's ext4 overmount. The working session's mounts, loop device and daemon remain untouched in the original namespace. The worker verifies protected boot state, mount/loop/image identities, and the actual running daemon's reclaim ioctl before trim. Installing a new CLI alone does not upgrade an already running daemon; reboot to use the new daemon if the check fails. Temporary mounts of detached sessions are released without lazy unmount; if teardown is busy, their daemon is retained rather than killed underneath a live filesystem. DynFileFS used size is measured from allocated blocks, so hole punching is reflected in the session list.
 
 ```bash
 # No live-data relocation, for either format
@@ -133,7 +135,7 @@ Without `--compact`, ext4 backing files can return physical blocks through hole 
 
 Explicit compaction needs no conversion or second image and does not change virtual capacity. It can increase I/O latency and need not remove every gap in one pass. Encrypted sessions reclaim only space already known to the driver; this command does not unlock a detached LUKS filesystem or automatically enable discard through dm-crypt. Read-only, fenced and `unsafe` attachments are rejected; a failed filesystem trim stops the operation.
 
-DynBlk/VMDK usage is reported from allocated blocks, not just file lengths. Reclaim counters for requested punch ranges and truncated lengths are not measured physical-space savings. Unlike low-level `dynblk reclaim`, the session command executes immediately without `--execute`; relocation still requires explicit `--compact`.
+DynFileFS/DynBlk/VMDK usage is reported from allocated blocks, not just file lengths. Reclaim counters for requested punch ranges and truncated lengths are not measured physical-space savings. DynFileFS results include `allocated_before`, `allocated_after`, and `freed_bytes`; concurrent session writes can affect these measurements. Unlike low-level `dynblk reclaim`, the session command executes immediately without `--execute`; relocation still requires explicit `--compact`.
 
 ## Creating a session on another MiniOS installation
 

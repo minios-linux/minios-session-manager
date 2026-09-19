@@ -1171,7 +1171,7 @@ class SessionManagerGUI:
         export_item, copy_item, clone_item, convert_item = children[5:9]
         delete_item = children[12]
         mode = getattr(row, 'mode', 'unknown')
-        self.reclaim_item.set_visible(mode in ('dynblk', 'vmdk'))
+        self.reclaim_item.set_visible(mode in ('dynfilefs', 'dynblk', 'vmdk'))
         self.reclaim_item.set_sensitive(self.sessions_writable and
                                         getattr(row, 'configuration_supported', True))
         is_squashfs = mode == 'squashfs'
@@ -1228,7 +1228,7 @@ class SessionManagerGUI:
     def _on_context_reclaim(self, _menu_item):
         session_id = self.selected_session_id
         session = self._sessions_by_id.get(session_id, {})
-        if not self.sessions_writable or session.get('mode') not in ('dynblk', 'vmdk'):
+        if not self.sessions_writable or session.get('mode') not in ('dynfilefs', 'dynblk', 'vmdk'):
             return
         dialog = Gtk.Dialog(title=_("Free Space — Session {}").format(session_id),
                             transient_for=self.window, modal=True)
@@ -1240,7 +1240,7 @@ class SessionManagerGUI:
         box.set_border_width(12)
         note = Gtk.Label(label=_(
             "Return unused container space without conversion. By default, live data is not moved. "
-            "On exFAT, free space inside the file may remain allocated."))
+            "On FAT32/exFAT, free space inside the file may remain allocated."))
         note.set_line_wrap(True)
         note.set_max_width_chars(64)
         note.set_xalign(0)

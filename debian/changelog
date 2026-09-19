@@ -1,3 +1,11 @@
+minios-session-manager (2.4.0) unstable; urgency=medium
+
+  * Add online DynFileFS space reclamation and compaction for detached and
+    running sessions, with protected mount, loop, and daemon validation.
+  * Report DynFileFS usage from allocated storage blocks.
+
+ -- crims0n <crims0n@minios.dev>  Sat, 19 Sep 2026 20:27:49 +0300
+
 minios-session-manager (2.3.3) unstable; urgency=medium
 
   * Disable DynBlk and VMDK session creation while UEFI Secure Boot is enabled.

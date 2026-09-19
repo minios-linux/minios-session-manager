@@ -1,4 +1,4 @@
-.TH MINIOS-SESSION 1 "September 2026" "MiniOS Session Manager 2.3.3" "User Commands"
+.TH MINIOS-SESSION 1 "September 2026" "MiniOS Session Manager 2.4.0" "User Commands"
 .SH NAME
 minios-session \- command-line interface for managing MiniOS persistent sessions
 .SH SYNOPSIS
@@ -397,10 +397,18 @@ Creation, resize, copy, clone, conversion and logical export/import support vmdk
 .SH SPACE RECLAMATION
 .B minios-session reclaim ID [--compact] [--json]
 .PP
-Trim the unencrypted internal ext4 and reclaim known free container space.
+Trim the unencrypted internal ext4 and reclaim known free container space
+for DynFileFS, DynBlk or VMDK sessions.
 The running device is validated against this boot and remains connected.
 Inactive sessions are temporarily attached and mounted.
 Only --compact permits live-data relocation; it is never an automatic fallback
 on exFAT. Compaction increases flash writes. Encrypted sessions reclaim only
 already-known free storage and do not enable discard through LUKS.
 The GUI provides the same operation as Free Space in the session context menu.
+.PP
+DynFileFS requires version 4.6.0 or later. Running sessions are supported by
+exposing the hidden FUSE image inside a private mount namespace; the working
+session's mounts and loop device remain connected in the original namespace.
+The actual running daemon is checked before trimming. If an older daemon is
+still running after a package update, reboot with the updated backend first.
+The displayed DynFileFS usage reflects allocated blocks, including hole punching.

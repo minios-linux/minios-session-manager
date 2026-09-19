@@ -21,6 +21,8 @@ import time
 import contextlib
 import signal
 import stat
+import struct
+import ctypes
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import gettext
@@ -1858,16 +1860,16 @@ class SessionManager:
 
     def _get_dynfilefs_size(self, session_path):
         """Get the actual size of a dynfilefs session"""
-        changes_file = os.path.join(session_path, "changes.dat")
         total_size = 0
         
         try:
             # Count all changes.dat.* files
             for file in os.listdir(session_path):
-                if file.startswith("changes.dat"):
+                if re.fullmatch(r'changes\.dat(?:\.[0-9]+)?', file):
                     file_path = os.path.join(session_path, file)
-                    if os.path.isfile(file_path):
-                        total_size += os.path.getsize(file_path)
+                    file_stat = os.stat(file_path, follow_symlinks=False)
+                    if stat.S_ISREG(file_stat.st_mode):
+                        total_size += file_stat.st_blocks * 512
         except Exception:
             pass
         
@@ -3068,7 +3070,7 @@ class SessionManager:
     def _decode_mount_field(value):
         return re.sub(r'\\([0-7]{3})', lambda m: chr(int(m.group(1), 8)), value)
 
-    def _running_block_device(self, session_id, mode, encryption):
+    def _running_persistence_state(self, session_id, mode, encryption):
         """Resolve the current boot's device, not an arbitrary metadata device name."""
         fd = os.open(self.BOOT_STATE_FILE, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
         with os.fdopen(fd, 'r', encoding='utf-8') as stream:
@@ -3089,6 +3091,10 @@ class SessionManager:
                     'sessions_device': str(root.st_dev), 'sessions_inode': str(root.st_ino)}
         if not boot_id or any(state.get(k) != v for k, v in expected.items()):
             raise OSError(_('Selected session is not the writable session of this boot.'))
+        return state
+
+    def _running_block_device(self, session_id, mode, encryption):
+        state = self._running_persistence_state(session_id, mode, encryption)
         device = state.get('dynblk_device', '')
         if not re.fullmatch(r'/dev/dynblk(?:[0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])', device):
             raise OSError(_('Invalid DynBlk device response'))
@@ -3113,19 +3119,128 @@ class SessionManager:
 
     def _trim_block_filesystem(self, device, mount_point):
         # Keep the directory pinned and check st_dev before executing FITRIM.
-        # A pass_fds path avoids a mountpoint replacement between validation and trim.
-        disk = os.stat(device, follow_symlinks=False)
+        # FITRIM uses the descriptor directly, not a re-resolved pathname.
         fd = os.open(mount_point, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
         try:
-            if not stat.S_ISBLK(disk.st_mode) or os.fstat(fd).st_dev != disk.st_rdev:
-                raise OSError(_('Session mount changed before space reclamation.'))
-            result = subprocess.run(['fstrim', '-v', '/proc/self/fd/{}'.format(fd)],
-                                    pass_fds=(fd,), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            if result.returncode:
-                raise OSError(result.stderr.decode(errors='replace').strip() or
-                              _('Filesystem trim failed; no compaction was started.'))
+            self._trim_block_filesystem_fd(device, fd)
         finally:
             os.close(fd)
+
+    def _trim_block_filesystem_fd(self, device, fd):
+        disk = os.stat(device, follow_symlinks=False)
+        if not stat.S_ISBLK(disk.st_mode) or os.fstat(fd).st_dev != disk.st_rdev:
+            raise OSError(_('Session mount changed before space reclamation.'))
+        # FITRIM must operate on this exact open filesystem. fstrim may
+        # canonicalize /proc/self/fd/N and trim the pathname's replacement after
+        # a private-namespace detach. syncfs first commits pending ext4 frees.
+        libc = ctypes.CDLL(None, use_errno=True)
+        libc.syncfs.argtypes = [ctypes.c_int]
+        if libc.syncfs(fd) != 0:
+            raise OSError(ctypes.get_errno(), _('Cannot synchronize session before trim.'))
+        trim_range = bytearray(struct.pack('=QQQ', 0, (1 << 64) - 1, 0))
+        try:
+            fcntl.ioctl(fd, 0xc0185879, trim_range, True)  # FITRIM
+        except OSError as error:
+            raise OSError(_('Filesystem trim failed; no compaction was started.')) from error
+
+    @contextlib.contextmanager
+    def _dynfilefs_reclaim_image(self, session_path):
+        """Own a private FUSE mount; never kill it while an inner mount is busy."""
+        mount_point = tempfile.mkdtemp(prefix='minios_dyn_reclaim_')
+        process = None
+        try:
+            process = subprocess.Popen(
+                ['dynfilefs', '-f', os.path.join(session_path, 'changes.dat'),
+                 '-m', mount_point, '-d'],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            virtual_file = os.path.join(mount_point, 'virtual.dat')
+            if not self._wait_for_mount(virtual_file):
+                raise OSError(_('Failed to expose DynFileFS virtual image'))
+            yield virtual_file
+        finally:
+            if os.path.ismount(mount_point):
+                if not self._safe_unmount(mount_point, use_lazy=False):
+                    raise OSError(_('Cannot unmount the temporary DynFileFS image; its daemon was left running.'))
+            self._cleanup_process(process)
+            os.rmdir(mount_point)
+
+    def _check_dynfilefs_reclaim(self):
+        # The no-argument usage is read-only even in old DynFileFS releases.
+        probe = subprocess.run(['dynfilefs'], stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, timeout=10)
+        if b'--reclaim' not in probe.stdout or b'--compact' not in probe.stdout:
+            raise OSError(_('Update DynFileFS to version 4.6.0 or later to free session space.'))
+
+    def _reclaim_running_dynfilefs(self, session_id, session_path, encryption, compact):
+        self._check_dynfilefs_reclaim()
+        self._running_persistence_state(session_id, 'dynfilefs', encryption)
+        before = self._get_dynfilefs_size(session_path)
+        worker = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                              'minios_dynfilefs_reclaim.py')
+        result = subprocess.run(
+            [sys.executable, worker, self.sessions_dir, session_id, encryption,
+             'compact' if compact else 'reclaim'],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode:
+            raise OSError(result.stderr.decode(errors='replace').strip() or
+                          _('Space reclamation did not complete.'))
+        details = json.loads(result.stdout)
+        if not isinstance(details, dict) or details.get('complete') is not True:
+            raise OSError(_('Space reclamation did not complete.'))
+        self._invalidate_size_cache(session_id)
+        after = self._get_dynfilefs_size(session_path)
+        details.update(allocated_before=before, allocated_after=after,
+                       freed_bytes=max(0, before - after))
+        return details
+
+    def _reclaim_dynfilefs(self, session_id, session_path, encryption, compact):
+        self._check_dynfilefs_reclaim()
+        before = self._get_dynfilefs_size(session_path)
+        with self._dynfilefs_reclaim_image(session_path) as image:
+            fd = os.open(image, os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC)
+            try:
+                if not stat.S_ISREG(os.fstat(fd).st_mode):
+                    raise OSError(_('Expected a DynFileFS virtual image.'))
+                pinned_image = '/proc/self/fd/{}'.format(fd)
+                # The newly started daemon is the probed executable. Encrypted
+                # sessions never unlock or enable dm-crypt discard implicitly.
+                if encryption == 'none':
+                    mount_point = tempfile.mkdtemp(prefix='minios_reclaim_')
+                    mounted = False
+                    try:
+                        result = subprocess.run(
+                            ['mount', '-t', 'ext4', '-o', 'loop,nosuid,nodev,noexec',
+                             pinned_image, mount_point], pass_fds=(fd,),
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        if result.returncode:
+                            raise OSError(result.stderr.decode(errors='replace').strip() or
+                                          _('Cannot mount session for trim.'))
+                        mounted = True
+                        result = subprocess.run(
+                            ['findmnt', '-n', '-o', 'SOURCE', '--mountpoint', mount_point],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        device = result.stdout.decode(errors='replace').strip()
+                        if result.returncode or not re.fullmatch(r'/dev/loop[0-9]+', device):
+                            raise OSError(_('Cannot identify the temporary session loop device.'))
+                        self._trim_block_filesystem(device, mount_point)
+                    finally:
+                        if mounted and not self._safe_unmount(mount_point, use_lazy=False):
+                            raise OSError(_('Cannot unmount the temporary session; its device was left attached.'))
+                        os.rmdir(mount_point)
+                command = '--compact' if compact else '--reclaim'
+                result = subprocess.run(['dynfilefs', command, pinned_image],
+                                        pass_fds=(fd,), stdout=subprocess.PIPE,
+                                        stderr=subprocess.PIPE)
+                if result.returncode:
+                    raise OSError(result.stderr.decode(errors='replace').strip() or
+                                  _('Space reclamation did not complete.'))
+            finally:
+                os.close(fd)
+        self._invalidate_size_cache(session_id)
+        after = self._get_dynfilefs_size(session_path)
+        return {'complete': True, 'storage_format': 'dynfilefs',
+                'allocated_before': before, 'allocated_after': after,
+                'freed_bytes': max(0, before - after), 'compact': bool(compact)}
 
     def reclaim_session(self, session_id, compact=False):
         """Trim an inner ext4 and reclaim through its owning driver, without conversion."""
@@ -3140,13 +3255,23 @@ class SessionManager:
                 metadata = self._read_sessions_metadata()
                 data = metadata.get('sessions', {}).get(session_id, {})
                 mode = data.get('mode')
-                if mode not in ('dynblk', 'vmdk'):
-                    raise OSError(_('Space reclamation is available only for DynBlk and VMDK sessions.'))
+                if mode not in ('dynfilefs', 'dynblk', 'vmdk'):
+                    raise OSError(_('Space reclamation is available only for DynFileFS, DynBlk and VMDK sessions.'))
                 if not self._session_configuration_supported(data):
                     raise OSError(_('Unsupported session configuration.'))
                 session_path = self._session_path(session_id, require_exists=True)
                 encryption = data.get('encryption', 'none')
                 running = str(metadata.get('running', '')) == session_id
+                if mode == 'dynfilefs':
+                    if running:
+                        details = self._reclaim_running_dynfilefs(
+                            session_id, session_path, encryption, compact)
+                    else:
+                        details = self._reclaim_dynfilefs(session_id, session_path, encryption, compact)
+                    message = _('Space reclamation completed for session {}.').format(session_id)
+                    if encryption != 'none':
+                        message += ' ' + _('Encrypted session: only previously known free space was reclaimed; discard through LUKS was not enabled.')
+                    return True, message, details
                 if running:
                     device = self._running_block_device(session_id, mode, encryption)
                 else:
@@ -5072,7 +5197,7 @@ EXAMPLES:
     status_parser = subparsers.add_parser('status', help=_('Check sessions directory status'), parents=[parent_parser])
 
     # Resize command
-    reclaim_parser = subparsers.add_parser('reclaim', help=_('Reclaim free space in a DynBlk or VMDK session'), parents=[parent_parser])
+    reclaim_parser = subparsers.add_parser('reclaim', help=_('Reclaim free space in a DynFileFS, DynBlk or VMDK session'), parents=[parent_parser])
     reclaim_parser.add_argument('session_id', type=str)
     reclaim_parser.add_argument('--compact', action='store_true',
                                 help=_('Explicitly permit moving live data; increases flash writes'))
