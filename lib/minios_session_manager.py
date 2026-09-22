@@ -97,6 +97,7 @@ class SessionManagerGUI:
         self._refresh_generation = 0
         self._status_retry_generation = 0
         self._status_pending = True
+        self._loading_visible = False
         self._snapshot_time = None
         self._sessions_by_id = {}
         self._filesystem_info = {}
@@ -386,9 +387,9 @@ class SessionManagerGUI:
         """Build sessions directory status information panel."""
         intent, status_text = self._sessions_status_presentation()
         banner = StatusBanner(status_text, intent=intent)
-        banner.label.set_markup(
-            '<b>{}</b>'.format(GLib.markup_escape_text(status_text)))
         self.sessions_status_banner = banner
+        # Keep a healthy status out of the way, including after window.show_all().
+        banner.set_no_show_all(True)
         self.sessions_status_retry = Gtk.Button(label=_("Retry"))
         self.sessions_status_retry.connect(
             'clicked', self._retry_sessions_directory_status)
@@ -398,16 +399,22 @@ class SessionManagerGUI:
             self.sessions_status.get('_query_error', False))
         banner.pack_end(self.sessions_status_retry, False, False, 0)
         main_box.pack_start(banner, False, False, 0)
+        self._update_sessions_status_banner()
+
+    def _update_sessions_status_banner(self):
+        """Show only actionable session-directory status information."""
+        intent, status_text = self._sessions_status_presentation()
+        self.sessions_status_banner.set_intent(intent)
+        self.sessions_status_banner.label.set_markup(
+            '<b>{}</b>'.format(GLib.markup_escape_text(status_text)))
+        self.sessions_status_banner.set_visible(intent != 'success')
 
     def _retry_sessions_directory_status(self, _button):
         """Retry a failed status query without blocking the GTK main loop."""
         self._status_retry_generation += 1
         generation = self._status_retry_generation
         self._status_pending = True
-        intent, status_text = self._sessions_status_presentation()
-        self.sessions_status_banner.set_intent(intent)
-        self.sessions_status_banner.label.set_markup(
-            '<b>{}</b>'.format(GLib.markup_escape_text(status_text)))
+        self._update_sessions_status_banner()
         self.sessions_status_retry.set_visible(False)
         self.sessions_status_retry.set_sensitive(False)
 
@@ -435,17 +442,11 @@ class SessionManagerGUI:
         self._status_pending = False
         self.sessions_status = status
         self.sessions_writable = self.sessions_status.get('writable', False)
-        intent, status_text = self._sessions_status_presentation()
-        self.sessions_status_banner.set_intent(intent)
-        self.sessions_status_banner.label.set_markup(
-            '<b>{}</b>'.format(GLib.markup_escape_text(status_text)))
+        self._update_sessions_status_banner()
         query_error = self.sessions_status.get('_query_error', False)
         self.sessions_status_retry.set_visible(query_error)
         self.sessions_status_retry.set_sensitive(True)
-        self.create_btn.set_sensitive(
-            self.sessions_writable and bool(self._filesystem_info))
-        for button in (self.import_btn, self.cleanup_btn):
-            button.set_sensitive(self.sessions_writable)
+        self._update_footer_sensitivity()
         self.refresh_session_list()
         return False
 
@@ -866,8 +867,7 @@ class SessionManagerGUI:
             self.dynblk_compression_codecs = tuple(
                 self._filesystem_info.get('dynblk_compression_codecs') or ['none'])
             self._snapshot_time = time.monotonic()
-            self.create_btn.set_sensitive(
-                self.sessions_writable and bool(self._filesystem_info))
+            self._update_footer_sensitivity()
 
             # Keep the previous rows visible until a complete response is valid.
             for row in self.sessions_list.get_children():
@@ -1916,6 +1916,8 @@ class SessionManagerGUI:
     def _show_loading(self, show, text=None):
         """Show or hide loading indicator"""
         if show:
+            self._loading_visible = True
+            self._update_footer_sensitivity()
             if text:
                 self.loading_label.set_text(text)
             # Ensure CSS class is applied every time we show the loading overlay
@@ -1927,6 +1929,19 @@ class SessionManagerGUI:
             self.loading_box.set_state('idle')
             # Reset to default text
             self.loading_label.set_text(_("Loading sessions..."))
+            self._loading_visible = False
+            self._update_footer_sensitivity()
+
+    def _update_footer_sensitivity(self):
+        """Keep footer actions unavailable for the full loading interval."""
+        if not all(hasattr(self, name) for name in (
+                'create_btn', 'import_btn', 'cleanup_btn')):
+            return
+        available = not getattr(self, '_loading_visible', False)
+        self.create_btn.set_sensitive(
+            available and self.sessions_writable and bool(self._filesystem_info))
+        self.import_btn.set_sensitive(available and self.sessions_writable)
+        self.cleanup_btn.set_sensitive(available and self.sessions_writable)
 
     def _show_squashfs_settings_dialog(self, session_id):
         """Show user-facing automatic-save settings for a SquashFS session."""

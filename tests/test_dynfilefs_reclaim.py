@@ -6,7 +6,6 @@ from unittest.mock import Mock, patch
 
 import pytest
 import minios_session as cli
-import minios_dynfilefs_reclaim as worker
 
 
 def result(stdout=b'', code=0):
@@ -92,6 +91,26 @@ def test_old_backend_rejected_before_exposure(tmp_path):
         success, message, _ = manager.reclaim_session('1')
     assert not success and '4.6.0' in message
     manager._dynfilefs_reclaim_image.assert_not_called()
+
+
+def test_online_reclaim_reexecutes_the_same_backend(tmp_path):
+    manager = manager_for(tmp_path)
+    manager._check_dynfilefs_reclaim = Mock()
+    manager._running_persistence_state = Mock(return_value={})
+    manager._get_dynfilefs_size = Mock(side_effect=[8192, 4096])
+    with patch.object(cli.subprocess, 'run', return_value=result(b'{"complete":true}')) as run:
+        details = manager._reclaim_running_dynfilefs('1', str(tmp_path), 'none', True)
+    assert run.call_args[0][0] == [
+        cli.sys.executable, cli.os.path.realpath(cli.__file__),
+        '--internal-dynfilefs-reclaim', str(tmp_path), '1', 'none', 'compact']
+    assert details['freed_bytes'] == 4096
+
+
+def test_internal_reclaim_validates_arguments_before_namespace():
+    with patch.object(cli.SessionManager, '_reclaim_dynfilefs_in_namespace') as reclaim:
+        assert cli._dynfilefs_reclaim_child([]) == 1
+        assert cli._dynfilefs_reclaim_child(['/tmp', '1', 'none', 'invalid']) == 1
+    reclaim.assert_not_called()
 
 
 def test_trim_failure_prevents_compaction(tmp_path):
@@ -196,32 +215,32 @@ def test_mount_stack_requires_exact_writable_parent_pair(bad):
         upper['path'] = '/other'
     if bad:
         with pytest.raises(OSError):
-            worker.select_mounts(entries, ('/changes',))
+            cli.SessionManager._select_dynfilefs_mounts(entries, ('/changes',))
     else:
-        assert worker.select_mounts(entries, ('/changes',)) == (lower, upper)
+        assert cli.SessionManager._select_dynfilefs_mounts(entries, ('/changes',)) == (lower, upper)
 
 
 @pytest.mark.parametrize('flags,offset,limit', [(0, 0, 0), (1, 0, 0), (0, 512, 0), (0, 0, 512)])
 def test_loop_identity_rejects_readonly_and_partial_images(flags, offset, limit):
     def ioctl(fd, request, data, mutate):
-        assert request == worker.LOOP_GET_STATUS64
+        assert request == cli.SessionManager.LOOP_GET_STATUS64
         struct.pack_into('=QQQQQIIII', data, 0, 55, 2, 0, offset, limit, 0, 0, 0, flags)
-    with patch.object(worker.fcntl, 'ioctl', side_effect=ioctl):
+    with patch.object(cli.fcntl, 'ioctl', side_effect=ioctl):
         if flags or offset or limit:
             with pytest.raises(OSError):
-                worker.loop_identity(42)
+                cli.SessionManager._reclaim_loop_identity(42)
         else:
-            assert worker.loop_identity(42) == (55, 2)
+            assert cli.SessionManager._reclaim_loop_identity(42) == (55, 2)
 
 
 def test_namespace_failure_cannot_detach_any_mount(tmp_path):
     manager = manager_for(tmp_path)
     manager._running_persistence_state = Mock(return_value={})
-    with patch.object(worker, 'private_namespace', side_effect=OSError('unshare failed')), \
-         patch.object(worker, 'mount_stack') as stack, \
-         patch.object(worker.ctypes, 'CDLL') as libc:
+    with patch.object(manager, '_private_reclaim_namespace', side_effect=OSError('unshare failed')), \
+         patch.object(manager, '_reclaim_mount_stack') as stack, \
+         patch.object(cli.ctypes, 'CDLL') as libc:
         with pytest.raises(OSError, match='unshare failed'):
-            worker.reclaim(manager, '1', 'none', True)
+            manager._reclaim_dynfilefs_in_namespace('1', 'none', True)
     stack.assert_not_called()
     libc.assert_not_called()
 
@@ -238,17 +257,17 @@ def test_old_running_daemon_fails_before_trim(tmp_path):
              SimpleNamespace(st_dev=7),
              SimpleNamespace(st_mode=stat.S_IFREG, st_dev=55, st_ino=2, st_size=65536)]
     upper['dev'] = '0:7'
-    with patch.object(worker, 'private_namespace'), \
-         patch.object(worker, 'mount_stack', return_value=[lower, upper]), \
-         patch.object(worker, 'CHANGES_PATHS', ('/changes',)), \
-         patch.object(worker, 'loop_identity', return_value=(55, 2)), \
-         patch.object(worker.os, 'open', side_effect=[101, 102, 103]), \
-         patch.object(worker.os, 'fstat', side_effect=stats), \
-         patch.object(worker.os, 'close'), \
-         patch.object(worker.ctypes, 'CDLL', return_value=libc), \
-         patch.object(worker.fcntl, 'ioctl', side_effect=OSError('ENOTTY')), \
-         patch.object(worker.subprocess, 'run') as run:
+    with patch.object(manager, '_private_reclaim_namespace'), \
+         patch.object(manager, '_reclaim_mount_stack', return_value=[lower, upper]), \
+         patch.object(manager, 'DYNFILEFS_CHANGES_PATHS', ('/changes',)), \
+         patch.object(manager, '_reclaim_loop_identity', return_value=(55, 2)), \
+         patch.object(cli.os, 'open', side_effect=[101, 102, 103]), \
+         patch.object(cli.os, 'fstat', side_effect=stats), \
+         patch.object(cli.os, 'close'), \
+         patch.object(cli.ctypes, 'CDLL', return_value=libc), \
+         patch.object(cli.fcntl, 'ioctl', side_effect=OSError('ENOTTY')), \
+         patch.object(cli.subprocess, 'run') as run:
         with pytest.raises(OSError, match='running DynFileFS daemon'):
-            worker.reclaim(manager, '1', 'none', True)
+            manager._reclaim_dynfilefs_in_namespace('1', 'none', True)
     manager._trim_block_filesystem_fd.assert_not_called()
     run.assert_not_called()

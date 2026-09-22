@@ -17,7 +17,7 @@ import pytest
 import tempfile
 import shutil
 from types import SimpleNamespace
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import call, patch, MagicMock, mock_open
 
 # Add lib directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lib'))
@@ -683,6 +683,62 @@ class TestAuditRegressions:
         assert callable(factory.call_args[0][0])
         assert callable(factory.call_args[0][1])
         task.start.assert_called_once_with()
+
+    def test_gui_hides_healthy_session_status_banner(self):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        gui._status_pending = False
+        gui.sessions_writable = True
+        gui.sessions_status = {
+            'success': True, 'found': True, 'writable': True,
+            '_query_error': False,
+        }
+        gui.sessions_status_banner = MagicMock()
+        gui.sessions_status_banner.label = MagicMock()
+
+        gui._update_sessions_status_banner()
+
+        gui.sessions_status_banner.set_intent.assert_called_once_with('success')
+        gui.sessions_status_banner.set_visible.assert_called_once_with(False)
+
+    def test_gui_keeps_actionable_session_status_banner_visible(self):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        gui._status_pending = False
+        gui.sessions_writable = False
+        gui.sessions_status = {
+            'success': True, 'found': True, 'writable': False,
+            '_query_error': False,
+        }
+        gui.sessions_status_banner = MagicMock()
+        gui.sessions_status_banner.label = MagicMock()
+
+        gui._update_sessions_status_banner()
+
+        gui.sessions_status_banner.set_intent.assert_called_once_with('error')
+        gui.sessions_status_banner.set_visible.assert_called_once_with(True)
+
+    def test_gui_loading_overlay_locks_and_restores_footer_actions(self):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        gui.sessions_writable = True
+        gui._filesystem_info = {'filesystem': {'type': 'ext4'}}
+        gui.create_btn = MagicMock()
+        gui.import_btn = MagicMock()
+        gui.cleanup_btn = MagicMock()
+        gui.loading_box = MagicMock()
+        gui.loading_label = MagicMock()
+
+        gui._show_loading(True)
+        for button in (gui.create_btn, gui.import_btn, gui.cleanup_btn):
+            button.set_sensitive.assert_called_once_with(False)
+
+        gui._show_loading(False)
+        for button in (gui.create_btn, gui.import_btn, gui.cleanup_btn):
+            assert button.set_sensitive.call_args_list == [call(False), call(True)]
 
     def test_stale_fetch_error_does_not_change_current_refresh(self):
         from minios_session_manager import SessionManagerGUI

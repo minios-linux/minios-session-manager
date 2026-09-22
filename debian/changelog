@@ -1,3 +1,15 @@
+minios-session-manager (2.4.1) unstable; urgency=medium
+
+  * Integrate online DynFileFS reclamation into minios_session.py, using an
+    internal child-process mode for mount namespace isolation instead of a
+    separate worker file. Fix the missing-file error for running sessions.
+  * Verify the installed backend's internal reclaim entry point during package
+    builds and fail on unassigned installed files.
+  * Hide healthy status banners while keeping warnings and errors visible, and
+    disable footer actions while the loading overlay is active.
+
+ -- crims0n <crims0n@minios.dev>  Tue, 22 Sep 2026 19:57:30 +0300
+
 minios-session-manager (2.4.0) unstable; urgency=medium
 
   * Add online DynFileFS space reclamation and compaction for detached and

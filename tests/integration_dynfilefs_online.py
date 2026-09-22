@@ -97,13 +97,10 @@ def main():
                 original_mounts = Path('/proc/self/mountinfo').read_text()
                 script = '''
 import json, sys
-import minios_dynfilefs_reclaim as worker
-from minios_session import SessionManager
-manager = SessionManager.__new__(SessionManager)
-manager.sessions_dir = sys.argv[1]
-manager.BOOT_STATE_FILE = sys.argv[2]
-worker.CHANGES_PATHS = (sys.argv[3],)
-print(json.dumps(worker.reclaim(manager, '1', sys.argv[4], True)))
+from minios_session import SessionManager, _dynfilefs_reclaim_child
+SessionManager.BOOT_STATE_FILE = sys.argv[2]
+SessionManager.DYNFILEFS_CHANGES_PATHS = (sys.argv[3],)
+sys.exit(_dynfilefs_reclaim_child([sys.argv[1], '1', sys.argv[4], 'compact']))
 '''
                 reply = subprocess.check_output([sys.executable, '-c', script, str(store),
                                                  str(boot_state), str(mount), state['encryption']], env=environment)

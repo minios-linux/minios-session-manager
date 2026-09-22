@@ -156,6 +156,13 @@ def test_loading_overlay_stays_hidden_after_initial_refresh():
     assert "self.loading_box.set_state('running')" in SOURCE
 
 
+def test_healthy_banners_and_loading_footer_state_are_centralized():
+    assert "self.sessions_status_banner.set_visible(intent != 'success')" in SOURCE
+    assert "self._loading_visible = True" in SOURCE
+    assert "self._loading_visible = False" in SOURCE
+    assert "available = not getattr(self, '_loading_visible', False)" in SOURCE
+
+
 def test_ram_only_status_explains_missing_persistent_storage():
     assert "Persistent sessions are unavailable" in SOURCE
     assert "Sessions directory not found" not in SOURCE
