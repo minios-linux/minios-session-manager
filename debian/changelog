@@ -1,3 +1,14 @@
+minios-session-manager (2.5.0) unstable; urgency=medium
+
+  * Widen the default manager window so complete DynFileFS session rows fit
+    without a horizontal scrollbar.
+  * Show the configured capacity next to allocated use for DynBlk and VMDK
+    sessions, matching DynFileFS presentation.
+  * Add read-write mounting and explicit unmounting of inactive Raw,
+    DynFileFS, DynBlk, and VMDK sessions from the context menu and CLI.
+
+ -- crims0n <crims0n@minios.dev>  Wed, 23 Sep 2026 18:09:55 +0300
+
 minios-session-manager (2.4.1) unstable; urgency=medium
 
   * Integrate online DynFileFS reclamation into minios_session.py, using an

@@ -249,6 +249,10 @@ class MetadataCommitUncertain(OSError):
     """A metadata rename became visible but its directory sync failed."""
 
 
+class MountCleanupError(OSError):
+    """A user-facing mount could not be safely torn down."""
+
+
 class SessionManager:
     """Main class for managing MiniOS sessions"""
 
@@ -1183,7 +1187,7 @@ class SessionManager:
 
     @contextlib.contextmanager
     def _mount_dynblk(self, session_path, writable, encryption='none',
-                      password=None, storage_format=None):
+                      password=None, storage_format=None, strict_cleanup=False):
         """Attach one dynblk volume without requiring the module/device namespace to be idle."""
         volume = self._dynblk_volume(session_path, storage_format)
         if not os.path.exists(volume):
@@ -1199,8 +1203,15 @@ class SessionManager:
             result = self._run_dynblk(attach_args)
             device = self._dynblk_device_from_result(result)
             if encryption == 'luks':
-                with self._mount_luks(device, password, writable) as encrypted_mount:
-                    yield encrypted_mount
+                try:
+                    with self._mount_luks(
+                            device, password, writable,
+                            strict_cleanup=strict_cleanup) as encrypted_mount:
+                        yield encrypted_mount
+                except MountCleanupError:
+                    if strict_cleanup:
+                        device = None
+                    raise
             else:
                 command = ['mount']
                 if not writable:
@@ -1231,7 +1242,8 @@ class SessionManager:
                 if active_exception:
                     print('Warning: {}'.format(cleanup_error), file=sys.stderr)
                 else:
-                    raise OSError(cleanup_error)
+                    error_type = MountCleanupError if strict_cleanup else OSError
+                    raise error_type(cleanup_error)
 
     def _check_luks_available(self, backend='raw'):
         """Check userspace and versioned initrd support for layered LUKS."""
@@ -1466,18 +1478,25 @@ class SessionManager:
             subprocess.run(['sync'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     @contextlib.contextmanager
-    def _mount_luks(self, source, password, writable):
+    def _mount_luks(self, source, password, writable, strict_cleanup=False):
         """Mount ext4 from a LUKS layer over a file or block source."""
         with self._open_luks_source(source, password) as mapper_device:
             mount_point = tempfile.mkdtemp(prefix='minios_luks_')
+            mounted = False
             try:
                 options = [] if writable else ['-o', 'ro']
                 subprocess.run(
                     ['mount'] + options + [mapper_device, mount_point], check=True)
+                mounted = True
                 yield mount_point
             finally:
-                self._safe_unmount(mount_point)
-                self._safe_rmtree(mount_point)
+                if mounted and not self._safe_unmount(
+                        mount_point, use_lazy=not strict_cleanup):
+                    if strict_cleanup:
+                        raise MountCleanupError(_(
+                            'Failed to unmount encrypted session; its backing device was left attached.'))
+                else:
+                    self._safe_rmtree(mount_point)
 
     def _wait_for_mount(self, path, timeout=10):
         """Wait for a file or directory to appear (polling)"""
@@ -1617,8 +1636,9 @@ class SessionManager:
 
     @contextlib.contextmanager
     def _mount_session_read(self, session_path, mode, password=None,
-                            encryption='none'):
-        """Context manager to mount a session for reading"""
+                            encryption='none', writable=False,
+                            strict_cleanup=False):
+        """Mount an existing session without creating or formatting storage."""
         mount_point = None
         virtual_mount = None
         process = None
@@ -1649,12 +1669,21 @@ class SessionManager:
                     raise Exception(_("Failed to mount dynfilefs (timeout)"))
                     
                 if encryption == 'luks':
-                    with self._mount_luks(virtual_file, password, writable=False) as encrypted_mount:
-                        changes_dir = os.path.join(encrypted_mount, 'changes')
-                        yield changes_dir if os.path.isdir(changes_dir) else encrypted_mount
+                    try:
+                        with self._mount_luks(
+                                virtual_file, password, writable,
+                                strict_cleanup=strict_cleanup) as encrypted_mount:
+                            changes_dir = os.path.join(encrypted_mount, 'changes')
+                            yield changes_dir if os.path.isdir(changes_dir) else encrypted_mount
+                    except MountCleanupError:
+                        if strict_cleanup:
+                            process = None
+                            mount_point = None
+                        raise
                 else:
                     virtual_mount = tempfile.mkdtemp(prefix="minios_virt_read_")
-                    subprocess.run(['mount', '-o', 'loop,ro', virtual_file, virtual_mount], check=True)
+                    options = 'loop' if writable else 'loop,ro'
+                    subprocess.run(['mount', '-o', options, virtual_file, virtual_mount], check=True)
                     changes_dir = os.path.join(virtual_mount, 'changes')
                     if os.path.exists(changes_dir) and os.path.isdir(changes_dir):
                         yield changes_dir
@@ -1663,8 +1692,9 @@ class SessionManager:
             
             elif mode in ('dynblk', 'vmdk'):
                 with self._mount_dynblk(
-                        session_path, writable=False, encryption=encryption,
-                        password=password, storage_format=mode) as dynblk_mount:
+                        session_path, writable=writable, encryption=encryption,
+                        password=password, storage_format=mode,
+                        strict_cleanup=strict_cleanup) as dynblk_mount:
                     changes_dir = os.path.join(dynblk_mount, 'changes')
                     yield changes_dir if os.path.isdir(changes_dir) else dynblk_mount
 
@@ -1674,12 +1704,15 @@ class SessionManager:
                     raise Exception(_("Raw image not found"))
                 
                 if encryption == 'luks':
-                    with self._mount_luks(image_file, password, writable=False) as encrypted_mount:
+                    with self._mount_luks(
+                            image_file, password, writable,
+                            strict_cleanup=strict_cleanup) as encrypted_mount:
                         changes_dir = os.path.join(encrypted_mount, 'changes')
                         yield changes_dir if os.path.isdir(changes_dir) else encrypted_mount
                 else:
                     mount_point = tempfile.mkdtemp(prefix="minios_raw_read_")
-                    subprocess.run(['mount', '-o', 'loop,ro', image_file, mount_point], check=True)
+                    options = 'loop' if writable else 'loop,ro'
+                    subprocess.run(['mount', '-o', options, image_file, mount_point], check=True)
                     changes_dir = os.path.join(mount_point, 'changes')
                     if os.path.exists(changes_dir) and os.path.isdir(changes_dir):
                         yield changes_dir
@@ -1690,23 +1723,70 @@ class SessionManager:
                 raise Exception(_("Unknown session mode: {}").format(mode))
                 
         finally:
+            cleanup_error = None
             # Cleanup virtual mount first (if exists)
             if virtual_mount:
-                self._safe_unmount(virtual_mount)
-                self._safe_rmtree(virtual_mount)
+                if not self._safe_unmount(
+                        virtual_mount, use_lazy=not strict_cleanup):
+                    cleanup_error = _(
+                        'Failed to unmount session; its backing storage was left attached.')
+                    if strict_cleanup:
+                        process = None
+                        mount_point = None
+                else:
+                    self._safe_rmtree(virtual_mount)
             
             # Cleanup dynfilefs process and FUSE mount
             if process:
                 if mount_point:
-                    self._safe_fusermount(mount_point)
-                self._cleanup_process(process)
+                    unmounted = (self._safe_unmount(mount_point, use_lazy=False)
+                                 if strict_cleanup else self._safe_fusermount(mount_point))
+                    if not unmounted and strict_cleanup:
+                        cleanup_error = _(
+                            'Failed to unmount DynFileFS session; its daemon was left running.')
+                    else:
+                        self._cleanup_process(process)
             elif mode == 'raw' and encryption == 'none' and mount_point:
                 # Raw mode unmount
-                self._safe_unmount(mount_point)
+                if not self._safe_unmount(
+                        mount_point, use_lazy=not strict_cleanup):
+                    cleanup_error = _(
+                        'Failed to unmount raw session; its loop device was left attached.')
             
             # Cleanup mount point directory
             if mount_point:
                 self._safe_rmtree(mount_point)
+            if cleanup_error and strict_cleanup:
+                raise MountCleanupError(cleanup_error)
+
+    @contextlib.contextmanager
+    def mount_session(self, session_id, password=None):
+        """Mount one detached container session read-write for this context."""
+        session_id = self._validate_session_id(session_id)
+        with self._mutation_lock():
+            metadata = self._read_sessions_metadata()
+            session_data = metadata.get('sessions', {}).get(session_id)
+            if session_data is None:
+                raise ValueError(_("Session {} does not exist").format(session_id))
+            if not isinstance(session_data, dict):
+                raise ValueError(_("Unsupported session configuration."))
+            if metadata.get('default') == session_id:
+                raise ValueError(_("Cannot mount the active session"))
+            if metadata.get('running') == session_id:
+                raise ValueError(_("Cannot mount the currently running session"))
+            mode = session_data.get('mode')
+            if mode not in ('raw', 'dynfilefs', 'dynblk', 'vmdk'):
+                raise ValueError(_("Session mode '{}' cannot be mounted read-write").format(
+                    mode or 'unknown'))
+            if not self._session_configuration_supported(session_data):
+                raise ValueError(_("Unsupported session configuration."))
+            session_path = self._session_path(session_id, require_exists=True)
+            encryption = session_data.get('encryption', 'none')
+            with self._mount_session_read(
+                    session_path, mode, password=password,
+                    encryption=encryption, writable=True,
+                    strict_cleanup=True) as mount_point:
+                yield mount_point
 
     @contextlib.contextmanager
     def _mount_session_write(self, session_path, mode, size_mb=None, password=None,
@@ -5089,6 +5169,13 @@ def luks_password_from_args(args, confirm=False):
     return password
 
 
+def _wait_for_mount_lifetime():
+    """Keep a CLI mount alive until its stdin closes or it is interrupted."""
+    stream = getattr(sys.stdin, 'buffer', sys.stdin)
+    while stream.read(8192):
+        pass
+
+
 def luks_copy_passwords_from_args(args, source_encrypted, target_encrypted):
     """Read independent source and target passphrases in a fixed stdin order."""
     if not getattr(args, 'password_stdin', False):
@@ -5144,11 +5231,19 @@ def main():
     # Pre-check for flags before parsing
     json_output = '--json' in sys.argv
     help_requested = any(arg in ('-h', '--help') for arg in sys.argv[1:])
+    mount_requested = 'mount' in sys.argv[1:]
 
     # Check for root privileges
     if os.geteuid() != 0 and not help_requested:
         error_msg = _("This tool requires root privileges. Please run with sudo or through pkexec.")
-        if json_output:
+        if json_output and mount_requested:
+            command_index = sys.argv.index('mount')
+            session_id = (sys.argv[command_index + 1]
+                          if command_index + 1 < len(sys.argv) else None)
+            print(json.dumps({"success": False, "message": error_msg,
+                              "mount_point": None,
+                              "session_id": session_id}), flush=True)
+        elif json_output:
             print(json.dumps({"success": False, "error": error_msg}), file=sys.stderr)
         else:
             print(error_msg, file=sys.stderr)
@@ -5288,6 +5383,11 @@ EXAMPLES:
                              help=_('Stream save progress events with JSON output'))
     save_parser.add_argument('--shutdown-finalize', action='store_true',
                              help=argparse.SUPPRESS)
+
+    mount_parser = subparsers.add_parser(
+        'mount', help=_('Mount a detached session read-write'),
+        parents=[parent_parser])
+    mount_parser.add_argument('session_id', help=_('Session ID to mount'))
 
     # Create command
     create_parser = subparsers.add_parser('create', help=_('Create a new session'), parents=[parent_parser])
@@ -5441,7 +5541,15 @@ EXAMPLES:
         # RAM-only boots intentionally have no changes directory when persistence
         # was not requested, so absence is a valid status rather than a CLI error.
         if args.command != 'status':
-            if args.json:
+            if args.json and args.command == 'mount':
+                error_data = {
+                    "success": False,
+                    "message": _("Could not find sessions directory."),
+                    "mount_point": None,
+                    "session_id": args.session_id,
+                }
+                print(json.dumps(error_data), flush=True)
+            elif args.json:
                 error_data = {
                     "success": False,
                     "error": _("Could not find sessions directory."),
@@ -5566,6 +5674,70 @@ EXAMPLES:
         else:
             print(message)
         sys.exit(0 if success else 1)
+
+    elif args.command == 'mount':
+        session_id = args.session_id
+        mount_point = None
+        try:
+            session_id = manager._validate_session_id(session_id)
+            metadata = manager._read_sessions_metadata()
+            session_data = metadata.get('sessions', {}).get(session_id, {})
+            if session_data.get('encryption', 'none') == 'luks':
+                if getattr(args, 'password_stdin', False):
+                    password = luks_password_from_args(args)
+                else:
+                    password = getpass.getpass(_('LUKS passphrase: ')).encode()
+                    if not password:
+                        raise ValueError(_('LUKS passphrase must not be empty.'))
+            else:
+                password = None
+
+            def stop_mount(_signum, _frame):
+                raise KeyboardInterrupt()
+
+            previous_handlers = {}
+            for signal_number in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+                previous_handlers[signal_number] = signal.signal(
+                    signal_number, stop_mount)
+            try:
+                with manager.mount_session(session_id, password=password) as mounted:
+                    mount_point = mounted
+                    message = _("Session {} mounted read-write at {}").format(
+                        session_id, mount_point)
+                    result = {"success": True, "message": message,
+                              "mount_point": mount_point,
+                              "session_id": session_id}
+                    if args.json:
+                        print(json.dumps(result), flush=True)
+                    else:
+                        print(message, flush=True)
+                        print(_("EOF or Ctrl+C unmounts the session."), flush=True)
+                    try:
+                        _wait_for_mount_lifetime()
+                    except KeyboardInterrupt:
+                        pass
+                    finally:
+                        # Do not let a repeated termination request interrupt
+                        # ordered unmount and backing-device cleanup.
+                        for signal_number in previous_handlers:
+                            signal.signal(signal_number, signal.SIG_IGN)
+            finally:
+                for signal_number, handler in previous_handlers.items():
+                    signal.signal(signal_number, handler)
+        except Exception as error:
+            message = str(error)
+            if mount_point is None:
+                result = {"success": False, "message": message,
+                          "mount_point": None, "session_id": session_id}
+                if args.json:
+                    print(json.dumps(result), flush=True)
+                else:
+                    print(message, file=sys.stderr)
+            else:
+                print(_("Failed to unmount session {}: {}").format(
+                    session_id, message), file=sys.stderr)
+            sys.exit(1)
+        sys.exit(0)
 
     elif args.command == 'settings':
         shutdown = None if args.shutdown is None else args.shutdown == 'on'

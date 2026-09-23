@@ -35,7 +35,7 @@ _minios_session() {
     prev="${COMP_WORDS[COMP_CWORD - 1]}"
     
     # Main commands
-    subcommands="list active running info activate save create settings delete resize reclaim cleanup status export import copy clone convert"
+    subcommands="list active running info activate save mount create settings delete resize reclaim cleanup status export import copy clone convert"
     
     # Storage backends and encryption are separate capabilities.
     local session_modes="native squashfs dynfilefs raw"
@@ -65,7 +65,7 @@ _minios_session() {
     local subcommand=""
     local subcommand_pos=1
     for ((i=1; i<${#COMP_WORDS[@]}; i++)); do
-        if [[ "${COMP_WORDS[i]}" =~ ^(list|active|running|info|activate|save|create|settings|delete|resize|reclaim|cleanup|status|export|import|copy|clone|convert)$ ]]; then
+        if [[ "${COMP_WORDS[i]}" =~ ^(list|active|running|info|activate|save|mount|create|settings|delete|resize|reclaim|cleanup|status|export|import|copy|clone|convert)$ ]]; then
             subcommand="${COMP_WORDS[i]}"
             subcommand_pos=$i
             break
@@ -190,9 +190,9 @@ _minios_session() {
             esac
             ;;
         
-        activate|save|delete|clone|reclaim)
+        activate|save|mount|delete|clone|reclaim)
             case "${prev}" in
-                activate|save|delete|clone|reclaim)
+                activate|save|mount|delete|clone|reclaim)
                     # Get available sessions
                     local sessions=$(_get_sessions)
                     COMPREPLY=($(compgen -W "${sessions}" -- ${cur}))
@@ -204,6 +204,7 @@ _minios_session() {
                     if [[ ${cur} == -* ]]; then
                         local cmd_opts="--help --json --sessions-dir${luks_opt}"
                         [[ "$subcommand" == save ]] && cmd_opts+=" --progress"
+                        [[ "$subcommand" == mount ]] && cmd_opts="--help --json --sessions-dir${luks_opt}"
                         [[ "$subcommand" == delete ]] && cmd_opts+=" --handoff"
                         [[ "$subcommand" == reclaim ]] && cmd_opts+=" --compact"
                         COMPREPLY=($(compgen -W "${cmd_opts}" -- ${cur}))

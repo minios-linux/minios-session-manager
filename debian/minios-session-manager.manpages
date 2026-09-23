@@ -1,1 +1,9 @@
-debian/minios-session-manager.1
+manpages/en/minios-session-manager.1
+manpages/de/minios-session-manager.de.1
+manpages/es/minios-session-manager.es.1
+manpages/fr/minios-session-manager.fr.1
+manpages/id/minios-session-manager.id.1
+manpages/it/minios-session-manager.it.1
+manpages/pt/minios-session-manager.pt.1
+manpages/pt_BR/minios-session-manager.pt_BR.1
+manpages/ru/minios-session-manager.ru.1

@@ -117,6 +117,18 @@ Encrypted creation prompts for a passphrase and confirmation, or accepts two std
 
 Encrypted exports contain **decrypted logical files**, not an encrypted archive. Import defaults to an unencrypted destination even for an encrypted source; `--force-encryption luks` creates a fresh encrypted backend. Only `.tar.zst` session archives are accepted; paths and types are validated and extraction is bounded.
 
+## Mounting a detached session
+
+Right-click an inactive, non-running Raw, DynFileFS, DynBlk, or VMDK session and choose **Mount Session** to attach its existing filesystem read-write and open it in the file manager. Encrypted sessions prompt for their LUKS passphrase. While a session is mounted, conflicting session actions remain disabled; choose **Unmount Session** before activating, resizing, moving, or deleting session data. Closing Session Manager also requests an ordered unmount.
+
+The CLI keeps the mount alive until standard input closes or it receives Ctrl+C. It holds the session mutation lock for that lifetime, never formats a failed existing mount, and refuses active or running sessions:
+
+```bash
+sudo minios-session mount SESSION_ID --json
+```
+
+If unmounting is busy, the backend reports failure and leaves the backing daemon or device attached rather than disconnecting it underneath a live filesystem.
+
 ## Returning unused DynFileFS, DynBlk and VMDK space
 
 Right-click a DynFileFS, DynBlk or VMDK session and choose **Free Space...**. For plaintext sessions, the backend runs FITRIM on the actual inner ext4, not the combined AUFS/OverlayFS root, then invokes the owning backend's reclaim command. Detached plaintext sessions are temporarily attached and mounted. Running DynBlk/VMDK sessions keep their device; it is validated against protected current-boot state.

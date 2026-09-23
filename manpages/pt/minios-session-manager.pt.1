@@ -1,0 +1,130 @@
+.\"*******************************************************************
+.\"
+.\" This file was generated with po4a. Translate the source file.
+.\"
+.\"*******************************************************************
+.TH MINIOS\-SESSION\-MANAGER 1 "Setembro de 2026" "Gestor de sessões MiniOS" "Comandos de Usuário"
+.SH NOME
+minios\-session\-manager \- interface gráfica para gerenciar sessões
+persistentes MiniOS
+.SH SINOPSE
+\fBminios\-session\-manager\fP [\fI\-\-help\fP]
+.SH DESCRIÇÃO
+\fBminios\-session\-manager\fP fornece uma interface gráfica de usuário para
+gerenciar sessões persistentes MiniOS.  Oferece uma maneira intuitiva de
+navegar, criar, ativar, redimensionar, excluir, exportar, importar, copiar e
+converter sessões sem usar a linha de comando.
+.PP
+O aplicativo usa internamente o \fBminios\-session\fP(1) para executar as
+operações reais de sessão, fornecendo uma interface amigável para a
+funcionalidade da linha de comando.
+.SH OPÇÕES
+.TP
+\fB\-h, \-\-help\fP
+Mostra uma mensagem curta de uso e sai.
+.SH "MODOS DE SESSÃO"
+O aplicativo suporta a criação de sessões em seis modos de armazenamento:
+.TP
+\fBModo Nativo\fP
+Para sistemas de arquivos compatíveis com POSIX (ext4, btrfs, etc.). Opção
+mais eficiente.
+.TP
+\fBModo DynFileFS\fP
+Para sistemas de arquivos não\-POSIX incluindo FAT32, NTFS e exFAT. Usa
+arquivos de contêiner expansíveis e requer o utilitário dynfilefs.
+.TP
+\fBModo DynBlk\fP
+Usa o dispositivo de bloco de kernel formato\-1 DynBlk com arquivos de base
+thin. Só é exibido quando o sistema em execução possui o utilitário e módulo
+dynblk e o initramfs anuncia suporte a dynblk resume.
+.TP
+\fBModo VMDK\fP
+Usa armazenamento VMDK sparse padrão dividido através do driver DynBlk. Só é
+exibido quando as capacidades correspondentes de userspace, kernel e initrd
+estão disponíveis; compressão no backend não é suportada.
+.TP
+\fBModo Raw\fP
+Para sistemas de arquivos graváveis. Usa arquivos de imagem ext4 de tamanho
+fixo.
+.TP
+\fBModo SquashFS\fP
+Usa um snapshot comprimido exato das alterações atuais ao vivo e suporta
+política de salvamento manual ou por desligamento/periódica.
+.TP
+\fBCriptografia\fP
+Os armazenamentos Raw, DynFileFS e DynBlk podem opcionalmente usar
+criptografia LUKS2. Requer o cryptsetup, as ferramentas necessárias pelo
+backend selecionado e um marcador de capacidade initrd MiniOS contendo
+luks\-layer\-v1. A interface gráfica solicita as senhas e não as armazena nos
+metadados da sessão.
+.SH INTERFACE
+A janela principal mostra as sessões disponíveis e seu status.  As ações de
+criar, importar e limpar estão disponíveis na barra de ferramentas.  Ações
+adicionais para a sessão selecionada, como ativar, montar ou desmontar,
+redimensionar, exportar, copiar, clonar, converter, abrir pasta e excluir,
+estão disponíveis no menu de contexto. Sessões Raw, DynFileFS, DynBlk e VMDK
+inativas e não em execução podem ser montadas como leitura\-escrita; sessões
+criptografadas solicitam sua senha LUKS. Ações conflitantes permanecem
+desativadas até que Desmontar Sessão seja selecionado. As opções Salvar
+Agora e configurações de salvamento automático apenas para SquashFS são
+exibidas ali apenas para sessões SquashFS.
+.PP
+Exportações criptografadas contêm arquivos lógicos descriptografados em vez
+do backend criptografado. Copiar cria identidades novas de sistema de
+arquivos e criptografia; clonar preserva dados e identidades do backend. A
+conversão substitui a origem, a menos que uma operação de nova sessão seja
+selecionada. DynFileFS e Raw têm padrão de 4000MB; DynBlk tem padrão de
+16GiB e usa o limite do backend instalado (limites dynblk). Novos destinos
+DynBlk exibem apenas codecs de compressão fornecidos pelo kernel em execução
+e os metadados de módulos/embutidos em /run/initramfs. Codecs conhecidos são
+none, lz4, lz4hc, lzo, lzo\-rle, zstd, deflate e 842; codecs indisponíveis
+são omitidos. Compressão não está disponível com LUKS. Modos de contêiner
+redimensionáveis só podem crescer.
+.SH EXEMPLOS
+.TP
+\fBminios\-session\-manager\fP
+Inicia o gestor gráfico de sessões.
+.TP
+Menu de Aplicativos → Sistema → Gestor de sessões MiniOS
+Iniciar pelo menu de aplicativos da área de trabalho.
+.TP
+Clique com o botão direito em qualquer sessão para acessar o menu de contexto com as operações disponíveis.
+.SH ARQUIVOS
+.TP
+\fB/usr/share/applications/minios\-session\-manager.desktop\fP
+Arquivo de entrada desktop para integração ao menu de aplicativos.
+.TP
+\fB/usr/share/polkit\-1/actions/dev.minios.session\-manager.policy\fP
+Configuração do PolicyKit para operações administrativas.
+.TP
+\fB/usr/lib/minios\-session\-manager/\fP
+Diretório de instalação contendo os módulos Python e o aplicativo principal.
+.TP
+\fB/usr/share/minios\-session\-manager/style.css\fP
+Folha de estilos do aplicativo para personalização da interface gráfica.
+.TP
+\fB/run/initramfs/memory/data/minios/changes/\fP
+Localização principal para dados e metadados da sessão.
+.TP
+\fB/run/initramfs/memory/data/minios/changes/session.json\fP
+Metadados da sessão no formato JSON (preferencial).
+.TP
+\fB/run/initramfs/memory/data/minios/changes/session.conf\fP
+Metadados da sessão no formato legado (alternativo).
+.TP
+\fB/run/initramfs/memory/data/minios/changes/[0\-9]+/\fP
+Diretórios de sessões individuais contendo alterações persistentes.
+.SH NOTAS
+.PP
+A interface gráfica requer uma sessão X11 ou Wayland em execução. Para
+sistemas sem interface gráfica ou somente texto, utilize
+\fBminios\-session\fP(1) em vez disso.
+.PP
+O aplicativo inicia sem exigir privilégios de root e solicita autenticação
+automaticamente quando necessário.
+.SH "VEJA TAMBÉM"
+\fBminios\-session\fP(1), \fBlive\-config\fP(7)
+.SH AUTOR
+crims0n <crims0n@minios.dev>
+.SH "RELATÓRIO DE BUGS"
+Relate bugs em: https://github.com/minios\-linux/minios\-live/issues

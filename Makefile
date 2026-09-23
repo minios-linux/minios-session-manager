@@ -36,7 +36,7 @@ update-po:
 	chmod 644 $@
 
 clean:
-	rm -rf $(MO_FILES)
+	rm -f $(MO_FILES) messages.mo
 
 install: build
 	install -d $(DESTDIR)/$(BINDIR) \

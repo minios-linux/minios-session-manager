@@ -1,4 +1,4 @@
-.TH MINIOS-SESSION 1 "September 2026" "MiniOS Session Manager 2.4.1" "User Commands"
+.TH MINIOS-SESSION 1 "September 2026" "MiniOS Session Manager" "User Commands"
 .SH NAME
 minios-session \- command-line interface for managing MiniOS persistent sessions
 .SH SYNOPSIS
@@ -37,7 +37,23 @@ Activate the specified session by setting it as the default session. This change
 ID of the session to activate
 .RE
 .TP
-.B create [\fImode\fR] [\fIsize\fR] [\-\-encryption none|luks] [\-\-compression CODEC] [\-\-activate]
+.B save \fIsession_id\fR [\-\-progress]
+Save the current live changes into a replacement snapshot for the specified
+running SquashFS session. With \fB\-\-progress\fR and JSON output enabled,
+stream machine-readable progress events.
+.TP
+.B mount \fIsession_id\fR [\-\-password-stdin]
+Mount an inactive, non-running Raw, DynFileFS, DynBlk, or VMDK session
+read-write. The command prints the mount point and remains in the foreground
+until standard input closes or Ctrl+C is pressed, then unmounts and detaches
+the backing storage. It holds the session mutation lock for the complete mount
+lifetime. Active, running, Native, and SquashFS sessions are rejected.
+.PP
+Encrypted sessions prompt for a LUKS passphrase or read one line from standard
+input with \fB\-\-password-stdin\fR. If unmounting is busy, the command fails
+without killing the backing daemon or detaching the live device.
+.TP
+.B create [\fImode\fR] [\fIsize\fR] [\-\-encryption none|luks] [\-\-compression CODEC] [\-\-policy manual|shutdown] [\-\-autosave MINUTES] [\-\-activate]
 Create a new session with the specified mode and optional size. The new session will be automatically assigned the next available ID. The tool automatically detects the filesystem type and only allows compatible session modes.
 With --activate, the new session and its selection as boot default are published
 together. The running session is not changed. Use --sessions-dir to create a
@@ -68,15 +84,40 @@ deflate, and 842. Before creating storage, minios-session checks the running
 kernel's kmod metadata under /run/initramfs and rejects codecs whose crypto_comp
 provider is unavailable there. The option applies only to DynBlk and cannot be
 combined with LUKS encryption.
+.TP
+\fB\-\-policy\fR manual|shutdown (optional)
+Set the SquashFS shutdown-save policy. The default is shutdown.
+.TP
+\fB\-\-autosave\fR MINUTES (optional)
+Set the periodic SquashFS save interval to 30, 60, 120, 240, or 480 minutes.
+Use 0 to disable periodic saving.
 .RE
 .TP
-.B delete \fIsession_id\fR
-Delete the specified session by ID. Cannot delete the currently active session or currently running session.
+.B settings \fIsession_id\fR [\-\-shutdown on|off] [\-\-autosave MINUTES]
+Change automatic saving for a SquashFS session. At least one setting must be
+specified. The supported periodic intervals are 30, 60, 120, 240, and 480
+minutes; 0 disables periodic saving.
+.TP
+.B delete \fIsession_id\fR [\-\-handoff]
+Delete the specified session by ID. Active sessions cannot be deleted. Running
+sessions are rejected unless \fB\-\-handoff\fR is used for a RAM-backed
+SquashFS session and a valid active SquashFS snapshot can take over.
 .RS
 .TP
 \fIsession_id\fR (required)
 ID of the session to delete
 .RE
+.TP
+.B reclaim \fIsession_id\fR [\-\-compact]
+Trim the unencrypted internal ext4 filesystem and reclaim known free container
+space for a DynFileFS, DynBlk, or VMDK session. The running device is validated
+against the current boot and remains connected; inactive sessions are attached
+and mounted temporarily. \fB\-\-compact\fR explicitly permits live-data
+relocation and increases flash writes. Encrypted sessions reclaim only
+already-known free storage and do not enable discard through LUKS.
+.PP
+DynFileFS reclamation requires version 4.6.0 or later. If an older daemon is
+still running after a package update, reboot with the updated backend first.
 .TP
 .B resize \fIsession_id\fR \fIsize\fR
 Resize the specified session to a larger size in MB, GB, or TB. Works for dynfilefs, dynblk, vmdk, and raw sessions, including their encrypted forms. DynBlk growth expands the virtual block device and then its ext4 filesystem without preallocating the new virtual capacity. Cannot resize currently running sessions.
@@ -213,20 +254,20 @@ command automatically detects the filesystem type and validates mode compatibili
 .B Default Parameter Behavior
 .RS
 .TP
-- 
+-
 .B create
 without mode: Uses native mode, may fail on non-POSIX filesystems
 .TP
-- 
+-
 .B create
 without size: Uses 16GiB for DynBlk/VMDK and 4000MB for dynfilefs and raw modes
 .TP
-- 
+-
 .B cleanup
 without days: Uses 30-day threshold for session deletion
 .RE
 .TP
-.B Session Protection
+.B Session safeguards
 Active sessions are protected from deletion and in-place conversion. Running
 sessions are protected from deletion, export, copy, resize, and conversion.
 .SH SESSION MODES
@@ -235,6 +276,10 @@ MiniOS supports six persistence storage modes:
 .B native
 Direct storage on POSIX-compatible filesystems (ext4, btrfs, etc.). This is the default and most efficient mode for compatible filesystems.
 .TP
+.B squashfs
+Compressed snapshot of the current live changes. Saving may be manual, at
+shutdown, or periodic. SquashFS sessions have no fixed container size.
+.TP
 .B dynfilefs
 Dynamic file-based storage suitable for non-POSIX filesystems (FAT32, NTFS, exFAT). Creates expandable container files.
 .TP
@@ -242,7 +287,10 @@ Dynamic file-based storage suitable for non-POSIX filesystems (FAT32, NTFS, exFA
 Format-1 kernel block storage backed by thin volumeNNN.db files. The mode is available only when the running system has the dynblk utility and module and the initramfs advertises dynblk resume support. Its virtual size defaults to 16GiB and is limited by the installed backend (dynblk limits).
 .TP
 .B vmdk
-Standard split sparse VMDK storage exposed through the DynBlk driver. It uses the same virtual-size policy as DynBlk and does not support backend compression.
+Standard split sparse VMDK storage exposed through the DynBlk driver. Managed
+sessions contain volume.vmdk and volume-sNNN.vmdk extents. The mode defaults to
+16GiB, uses the installed format limit, does not support backend compression,
+and requires the initrd capability marker vmdk-session-v1.
 .TP
 .B raw
 Fixed-size image file storage compatible with any filesystem. Requires pre-allocation of storage space.
@@ -303,6 +351,8 @@ Create sessions:
 .B minios-session create
 .br
 .B minios-session create native
+.br
+.B minios-session create squashfs --policy shutdown --autosave 60
 .br
 .B minios-session create dynfilefs 8000
 .br
@@ -387,28 +437,3 @@ Session activation takes effect on the next boot. The tool automatically detects
 crims0n <crims0n@minios.dev>
 .SH REPORTING BUGS
 Report bugs to: https://github.com/minios-linux/minios-session-manager/issues
-
-.SH VMDK SESSIONS
-The vmdk mode uses the DynBlk driver with standard split sparse VMDK storage.
-Managed sessions contain volume.vmdk and its volume-sNNN.vmdk extents.
-Compression is unavailable. The default size is 16384 MiB; installed limits are
-queried per format. The running initrd must advertise vmdk-session-v1.
-Creation, resize, copy, clone, conversion and logical export/import support vmdk.
-.SH SPACE RECLAMATION
-.B minios-session reclaim ID [--compact] [--json]
-.PP
-Trim the unencrypted internal ext4 and reclaim known free container space
-for DynFileFS, DynBlk or VMDK sessions.
-The running device is validated against this boot and remains connected.
-Inactive sessions are temporarily attached and mounted.
-Only --compact permits live-data relocation; it is never an automatic fallback
-on exFAT. Compaction increases flash writes. Encrypted sessions reclaim only
-already-known free storage and do not enable discard through LUKS.
-The GUI provides the same operation as Free Space in the session context menu.
-.PP
-DynFileFS requires version 4.6.0 or later. Running sessions are supported by
-exposing the hidden FUSE image inside a private mount namespace; the working
-session's mounts and loop device remain connected in the original namespace.
-The actual running daemon is checked before trimming. If an older daemon is
-still running after a package update, reboot with the updated backend first.
-The displayed DynFileFS usage reflects allocated blocks, including hole punching.

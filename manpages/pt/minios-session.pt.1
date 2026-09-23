@@ -1,0 +1,503 @@
+.\"*******************************************************************
+.\"
+.\" This file was generated with po4a. Translate the source file.
+.\"
+.\"*******************************************************************
+.TH MINIOS\-SESSION 1 "Setembro de 2026" "Gestor de sessões MiniOS" "Comandos de Usuário"
+.SH NOME
+minios\-session \- interface de linha de comando para gerenciar sessões
+persistentes MiniOS
+.SH SINOPSE
+\fBminios\-session\fP [\fIGLOBAL_OPTIONS\fP] \fIcommand\fP [\fIcommand_options\fP]
+.SH DESCRIÇÃO
+\fBminios\-session\fP é um utilitário de linha de comando para gerenciar sessões
+persistentes MiniOS a partir do sistema em execução. Oferece controle total
+sobre operações de sessão, incluindo visualizar, criar, ativar e excluir
+sessões.
+.SH "OPÇÕES GLOBAIS"
+.TP
+\fB\-\-json\fP
+Exibe resultados em formato JSON (pode ser usado com qualquer comando)
+.TP
+\fB\-\-sessions\-dir \fP\fIPATH\fP
+Usa diretório de sessões personalizado em vez da localização padrão
+.SH COMANDOS
+.TP
+\fBlist\fP
+Lista todas as sessões disponíveis com informações detalhadas incluindo ID,
+modo, versão, edição, tamanho e data da última modificação.
+.TP
+\fBactive\fP
+Mostra informações sobre a sessão atualmente ativa (sessão que irá
+inicializar na próxima vez).
+.TP
+\fBrunning\fP
+Mostra informações sobre a sessão atualmente em execução nesta
+inicialização.
+.TP
+\fBinfo\fP
+Mostra o tipo de sistema de arquivos e modos de sessão compatíveis para a
+mídia ativa.
+.TP
+\fBactivate \fP\fIsession_id\fP
+Ativa a sessão especificada definindo\-a como a sessão padrão. Esta alteração
+entra em vigor no próximo boot.
+.RS
+.TP
+\fIsession_id\fP (obrigatório)
+ID da sessão a ser ativada
+.RE
+.TP
+\fBsave \fP\fIsession_id\fP [\-\-progress]
+Salva as alterações atuais da sessão ao vivo em um snapshot de substituição
+para a sessão SquashFS em execução especificada. Com \fB\-\-progress\fP e saída
+JSON ativada, transmite eventos de progresso legíveis por máquina.
+.TP
+\fBmount \fP\fIsession_id\fP [\-\-password\-stdin]
+Monta uma sessão Raw, DynFileFS, DynBlk ou VMDK inativa e não em execução
+com permissão de leitura e escrita. O comando imprime o ponto de montagem e
+permanece em primeiro plano até que a entrada padrão seja fechada ou Ctrl+C
+seja pressionado, então desmonta e desconecta o armazenamento de
+apoio. Mantém o bloqueio de mutação da sessão durante todo o tempo de
+montagem. Sessões ativas, em execução, Native e SquashFS são rejeitadas.
+.PP
+Sessões criptografadas solicitam uma senha LUKS ou leem uma linha da entrada
+padrão com \fB\-\-password\-stdin\fP. Se o desmontar estiver ocupado, o comando
+falha sem encerrar o daemon de apoio ou desconectar o dispositivo ao vivo.
+.TP
+\fBcreate [\fP\fImode\fP] [\fIsize\fP] [\-\-encryption none|luks] [\-\-compression CODEC] [\-\-policy manual|shutdown] [\-\-autosave MINUTES] [\-\-activate]
+Cria uma nova sessão com o modo especificado e tamanho opcional. A nova
+sessão receberá automaticamente o próximo ID disponível. A ferramenta
+detecta automaticamente o tipo de sistema de arquivos e só permite modos de
+sessão compatíveis. Com \-\-activate, a nova sessão e sua seleção como padrão
+de boot são publicadas juntas. A sessão em execução não é alterada. Use
+\-\-sessions\-dir para criar uma sessão em outra instalação MiniOS montada.
+.RS
+.TP
+\fB\-\-activate\fP (opcional)
+Seleciona a sessão concluída como padrão de boot na mesma atualização de
+metadados. O seletor da sessão em execução é preservado. Combine com
+\-\-sessions\-dir para criar e selecionar uma sessão em um meio de instalação
+alvo. Sem esta opção, o padrão de boot atual permanece inalterado.
+.TP
+\fImode\fP (opcional)
+Modo da sessão: native, squashfs, dynfilefs, dynblk, vmdk ou raw (padrão:
+native). DynBlk é exposto apenas quando sua ferramenta de espaço de usuário,
+módulo do kernel e marcador de capacidade initrd estão disponíveis.
+.TP
+\fIsize\fP (opcional)
+Tamanho decimal em MB, GB ou TB para modos de container. DynFileFS e raw têm
+padrão de 4000MB. DynBlk tem padrão de 16GiB e usa o limite do backend
+instalado (limites dynblk).
+.TP
+\fB\-\-encryption\fP none|luks (opcional)
+Criptografa o armazenamento Raw, DynFileFS ou DynBlk com LUKS2. A criação
+criptografada lê a senha e confirmação interativamente ou da entrada padrão
+com \fB\-\-password\-stdin\fP.
+.TP
+\fB\-\-compression\fP CODEC (opcional)
+Codec de criação DynBlk. Os codecs conhecidos são none, lz4, lz4hc, lzo,
+lzo\-rle, zstd, deflate e 842. Antes de criar o armazenamento, o
+minios\-session verifica os metadados kmod do kernel em execução sob
+/run/initramfs e rejeita codecs cujo provedor crypto_comp não está
+disponível lá. A opção se aplica apenas a DynBlk e não pode ser combinada
+com criptografia LUKS.
+.TP
+\fB\-\-policy\fP manual|shutdown (opcional)
+Define a política de salvamento ao desligar SquashFS. O padrão é shutdown.
+.TP
+\fB\-\-autosave\fP MINUTES (opcional)
+Define o intervalo de salvamento periódico SquashFS para 30, 60, 120, 240 ou
+480 minutos. Use 0 para desativar o salvamento periódico.
+.RE
+.TP
+\fBsettings \fP\fIsession_id\fP [\-\-shutdown on|off] [\-\-autosave MINUTES]
+Altera o salvamento automático para uma sessão SquashFS. Pelo menos uma
+configuração deve ser especificada. Os intervalos periódicos suportados são
+30, 60, 120, 240 e 480 minutos; 0 desativa o salvamento periódico.
+.TP
+\fBdelete \fP\fIsession_id\fP [\-\-handoff]
+Exclui a sessão especificada pelo ID. Sessões ativas não podem ser
+excluídas. Sessões em execução são rejeitadas a menos que \fB\-\-handoff\fP seja
+usado para uma sessão RAM\-backed SquashFS e um snapshot SquashFS ativo
+válido possa assumir.
+.RS
+.TP
+\fIsession_id\fP (obrigatório)
+ID da sessão a ser excluída
+.RE
+.TP
+\fBreclaim \fP\fIsession_id\fP [\-\-compact]
+Apara o sistema de arquivos ext4 interno não criptografado e recupera o
+espaço livre conhecido do container para uma sessão DynFileFS, DynBlk ou
+VMDK. O dispositivo em execução é validado em relação ao boot atual e
+permanece conectado; sessões inativas são anexadas e montadas
+temporariamente. \fB\-\-compact\fP permite explicitamente a realocação de dados
+ao vivo e aumenta as gravações em flash. Sessões criptografadas recuperam
+apenas o armazenamento livre já conhecido e não habilitam o descarte via
+LUKS.
+.PP
+A recuperação DynFileFS requer a versão 4.6.0 ou posterior. Se um daemon
+mais antigo ainda estiver em execução após uma atualização de pacote,
+reinicie primeiro com o backend atualizado.
+.TP
+\fBresize \fP\fIsession_id\fP \fIsize\fP
+Redimensiona a sessão especificada para um tamanho maior em MB, GB ou
+TB. Funciona para sessões dynfilefs, dynblk, vmdk e raw, incluindo suas
+formas criptografadas. O crescimento DynBlk expande o dispositivo de bloco
+virtual e depois seu sistema de arquivos ext4 sem pré\-alocar a nova
+capacidade virtual. Não é possível redimensionar sessões em execução no
+momento.
+.RS
+.TP
+\fIsession_id\fP (obrigatório)
+ID da sessão a ser redimensionada
+.TP
+\fIsize\fP (obrigatório)
+Novo tamanho decimal em MB, GB ou TB. Deve ser maior que o tamanho atual.
+.RE
+.TP
+\fBexport \fP\fIsession_id\fP \fIoutput_path\fP [\-\-no\-verify]
+Exporta uma sessão para um arquivo .tar.zst. Sessões criptografadas são
+descriptografadas e exportadas como arquivos lógicos; o container
+criptografado não é copiado para o arquivo.
+.RS
+.TP
+\fIsession_id\fP (obrigatório)
+ID da sessão a exportar
+.TP
+\fIoutput_path\fP (obrigatório)
+Caminho para o arquivo ou diretório de saída. Se um diretório for fornecido,
+o nome do arquivo será gerado automaticamente.
+.TP
+\fB\-\-no\-verify\fP (opcional)
+Pular verificação do arquivo após a criação
+.RE
+.TP
+\fBimport \fP\fIarchive_path\fP [\-\-auto\-convert] [\-\-force\-mode \fIMODE\fP] [\-\-force\-encryption none|luks] [\-\-compression CODEC] [\-\-skip\-compatibility\-check] [\-\-no\-verify]
+Importa uma sessão de um arquivo de arquivo .tar.zst. Suporta conversão
+automática de modo.
+.RS
+.TP
+\fIarchive_path\fP (obrigatório)
+Caminho para o arquivo de arquivo (.tar.zst)
+.TP
+\fB\-\-auto\-convert\fP (opcional)
+Converter automaticamente para o modo compatível com o sistema de arquivos
+atual
+.TP
+\fB\-\-force\-mode\fP \fIMODE\fP (opcional)
+Forçar importação como um modo de armazenamento específico
+(native/dynfilefs/dynblk/vmdk/raw)
+.TP
+\fB\-\-force\-encryption\fP none|luks (opcional)
+Forçar criptografia do destino. Um destino LUKS recebe um novo cabeçalho
+LUKS e identidade ext4.
+.TP
+\fB\-\-compression\fP CODEC (opcional)
+Selecionar compressão quando o destino de importação for DynBlk. Não
+disponível com LUKS.
+.TP
+\fB\-\-no\-verify\fP (opcional)
+Pular verificação de integridade da sessão após a importação
+.TP
+\fB\-\-skip\-compatibility\-check\fP (opcional)
+Pular verificações de compatibilidade de versão, edição e union\-filesystem
+da origem MiniOS.
+.RE
+.TP
+\fBcopy \fP\fIsession_id\fP [\-\-to\-mode \fIMODE\fP] [\-\-to\-encryption none|luks] [\-\-size \fISIZE\fP] [\-\-compression CODEC]
+Copia logicamente uma sessão através do seu sistema de arquivos,
+opcionalmente alterando armazenamento, capacidade ou criptografia. O destino
+recebe identidades novas de sistema de arquivos e LUKS.
+.RS
+.TP
+\fIsession_id\fP (obrigatório)
+ID da sessão a copiar
+.TP
+\fB\-\-to\-mode\fP \fIMODE\fP (opcional)
+Converter para um modo de armazenamento diferente: native, dynfilefs,
+dynblk, vmdk ou raw
+.TP
+\fB\-\-to\-encryption\fP none|luks (opcional)
+Selecionar criptografia do destino.
+.TP
+\fB\-\-size\fP \fISIZE\fP (opcional)
+Tamanho decimal em MB, GB ou TB para destinos dynfilefs, dynblk, vmdk ou
+raw. DynBlk padrão é 16GiB; os outros modos de contêiner padrão são 4000MB
+quando nenhum tamanho de origem é inferido.
+.TP
+\fB\-\-compression\fP CODEC (opcional)
+Selecionar compressão para um novo destino de cópia DynBlk. Não disponível
+com LUKS.
+.RE
+.TP
+\fBclone \fP\fIsession_id\fP
+Clona fisicamente um backend de sessão destacado. O clone preserva
+cabeçalhos LUKS, keyslots, UUID do LUKS e UUID do ext4 e não requer senha.
+.TP
+\fBconvert \fP\fIsession_id\fP \fItarget_mode\fP [\-\-to\-encryption none|luks] [\-\-size \fISIZE\fP] [\-\-compression CODEC] [\-\-new\-session]
+Converte uma sessão existente para outro modo no local.
+.RS
+.TP
+\fIsession_id\fP (obrigatório)
+ID da sessão a converter
+.TP
+\fItarget_mode\fP (obrigatório)
+Modo de armazenamento de destino: native, dynfilefs, dynblk, vmdk ou raw
+.TP
+\fB\-\-to\-encryption\fP none|luks (opcional)
+Selecionar criptografia do destino.
+.TP
+\fB\-\-size\fP \fISIZE\fP (opcional)
+Tamanho decimal em MB, GB ou TB para destinos dynfilefs, dynblk, vmdk ou
+raw.
+.TP
+\fB\-\-compression\fP CODEC (opcional)
+Selecionar compressão para o novo contêiner DynBlk. Não disponível com LUKS.
+.TP
+\fB\-\-new\-session\fP (opcional)
+Cria uma sessão convertida com um novo ID e preserva a origem. Sem esta
+opção, a conversão substitui a origem no local.
+.RE
+.TP
+\fBcleanup [\-\-days \fP\fIN\fP]
+Exclui todas as sessões mais antigas que N dias. A sessão atualmente ativa e
+a sessão atualmente em execução nunca são excluídas. Se chamado sem
+parâmetros, utiliza o limite padrão de 30 dias.
+.RS
+.TP
+\fB\-\-days\fP \fIN\fP (opcional)
+Limite de idade em dias para exclusão de sessões (padrão: 30). Sessões
+modificadas dentro deste período são preservadas.
+.RE
+.TP
+\fBstatus\fP
+Verifica o status do diretório de sessões e permissões de escrita. Informa o
+tipo de sistema de arquivos e se as operações de sessão estão disponíveis.
+.SH "COMPORTAMENTO DO COMANDO"
+.TP
+\fBVerificação de Compatibilidade do Sistema de Arquivos\fP
+O comando \fBcreate\fP detecta automaticamente o tipo de sistema de arquivos e
+valida a compatibilidade do modo. Se o modo solicitado não for suportado:
+.RS
+.TP
+\- Em FAT32/NTFS/exFAT com modo nativo: Retorna um erro sugerindo um modo de contêiner
+.TP
+\- Em mídia somente leitura: Retorna erro informando que não é possível criar sessões
+.TP
+\- Com modo dynfilefs mas pacote não instalado: Retorna erro solicitando a instalação do pacote dynfilefs
+.TP
+\- Com modo DynBlk mas sem capacidade correspondente no initrd/kernel: Retorna um erro de disponibilidade
+.TP
+\- Com uma imagem raw superdimensionada em FAT32: Retorna um erro com o limite de 4000MB
+.RE
+.TP
+\fBComportamento Padrão de Parâmetros\fP
+.RS
+.TP
+\-
+\fBcreate\fP sem modo: Usa modo nativo, pode falhar em sistemas de arquivos não
+POSIX
+.TP
+\-
+\fBcreate\fP sem tamanho: Usa 16GiB para DynBlk/VMDK e 4000MB para modos
+dynfilefs e raw
+.TP
+\-
+\fBcleanup\fP sem dias: Usa limite de 30 dias para exclusão de sessões
+.RE
+.TP
+\fBProteções de Sessão\fP
+Sessões ativas são protegidas contra exclusão e conversão in\-place. Sessões
+em execução são protegidas contra exclusão, exportação, cópia,
+redimensionamento e conversão.
+.SH "MODOS DE SESSÃO"
+MiniOS suporta seis modos de armazenamento persistente:
+.TP
+\fBnative\fP
+Armazenamento direto em sistemas de arquivos compatíveis com POSIX (ext4,
+btrfs, etc.). Este é o modo padrão e mais eficiente para sistemas de
+arquivos compatíveis.
+.TP
+\fBsquashfs\fP
+Instantâneo compactado das alterações atuais do live. O salvamento pode ser
+manual, no desligamento ou periódico. Sessões SquashFS não possuem tamanho
+fixo de contêiner.
+.TP
+\fBdynfilefs\fP
+Armazenamento dinâmico baseado em arquivos, adequado para sistemas de
+arquivos não POSIX (FAT32, NTFS, exFAT). Cria arquivos de contêiner
+expansíveis.
+.TP
+\fBdynblk\fP
+Armazenamento de bloco de kernel formato 1, suportado por arquivos thin
+volumeNNN.db. O modo está disponível apenas quando o sistema em execução
+possui o utilitário e módulo dynblk e o initramfs anuncia suporte a dynblk
+resume. Seu tamanho virtual padrão é 16GiB e é limitado pelo backend
+instalado (limites do dynblk).
+.TP
+\fBvmdk\fP
+Armazenamento VMDK sparse padrão dividido, exposto através do driver
+DynBlk. Sessões gerenciadas contêm os arquivos volume.vmdk e
+volume\-sNNN.vmdk. O modo padrão é 16GiB, usa o limite do formato instalado,
+não suporta compressão de backend e requer o marcador de capacidade initrd
+vmdk\-session\-v1.
+.TP
+\fBraw\fP
+Armazenamento de arquivo de imagem de tamanho fixo compatível com qualquer
+sistema de arquivos. Requer pré\-alocação do espaço de armazenamento.
+.TP
+\fBCriptografia\fP
+Raw, DynFileFS, DynBlk e VMDK podem opcionalmente usar criptografia
+LUKS2. As senhas são lidas interativamente ou da entrada padrão com
+\fB\-\-password\-stdin\fP e nunca são gravadas nos metadados. Cópia lógica e
+conversão entre volumes criptografados leem primeiro a senha da origem,
+seguida pela senha do destino duas vezes.
+.PP
+As opções LUKS e \-\-password\-stdin só são exibidas quando as ferramentas de
+backend selecionadas estão disponíveis e
+/run/initramfs/etc/minios\-initramfs\-crypt contém luks\-layer\-v1.
+.SH "COMPATIBILIDADE DE SISTEMA DE ARQUIVOS"
+A ferramenta detecta automaticamente o tipo de sistema de arquivos da sua
+mídia e restringe a criação de sessões aos modos compatíveis:
+.TP
+\fBSistemas de Arquivos POSIX (ext2/3/4, btrfs, xfs, f2fs)\fP
+O modo nativo e os modos de contêiner disponíveis são suportados. DynBlk é
+permitido em ext2/3/4 e Btrfs quando sua verificação de capacidade é
+bem\-sucedida; XFS/f2fs não são destinos de backend DynBlk. A criptografia
+requer adicionalmente o cryptsetup e as capacidades específicas do backend
+no initrd.
+.TP
+\fBFAT32, NTFS e exFAT\fP
+DynFileFS e Raw são suportados em mídias graváveis. DynBlk e VMDK também são
+oferecidos em vfat, exFAT e ntfs3 quando suas verificações de capacidade são
+bem\-sucedidas. A criptografia é suportada quando sua verificação de
+capacidade específica do backend é bem\-sucedida; arquivos Raw fixos são
+limitados a 4000MB em FAT32, criptografados ou não. O modo nativo não é
+suportado.
+.TP
+\fBMídia somente leitura\fP
+Não é possível criar sessões. As sessões só podem ser ativadas ou listadas.
+.PP
+Sob UEFI Secure Boot, a criação de DynBlk e VMDK está desabilitada porque
+MiniOS não assina o módulo externo do kernel DynBlk.
+.PP
+Use o comando \fBinfo\fP para verificar a compatibilidade do sistema de
+arquivos antes de criar sessões.
+.SH EXEMPLOS
+.PP
+Listar todas as sessões:
+.RS
+\fBminios\-session list\fP
+.RE
+.PP
+Mostrar sessão ativa:
+.RS
+\fBminios\-session active\fP
+.RE
+.PP
+Ativar sessão:
+.RS
+\fBminios\-session activate 2\fP
+.RE
+.PP
+Excluir sessões antigas:
+.RS
+\fBminios\-session cleanup \-\-days 7\fP
+.RE
+.PP
+Criar sessões:
+.RS
+\fBminios\-session create\fP
+.br
+\fBminios\-session create native\fP
+.br
+\fBminios\-session create squashfs \-\-policy shutdown \-\-autosave 60\fP
+.br
+\fBminios\-session create dynfilefs 8000\fP
+.br
+\fBminios\-session create dynblk 16GB\fP
+.br
+\fBminios\-session create raw 2000\fP
+.RE
+.PP
+Redimensionar sessão:
+.RS
+\fBminios\-session resize 2 8000\fP
+.RE
+.PP
+Exportar sessão:
+.RS
+\fBminios\-session export 3 /tmp/backup.tar.zst\fP
+.br
+\fBminios\-session export 3 /tmp/\fP
+.RE
+.PP
+Importar sessão:
+.RS
+\fBminios\-session import /tmp/backup.tar.zst\fP
+.br
+\fBminios\-session import /tmp/backup.tar.zst \-\-force\-mode dynblk\fP
+.br
+\fBminios\-session import /tmp/backup.tar.zst \-\-auto\-convert\fP
+.RE
+.PP
+Copiar sessão:
+.RS
+\fBminios\-session copy 2\fP
+.br
+\fBminios\-session copy 2 \-\-to\-mode raw \-\-size 2000\fP
+.RE
+.PP
+Converter sessão:
+.RS
+\fBminios\-session convert 3 dynblk \-\-size 16GB\fP
+.RE
+.PP
+Saída em JSON:
+.RS
+\fBminios\-session \-\-json list\fP
+.RE
+.PP
+Verificar status do diretório:
+.RS
+\fBminios\-session status\fP
+.RE
+.SH ARQUIVOS
+.TP
+\fB/run/initramfs/memory/data/minios/changes/\fP
+Localização principal para dados e metadados da sessão.
+.TP
+\fB/run/initramfs/memory/data/minios/changes/session.json\fP
+Metadados da sessão no formato JSON (preferencial).
+.TP
+\fB/run/initramfs/memory/data/minios/changes/session.conf\fP
+Metadados da sessão no formato legado (alternativo).
+.TP
+\fB/run/initramfs/memory/data/minios/changes/[0\-9]+/\fP
+Diretórios de sessões individuais contendo alterações persistentes.
+.TP
+\fB/etc/minios\-release\fP
+Informações da versão e edição do sistema usadas para verificação de
+compatibilidade da sessão.
+.SH "STATUS DE SAÍDA"
+.TP
+\fB0\fP
+Sucesso
+.TP
+\fB1\fP
+Ocorreu um erro (argumentos inválidos, sessão não encontrada, permissão
+negada, etc.)
+.SH NOTAS
+.PP
+A ativação da sessão terá efeito no próximo boot. A ferramenta detecta
+automaticamente o local de armazenamento da sessão e solicita autenticação
+via PolicyKit quando necessário.
+.SH "VEJA TAMBÉM"
+\fBminios\-session\-manager\fP(1), \fBlive\-config\fP(7), \fBsystemd.special\fP(7)
+.SH AUTOR
+crims0n <crims0n@minios.dev>
+.SH "RELATÓRIO DE BUGS"
+Relate bugs para:
+https://github.com/minios\-linux/minios\-session\-manager/issues

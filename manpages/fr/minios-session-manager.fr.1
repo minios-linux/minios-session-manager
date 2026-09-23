@@ -1,0 +1,139 @@
+.\"*******************************************************************
+.\"
+.\" This file was generated with po4a. Translate the source file.
+.\"
+.\"*******************************************************************
+.TH MINIOS\-SESSION\-MANAGER 1 "Septembre 2026" "Gestionnaire de sessions MiniOS" "Commandes utilisateur"
+.SH NOM
+minios\-session\-manager \- interface graphique pour la gestion des sessions
+persistantes MiniOS
+.SH SYNOPSIS
+\fBminios\-session\-manager\fP [\fI\-\-help\fP]
+.SH DESCRIPTION
+\fBminios\-session\-manager\fP fournit une interface graphique pour la gestion
+des sessions persistantes MiniOS. Il offre un moyen intuitif de parcourir,
+créer, activer, redimensionner, supprimer, exporter, importer, copier et
+convertir des sessions sans utiliser la ligne de commande.
+.PP
+L'application utilise en interne \fBminios\-session\fP(1) pour effectuer les
+opérations réelles sur les sessions, fournissant une interface conviviale
+aux fonctionnalités en ligne de commande.
+.SH OPTIONS
+.TP
+\fB\-h, \-\-help\fP
+Affiche un court message d'utilisation et quitte.
+.SH "MODES DE SESSION"
+L'application prend en charge la création de sessions dans six modes de
+stockage :
+.TP
+\fBMode natif\fP
+Pour les systèmes de fichiers compatibles POSIX (ext4, btrfs, etc.). Option
+la plus efficace.
+.TP
+\fBMode DynFileFS\fP
+Pour les systèmes de fichiers non POSIX, y compris FAT32, NTFS et
+exFAT. Utilise des fichiers conteneurs extensibles et nécessite l'utilitaire
+dynfilefs.
+.TP
+\fBMode DynBlk\fP
+Utilise le périphérique bloc du noyau format\-1 DynBlk avec des fichiers de
+support fins. Ce mode n'est affiché que si le système en cours d'exécution
+dispose de l'utilitaire et du module dynblk et si l'initramfs annonce la
+prise en charge de la reprise dynblk.
+.TP
+\fBMode VMDK\fP
+Utilise le stockage VMDK standard fractionné et sparse via le pilote
+DynBlk. Ce mode n'est affiché que si les capacités correspondantes en espace
+utilisateur, noyau et initrd sont disponibles ; la compression côté backend
+n'est pas prise en charge.
+.TP
+\fBMode brut\fP
+Pour les systèmes de fichiers inscriptibles. Utilise des fichiers image ext4
+de taille fixe.
+.TP
+\fBMode SquashFS\fP
+Utilise un instantané compressé exact des modifications en cours et prend en
+charge une politique de sauvegarde manuelle ou à l'arrêt/périodique.
+.TP
+\fBChiffrement\fP
+Les stockages Raw, DynFileFS et DynBlk peuvent utiliser en option le
+chiffrement LUKS2. Cela nécessite cryptsetup, les outils requis par le
+backend sélectionné, et un marqueur de capacité initrd MiniOS contenant
+luks\-layer\-v1. L'interface graphique demande les mots de passe et ne les
+stocke pas dans les métadonnées de session.
+.SH INTERFACE
+La fenêtre principale affiche les sessions disponibles et leur statut. Les
+actions de création, d'importation et de nettoyage sont accessibles depuis
+la barre d'outils. Des actions supplémentaires pour la session sélectionnée,
+telles qu'activer, monter ou démonter, redimensionner, exporter, copier,
+cloner, convertir, ouvrir le dossier et supprimer, sont disponibles dans le
+menu contextuel. Les sessions Raw, DynFileFS, DynBlk et VMDK inactives et
+non en cours d'exécution peuvent être montées en lecture\-écriture ; les
+sessions chiffrées demandent leur mot de passe LUKS. Les actions en conflit
+restent désactivées jusqu'à ce que "Démonter la session" soit
+sélectionné. Les options "Enregistrer maintenant" et de sauvegarde
+automatique propres à SquashFS ne sont affichées ici que pour les sessions
+SquashFS.
+.PP
+Les exportations chiffrées contiennent les fichiers logiques déchiffrés
+plutôt que le backend chiffré. Copier crée de nouvelles identités de système
+de fichiers et de chiffrement ; cloner préserve les données et identités du
+backend. La conversion remplace la source sauf si une opération de nouvelle
+session est sélectionnée. DynFileFS et Raw ont une taille par défaut de 4000
+Mo ; DynBlk a une taille par défaut de 16 Gio et utilise la limite du
+backend installé (limites dynblk). Les nouvelles cibles DynBlk n'affichent
+que les codecs de compression fournis par le noyau en cours d'exécution et
+les métadonnées modules/intégrées sous /run/initramfs. Les codecs connus
+sont : none, lz4, lz4hc, lzo, lzo\-rle, zstd, deflate et 842 ; les codecs
+indisponibles sont omis. La compression n'est pas disponible avec LUKS. Les
+modes conteneur redimensionnables ne peuvent que croître.
+.SH EXEMPLES
+.TP
+\fBminios\-session\-manager\fP
+Lancer le gestionnaire de sessions graphique.
+.TP
+Menu de l'application → Système → Gestionnaire de sessions MiniOS
+Lancer depuis le menu des applications du bureau.
+.TP
+Cliquez\-droit sur une session pour accéder au menu contextuel avec les opérations disponibles.
+.SH FICHIERS
+.TP
+\fB/usr/share/applications/minios\-session\-manager.desktop\fP
+Fichier d'entrée de bureau pour l'intégration au menu des applications.
+.TP
+\fB/usr/share/polkit\-1/actions/dev.minios.session\-manager.policy\fP
+Configuration PolicyKit pour les opérations administratives.
+.TP
+\fB/usr/lib/minios\-session\-manager/\fP
+Répertoire d'installation contenant les modules Python et l'application
+principale.
+.TP
+\fB/usr/share/minios\-session\-manager/style.css\fP
+Feuille de style de l'application pour la personnalisation de l'interface
+graphique.
+.TP
+\fB/run/initramfs/memory/data/minios/changes/\fP
+Emplacement principal pour les données et métadonnées de session.
+.TP
+\fB/run/initramfs/memory/data/minios/changes/session.json\fP
+Métadonnées de session au format JSON (préféré).
+.TP
+\fB/run/initramfs/memory/data/minios/changes/session.conf\fP
+Métadonnées de session au format hérité (secours).
+.TP
+\fB/run/initramfs/memory/data/minios/changes/[0\-9]+/\fP
+Répertoires de session individuels contenant les modifications persistantes.
+.SH NOTES
+.PP
+L'interface graphique nécessite une session X11 ou Wayland en cours
+d'exécution. Pour les systèmes sans interface graphique ou en mode texte
+uniquement, utilisez plutôt \fBminios\-session\fP(1).
+.PP
+L'application démarre sans nécessiter de privilèges root et demande
+automatiquement une authentification si besoin.
+.SH "VOIR AUSSI"
+\fBminios\-session\fP(1), \fBlive\-config\fP(7)
+.SH AUTEUR
+crims0n <crims0n@minios.dev>
+.SH "SIGNALER LES BOGUES"
+Signalez les bogues à : https://github.com/minios\-linux/minios\-live/issues

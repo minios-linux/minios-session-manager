@@ -1,0 +1,484 @@
+# Italian translations for minios-session-manager package
+# Copyright (C) 2026 Free Software Foundation, Inc.
+# This file is distributed under the same license as the minios-session-manager package.
+# Automatically generated, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: minios-session-manager 2.5.0\n"
+"POT-Creation-Date: 2026-09-22 22:14+0300\n"
+"PO-Revision-Date: 2026-09-22 19:38+0000\n"
+"Last-Translator: Automatically generated\n"
+"Language-Team: none\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#. type: TH
+#: en/minios-session-manager.1:1
+#, no-wrap
+msgid "MINIOS-SESSION-MANAGER"
+msgstr "MINIOS-SESSION-MANAGER"
+
+#. type: TH
+#: en/minios-session-manager.1:1 en/minios-session.1:1
+#, no-wrap
+msgid "September 2026"
+msgstr "Settembre 2026"
+
+#. type: TH
+#: en/minios-session-manager.1:1 en/minios-session.1:1
+#, no-wrap
+msgid "MiniOS Session Manager"
+msgstr "Gestore sessioni MiniOS"
+
+#. type: TH
+#: en/minios-session-manager.1:1 en/minios-session.1:1
+#, no-wrap
+msgid "User Commands"
+msgstr "Comandi utente"
+
+#. type: SH
+#: en/minios-session-manager.1:2 en/minios-session.1:2
+#, no-wrap
+msgid "NAME"
+msgstr "NOME"
+
+#. type: Plain text
+#: en/minios-session-manager.1:4
+msgid ""
+"minios-session-manager - graphical interface for managing MiniOS persistent "
+"sessions"
+msgstr ""
+"minios-session-manager - interfaccia grafica per la gestione delle sessioni "
+"persistenti MiniOS"
+
+#. type: SH
+#: en/minios-session-manager.1:4 en/minios-session.1:4
+#, no-wrap
+msgid "SYNOPSIS"
+msgstr "SINTASSI"
+
+#. type: Plain text
+#: en/minios-session-manager.1:7
+msgid "B<minios-session-manager> [I<--help>]"
+msgstr "B<minios-session-manager> [I<--help>]"
+
+#. type: SH
+#: en/minios-session-manager.1:7 en/minios-session.1:7
+#, no-wrap
+msgid "DESCRIPTION"
+msgstr "DESCRIZIONE"
+
+#. type: Plain text
+#: en/minios-session-manager.1:11
+msgid ""
+"B<minios-session-manager> provides a graphical user interface for managing "
+"MiniOS persistent sessions.  It offers an intuitive way to browse, create, "
+"activate, resize, delete, export, import, copy, and convert sessions without "
+"using the command line."
+msgstr ""
+"B<minios-session-manager> fornisce un'interfaccia grafica per la gestione "
+"delle sessioni persistenti MiniOS.  Offre un modo intuitivo per sfogliare, "
+"creare, attivare, ridimensionare, eliminare, esportare, importare, copiare e "
+"convertire sessioni senza utilizzare la riga di comando."
+
+#. type: Plain text
+#: en/minios-session-manager.1:15
+msgid ""
+"The application internally uses B<minios-session>(1)  to perform actual "
+"session operations, providing a user-friendly frontend to the command-line "
+"functionality."
+msgstr ""
+"L'applicazione utilizza internamente B<minios-session>(1) per eseguire le "
+"operazioni reali sulle sessioni, fornendo un frontend user-friendly alle "
+"funzionalità della riga di comando."
+
+#. type: SH
+#: en/minios-session-manager.1:15
+#, no-wrap
+msgid "OPTIONS"
+msgstr "OPZIONI"
+
+#. type: TP
+#: en/minios-session-manager.1:16
+#, no-wrap
+msgid "B<-h, --help>"
+msgstr "B<-h, --help>"
+
+#. type: Plain text
+#: en/minios-session-manager.1:19
+msgid "Show a short usage message and exit."
+msgstr "Mostra un breve messaggio di utilizzo ed esce."
+
+#. type: SH
+#: en/minios-session-manager.1:19 en/minios-session.1:273
+#, no-wrap
+msgid "SESSION MODES"
+msgstr "MODALITÀ SESSIONE"
+
+#. type: Plain text
+#: en/minios-session-manager.1:21
+msgid "The application supports creation of sessions in six storage modes:"
+msgstr ""
+"L'applicazione supporta la creazione di sessioni in sei modalità di "
+"archiviazione:"
+
+#. type: TP
+#: en/minios-session-manager.1:21
+#, no-wrap
+msgid "B<Native Mode>"
+msgstr "B<Modalità nativa>"
+
+#. type: Plain text
+#: en/minios-session-manager.1:24
+msgid ""
+"For POSIX-compatible filesystems (ext4, btrfs, etc.). Most efficient option."
+msgstr ""
+"Per filesystem compatibili POSIX (ext4, btrfs, ecc.). Opzione più efficiente."
+
+#. type: TP
+#: en/minios-session-manager.1:24
+#, no-wrap
+msgid "B<DynFileFS Mode>"
+msgstr "B<Modalità DynFileFS>"
+
+#. type: Plain text
+#: en/minios-session-manager.1:28
+msgid ""
+"For non-POSIX filesystems including FAT32, NTFS, and exFAT. Uses expandable "
+"container files and requires the dynfilefs utility."
+msgstr ""
+"Per filesystem non POSIX inclusi FAT32, NTFS ed exFAT. Utilizza file "
+"contenitore espandibili e richiede l'utilità dynfilefs."
+
+#. type: TP
+#: en/minios-session-manager.1:28
+#, no-wrap
+msgid "B<DynBlk Mode>"
+msgstr "B<Modalità DynBlk>"
+
+#. type: Plain text
+#: en/minios-session-manager.1:31
+msgid ""
+"Uses the format-1 DynBlk kernel block device with thin backing files. It is "
+"shown only when the running system has the dynblk utility and module and the "
+"initramfs advertises dynblk resume support."
+msgstr ""
+"Utilizza il dispositivo a blocchi del kernel DynBlk format-1 con file di "
+"appoggio thin. Viene mostrato solo quando il sistema in esecuzione ha "
+"l'utilità e il modulo dynblk e l'initramfs pubblicizza il supporto resume "
+"dynblk."
+
+#. type: TP
+#: en/minios-session-manager.1:31
+#, no-wrap
+msgid "B<VMDK Mode>"
+msgstr "B<Modalità VMDK>"
+
+#. type: Plain text
+#: en/minios-session-manager.1:36
+msgid ""
+"Uses standard split sparse VMDK storage through the DynBlk driver. It is "
+"shown only when the matching userspace, kernel, and initrd capabilities are "
+"available; backend compression is not supported."
+msgstr ""
+"Utilizza l'archiviazione VMDK sparse standard suddivisa tramite il driver "
+"DynBlk. Viene mostrato solo quando sono disponibili le capacità "
+"corrispondenti in userspace, kernel e initrd; la compressione backend non è "
+"supportata."
+
+#. type: TP
+#: en/minios-session-manager.1:36
+#, no-wrap
+msgid "B<Raw Mode>"
+msgstr "B<Modalità Raw>"
+
+#. type: Plain text
+#: en/minios-session-manager.1:39
+msgid "For writable filesystems. Uses fixed-size ext4 image files."
+msgstr ""
+"Per filesystem scrivibili. Utilizza file immagine ext4 a dimensione fissa."
+
+#. type: TP
+#: en/minios-session-manager.1:39
+#, no-wrap
+msgid "B<SquashFS Mode>"
+msgstr "B<Modalità SquashFS>"
+
+#. type: Plain text
+#: en/minios-session-manager.1:42
+msgid ""
+"Uses an exact compressed snapshot of the current live changes and supports "
+"manual or shutdown/periodic save policy."
+msgstr ""
+"Utilizza uno snapshot compresso esatto delle modifiche live correnti e "
+"supporta una politica di salvataggio manuale o all'arresto/periodico."
+
+#. type: TP
+#: en/minios-session-manager.1:42 en/minios-session.1:297
+#, no-wrap
+msgid "B<Encryption>"
+msgstr "B<Crittografia>"
+
+#. type: Plain text
+#: en/minios-session-manager.1:48
+msgid ""
+"Raw, DynFileFS, and DynBlk storage may optionally use LUKS2 encryption. It "
+"requires cryptsetup, the tools needed by the selected backend, and a MiniOS "
+"initrd capability marker containing luks-layer-v1. The GUI prompts for "
+"passphrases and does not store them in session metadata."
+msgstr ""
+"Le archiviazioni Raw, DynFileFS e DynBlk possono opzionalmente utilizzare la "
+"crittografia LUKS2. Richiede cryptsetup, gli strumenti necessari per il "
+"backend selezionato e un marker di capacità initrd MiniOS contenente luks-"
+"layer-v1. L'interfaccia grafica richiede le passphrase e non le memorizza "
+"nei metadati della sessione."
+
+#. type: SH
+#: en/minios-session-manager.1:48
+#, no-wrap
+msgid "INTERFACE"
+msgstr "INTERFACCIA"
+
+#. type: Plain text
+#: en/minios-session-manager.1:58
+msgid ""
+"The main window shows the available sessions and their status.  Create, "
+"import, and cleanup actions are available from the toolbar.  Additional "
+"actions for the selected session, such as activate, mount or unmount, "
+"resize, export, copy, clone, convert, open folder, and delete, are available "
+"from the context menu. Inactive, non-running Raw, DynFileFS, DynBlk, and "
+"VMDK sessions can be mounted read-write; encrypted sessions request their "
+"LUKS passphrase. Conflicting actions remain disabled until Unmount Session "
+"is selected. SquashFS-only Save Now and automatic-save settings are shown "
+"there only for SquashFS sessions."
+msgstr ""
+"La finestra principale mostra le sessioni disponibili e il loro stato.  Le "
+"azioni di creazione, importazione e pulizia sono disponibili dalla barra "
+"degli strumenti.  Azioni aggiuntive per la sessione selezionata, come "
+"attivare, montare o smontare, ridimensionare, esportare, copiare, clonare, "
+"convertire, aprire la cartella ed eliminare, sono disponibili dal menu "
+"contestuale. Le sessioni Raw, DynFileFS, DynBlk e VMDK inattive e non in "
+"esecuzione possono essere montate in lettura-scrittura; le sessioni cifrate "
+"richiedono la passphrase LUKS. Le azioni in conflitto rimangono disabilitate "
+"finché non viene selezionato Smonta sessione. Le impostazioni Salva ora e "
+"salvataggio automatico solo SquashFS sono mostrate lì solo per le sessioni "
+"SquashFS."
+
+#. type: Plain text
+#: en/minios-session-manager.1:68
+msgid ""
+"Encrypted exports contain decrypted logical files rather than the encrypted "
+"backend. Copy creates fresh filesystem and encryption identities; clone "
+"preserves backend data and identities. Conversion replaces the source unless "
+"a new-session operation is selected. DynFileFS and Raw default to 4000MB; "
+"DynBlk defaults to 16GiB and uses the installed backend limit (dynblk "
+"limits). New DynBlk targets show only compression codecs provided by the "
+"running kernel and the modules/built-in metadata under /run/initramfs. Known "
+"codecs are none, lz4, lz4hc, lzo, lzo-rle, zstd, deflate, and 842; "
+"unavailable codecs are omitted. Compression is unavailable with LUKS.  "
+"Resizable container modes can only grow."
+msgstr ""
+"Le esportazioni cifrate contengono file logici decriptati invece del backend "
+"cifrato. Copia crea nuove identità di filesystem e crittografia; clona "
+"preserva dati e identità del backend. La conversione sostituisce la sorgente "
+"a meno che non venga selezionata una nuova operazione di sessione. DynFileFS "
+"e Raw predefiniti a 4000MB; DynBlk predefinito a 16GiB e utilizza il limite "
+"backend installato (limiti dynblk). I nuovi target DynBlk mostrano solo i "
+"codec di compressione forniti dal kernel in esecuzione e i metadati dei "
+"moduli/built-in sotto /run/initramfs. I codec noti sono none, lz4, lz4hc, "
+"lzo, lzo-rle, zstd, deflate e 842; i codec non disponibili sono omessi. La "
+"compressione non è disponibile con LUKS.  Le modalità contenitore "
+"ridimensionabili possono solo crescere."
+
+#. type: SH
+#: en/minios-session-manager.1:68 en/minios-session.1:327
+#, no-wrap
+msgid "EXAMPLES"
+msgstr "ESEMPI"
+
+#. type: TP
+#: en/minios-session-manager.1:69
+#, no-wrap
+msgid "B<minios-session-manager>"
+msgstr "B<minios-session-manager>"
+
+#. type: Plain text
+#: en/minios-session-manager.1:72
+msgid "Launch the graphical session manager."
+msgstr "Avvia il gestore sessioni grafico."
+
+#. type: TP
+#: en/minios-session-manager.1:72
+#, no-wrap
+msgid "Application Menu → System → MiniOS Session Manager"
+msgstr "Menu Applicazioni → Sistema → Gestore sessioni MiniOS"
+
+#. type: Plain text
+#: en/minios-session-manager.1:75
+msgid "Launch from the desktop application menu."
+msgstr "Avvia dal menu delle applicazioni del desktop."
+
+#. type: TP
+#: en/minios-session-manager.1:75
+#, no-wrap
+msgid "Right-click on any session to access context menu with available operations."
+msgstr "Fai clic con il tasto destro su una sessione per accedere al menu contestuale con le operazioni disponibili."
+
+#. type: SH
+#: en/minios-session-manager.1:77 en/minios-session.1:406
+#, no-wrap
+msgid "FILES"
+msgstr "FILE"
+
+#. type: TP
+#: en/minios-session-manager.1:78
+#, no-wrap
+msgid "B</usr/share/applications/minios-session-manager.desktop>"
+msgstr "B</usr/share/applications/minios-session-manager.desktop>"
+
+#. type: Plain text
+#: en/minios-session-manager.1:81
+msgid "Desktop entry file for application menu integration."
+msgstr "File desktop entry per l'integrazione nel menu delle applicazioni."
+
+#. type: TP
+#: en/minios-session-manager.1:81
+#, no-wrap
+msgid "B</usr/share/polkit-1/actions/dev.minios.session-manager.policy>"
+msgstr "B</usr/share/polkit-1/actions/dev.minios.session-manager.policy>"
+
+#. type: Plain text
+#: en/minios-session-manager.1:84
+msgid "PolicyKit configuration for administrative operations."
+msgstr "Configurazione PolicyKit per operazioni amministrative."
+
+#. type: TP
+#: en/minios-session-manager.1:84
+#, no-wrap
+msgid "B</usr/lib/minios-session-manager/>"
+msgstr "B</usr/lib/minios-session-manager/>"
+
+#. type: Plain text
+#: en/minios-session-manager.1:87
+msgid "Installation directory containing Python modules and main application."
+msgstr ""
+"Directory di installazione contenente i moduli Python e l'applicazione "
+"principale."
+
+#. type: TP
+#: en/minios-session-manager.1:87
+#, no-wrap
+msgid "B</usr/share/minios-session-manager/style.css>"
+msgstr "B</usr/share/minios-session-manager/style.css>"
+
+#. type: Plain text
+#: en/minios-session-manager.1:90
+msgid "Application stylesheet for custom GUI styling."
+msgstr ""
+"Foglio di stile dell'applicazione per la personalizzazione grafica della GUI."
+
+#. type: TP
+#: en/minios-session-manager.1:90 en/minios-session.1:407
+#, no-wrap
+msgid "B</run/initramfs/memory/data/minios/changes/>"
+msgstr "B</run/initramfs/memory/data/minios/changes/>"
+
+#. type: Plain text
+#: en/minios-session-manager.1:93 en/minios-session.1:410
+msgid "Primary location for session data and metadata."
+msgstr "Posizione principale per i dati e i metadati della sessione."
+
+#. type: TP
+#: en/minios-session-manager.1:93 en/minios-session.1:410
+#, no-wrap
+msgid "B</run/initramfs/memory/data/minios/changes/session.json>"
+msgstr "B</run/initramfs/memory/data/minios/changes/session.json>"
+
+#. type: Plain text
+#: en/minios-session-manager.1:96 en/minios-session.1:413
+msgid "Session metadata in JSON format (preferred)."
+msgstr "Metadati della sessione in formato JSON (preferito)."
+
+#. type: TP
+#: en/minios-session-manager.1:96 en/minios-session.1:413
+#, no-wrap
+msgid "B</run/initramfs/memory/data/minios/changes/session.conf>"
+msgstr "B</run/initramfs/memory/data/minios/changes/session.conf>"
+
+#. type: Plain text
+#: en/minios-session-manager.1:99 en/minios-session.1:416
+msgid "Session metadata in legacy format (fallback)."
+msgstr "Metadati della sessione in formato legacy (ripiego)."
+
+#. type: TP
+#: en/minios-session-manager.1:99 en/minios-session.1:416
+#, no-wrap
+msgid "B</run/initramfs/memory/data/minios/changes/[0-9]+/>"
+msgstr "B</run/initramfs/memory/data/minios/changes/[0-9]+/>"
+
+#. type: Plain text
+#: en/minios-session-manager.1:102 en/minios-session.1:419
+msgid "Individual session directories containing persistent changes."
+msgstr "Directory di sessione individuali contenenti modifiche persistenti."
+
+#. type: SH
+#: en/minios-session-manager.1:102 en/minios-session.1:429
+#, no-wrap
+msgid "NOTES"
+msgstr "NOTE"
+
+#. type: Plain text
+#: en/minios-session-manager.1:107
+msgid ""
+"The graphical interface requires a running X11 or Wayland session. For "
+"headless or text-only systems, use B<minios-session>(1)  instead."
+msgstr ""
+"L'interfaccia grafica richiede una sessione X11 o Wayland attiva. Per "
+"sistemi senza interfaccia grafica o solo testuali, utilizzare invece "
+"B<minios-session>(1)."
+
+#. type: Plain text
+#: en/minios-session-manager.1:109
+msgid ""
+"The application starts without requiring root privileges and automatically "
+"requests authentication when needed."
+msgstr ""
+"L'applicazione si avvia senza richiedere privilegi di root e richiede "
+"automaticamente l'autenticazione quando necessario."
+
+#. type: SH
+#: en/minios-session-manager.1:109 en/minios-session.1:432
+#, no-wrap
+msgid "SEE ALSO"
+msgstr "VEDERE ANCHE"
+
+#. type: Plain text
+#: en/minios-session-manager.1:112
+msgid "B<minios-session>(1), B<live-config>(7)"
+msgstr "B<minios-session>(1), B<live-config>(7)"
+
+#. type: SH
+#: en/minios-session-manager.1:112 en/minios-session.1:436
+#, no-wrap
+msgid "AUTHOR"
+msgstr "AUTORE"
+
+#. type: Plain text
+#: en/minios-session-manager.1:114 en/minios-session.1:438
+msgid "crims0n E<lt>crims0n@minios.devE<gt>"
+msgstr "crims0n E<lt>crims0n@minios.devE<gt>"
+
+#. type: SH
+#: en/minios-session-manager.1:114 en/minios-session.1:438
+#, no-wrap
+msgid "REPORTING BUGS"
+msgstr "SEGNALAZIONE BUG"
+
+#. type: Plain text
+#: en/minios-session-manager.1:115
+msgid "Report bugs to: https://github.com/minios-linux/minios-live/issues"
+msgstr "Segnala bug a: https://github.com/minios-linux/minios-live/issues"

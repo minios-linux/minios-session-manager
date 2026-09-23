@@ -1,1 +1,9 @@
-debian/minios-session.1
+manpages/en/minios-session.1
+manpages/de/minios-session.de.1
+manpages/es/minios-session.es.1
+manpages/fr/minios-session.fr.1
+manpages/id/minios-session.id.1
+manpages/it/minios-session.it.1
+manpages/pt/minios-session.pt.1
+manpages/pt_BR/minios-session.pt_BR.1
+manpages/ru/minios-session.ru.1

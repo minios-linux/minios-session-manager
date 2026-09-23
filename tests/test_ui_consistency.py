@@ -1,5 +1,4 @@
 from pathlib import Path
-import re
 from unittest.mock import patch
 
 
@@ -39,6 +38,10 @@ def test_session_list_extends_to_centered_footer_actions():
     assert '.manager-footer {' not in CSS
 
 
+def test_default_window_width_fits_complete_session_rows():
+    assert 'self.window.set_default_size(680, 500)' in SOURCE
+
+
 def test_active_session_status_has_precedence_over_running():
     branch = session_status_branch()
 
@@ -64,7 +67,7 @@ def test_squashfs_create_policies_and_save_progress_are_exposed():
     assert 'squashfs_options.set_sensitive(' not in SOURCE
     assert 'save_now_item.set_visible(is_squashfs)' in SOURCE
     assert 'save_settings_item.set_visible(is_squashfs)' in SOURCE
-    assert 'self.sessions_writable and is_squashfs and running' in SOURCE
+    assert 'is_squashfs and running)' in SOURCE
     assert "getattr(row, 'configuration_supported', True)" in SOURCE
     assert "'save', session_id, '--json', '--progress'" in SOURCE
     assert 'GLib.timeout_add(500, show_progress_if_needed)' in SOURCE
@@ -200,8 +203,8 @@ def test_luks_is_documented_as_layered_encryption():
         (ROOT / name).read_text(encoding="utf-8")
         for name in (
             "README.md",
-            "debian/minios-session.1",
-            "debian/minios-session-manager.1",
+            "manpages/en/minios-session.1",
+            "manpages/en/minios-session-manager.1",
         )
     )
     assert "changes.luks" not in documentation
@@ -215,10 +218,39 @@ def test_gui_exposes_physical_clone_separately_from_copy():
     assert "args = ['clone', self.selected_session_id, '--json']" in SOURCE
 
 
-def test_manpage_versions_match_changelog():
-    changelog = (ROOT / "debian/changelog").read_text(encoding="utf-8")
-    version = re.search(r'^minios-session-manager \(([^)]+)\)', changelog).group(1)
+def test_manpage_sources_use_package_title():
     for name in ("minios-session-manager.1", "minios-session.1"):
-        first_line = (ROOT / "debian" / name).read_text(
+        first_line = (ROOT / "manpages/en" / name).read_text(
             encoding="utf-8").splitlines()[0]
-        assert 'MiniOS Session Manager {}"'.format(version) in first_line
+        assert '"MiniOS Session Manager" "User Commands"' in first_line
+
+
+def test_translated_manpages_preserve_cli_command_names():
+    command_signatures = (
+        r"\fBlist\fP",
+        r"\fBactive\fP",
+        r"\fBrunning\fP",
+        r"\fBinfo\fP",
+        r"\fBactivate \fP",
+        r"\fBsave \fP",
+        r"\fBmount \fP",
+        r"\fBcreate [",
+        r"\fBsettings \fP",
+        r"\fBdelete \fP",
+        r"\fBreclaim \fP",
+        r"\fBresize \fP",
+        r"\fBexport \fP",
+        r"\fBimport \fP",
+        r"\fBcopy \fP",
+        r"\fBclone \fP",
+        r"\fBconvert \fP",
+        r"\fBcleanup [",
+        r"\fBstatus\fP",
+    )
+    for language in ("de", "es", "fr", "id", "it", "pt", "pt_BR", "ru"):
+        manpage = ROOT / "manpages" / language / "minios-session.{}.1".format(
+            language)
+        contents = manpage.read_text(encoding="utf-8")
+        for signature in command_signatures:
+            assert signature in contents, "{} is missing from {}".format(
+                signature, manpage)

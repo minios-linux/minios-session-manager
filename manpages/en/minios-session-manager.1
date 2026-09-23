@@ -1,4 +1,4 @@
-.TH MINIOS-SESSION-MANAGER 1 "September 2026" "MiniOS Session Manager 2.4.1" "User Commands"
+.TH MINIOS-SESSION-MANAGER 1 "September 2026" "MiniOS Session Manager" "User Commands"
 .SH NAME
 minios-session-manager \- graphical interface for managing MiniOS persistent sessions
 .SH SYNOPSIS
@@ -17,7 +17,7 @@ to perform actual session operations, providing a user-friendly frontend to the 
 .B -h, --help
 Show a short usage message and exit.
 .SH SESSION MODES
-The application supports creation of sessions in five storage modes:
+The application supports creation of sessions in six storage modes:
 .TP
 .B Native Mode
 For POSIX-compatible filesystems (ext4, btrfs, etc.). Most efficient option.
@@ -28,6 +28,11 @@ container files and requires the dynfilefs utility.
 .TP
 .B DynBlk Mode
 Uses the format-1 DynBlk kernel block device with thin backing files. It is shown only when the running system has the dynblk utility and module and the initramfs advertises dynblk resume support.
+.TP
+.B VMDK Mode
+Uses standard split sparse VMDK storage through the DynBlk driver. It is shown
+only when the matching userspace, kernel, and initrd capabilities are available;
+backend compression is not supported.
 .TP
 .B Raw Mode
 For writable filesystems. Uses fixed-size ext4 image files.
@@ -43,7 +48,13 @@ passphrases and does not store them in session metadata.
 .SH INTERFACE
 The main window shows the available sessions and their status.
 Create, import, and cleanup actions are available from the toolbar.
-Additional actions for the selected session, such as activate, resize, export, copy, clone, convert, open folder, and delete, are available from the context menu. SquashFS-only Save Now and automatic-save settings are shown there only for SquashFS sessions.
+Additional actions for the selected session, such as activate, mount or
+unmount, resize, export, copy, clone, convert, open folder, and delete, are
+available from the context menu. Inactive, non-running Raw, DynFileFS, DynBlk,
+and VMDK sessions can be mounted read-write; encrypted sessions request their
+LUKS passphrase. Conflicting actions remain disabled until Unmount Session is
+selected. SquashFS-only Save Now and automatic-save settings are shown there
+only for SquashFS sessions.
 .PP
 Encrypted exports contain decrypted logical files rather than the encrypted
 backend. Copy creates fresh filesystem and encryption identities; clone preserves

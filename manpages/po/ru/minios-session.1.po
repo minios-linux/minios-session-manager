@@ -1,0 +1,1501 @@
+# Russian translations for minios-session-manager package
+# Copyright (C) 2026 Free Software Foundation, Inc.
+# This file is distributed under the same license as the minios-session-manager package.
+# Automatically generated, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: minios-session-manager 2.5.0\n"
+"POT-Creation-Date: 2026-09-22 22:14+0300\n"
+"PO-Revision-Date: 2026-09-22 19:38+0000\n"
+"Last-Translator: Automatically generated\n"
+"Language-Team: none\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+#. type: TH
+#: en/minios-session-manager.1:1 en/minios-session.1:1
+#, no-wrap
+msgid "September 2026"
+msgstr "Сентябрь 2026"
+
+#. type: TH
+#: en/minios-session-manager.1:1 en/minios-session.1:1
+#, no-wrap
+msgid "MiniOS Session Manager"
+msgstr "Менеджер сессий MiniOS"
+
+#. type: TH
+#: en/minios-session-manager.1:1 en/minios-session.1:1
+#, no-wrap
+msgid "User Commands"
+msgstr "Пользовательские команды"
+
+#. type: SH
+#: en/minios-session-manager.1:2 en/minios-session.1:2
+#, no-wrap
+msgid "NAME"
+msgstr "ИМЯ"
+
+#. type: SH
+#: en/minios-session-manager.1:4 en/minios-session.1:4
+#, no-wrap
+msgid "SYNOPSIS"
+msgstr "СИНТАКСИС"
+
+#. type: SH
+#: en/minios-session-manager.1:7 en/minios-session.1:7
+#, no-wrap
+msgid "DESCRIPTION"
+msgstr "ОПИСАНИЕ"
+
+#. type: SH
+#: en/minios-session-manager.1:19 en/minios-session.1:273
+#, no-wrap
+msgid "SESSION MODES"
+msgstr "РЕЖИМЫ СЕССИЙ"
+
+#. type: TP
+#: en/minios-session-manager.1:42 en/minios-session.1:297
+#, no-wrap
+msgid "B<Encryption>"
+msgstr "B<Шифрование>"
+
+#. type: SH
+#: en/minios-session-manager.1:68 en/minios-session.1:327
+#, no-wrap
+msgid "EXAMPLES"
+msgstr "ПРИМЕРЫ"
+
+#. type: SH
+#: en/minios-session-manager.1:77 en/minios-session.1:406
+#, no-wrap
+msgid "FILES"
+msgstr "ФАЙЛЫ"
+
+#. type: TP
+#: en/minios-session-manager.1:90 en/minios-session.1:407
+#, no-wrap
+msgid "B</run/initramfs/memory/data/minios/changes/>"
+msgstr "B</run/initramfs/memory/data/minios/changes/>"
+
+#. type: Plain text
+#: en/minios-session-manager.1:93 en/minios-session.1:410
+msgid "Primary location for session data and metadata."
+msgstr "Основное место хранения данных и метаданных сессии."
+
+#. type: TP
+#: en/minios-session-manager.1:93 en/minios-session.1:410
+#, no-wrap
+msgid "B</run/initramfs/memory/data/minios/changes/session.json>"
+msgstr "B</run/initramfs/memory/data/minios/changes/session.json>"
+
+#. type: Plain text
+#: en/minios-session-manager.1:96 en/minios-session.1:413
+msgid "Session metadata in JSON format (preferred)."
+msgstr "Метаданные сессии в формате JSON (рекомендуется)."
+
+#. type: TP
+#: en/minios-session-manager.1:96 en/minios-session.1:413
+#, no-wrap
+msgid "B</run/initramfs/memory/data/minios/changes/session.conf>"
+msgstr "B</run/initramfs/memory/data/minios/changes/session.conf>"
+
+#. type: Plain text
+#: en/minios-session-manager.1:99 en/minios-session.1:416
+msgid "Session metadata in legacy format (fallback)."
+msgstr "Метаданные сессии в устаревшем формате (резервный вариант)."
+
+#. type: TP
+#: en/minios-session-manager.1:99 en/minios-session.1:416
+#, no-wrap
+msgid "B</run/initramfs/memory/data/minios/changes/[0-9]+/>"
+msgstr "B</run/initramfs/memory/data/minios/changes/[0-9]+/>"
+
+#. type: Plain text
+#: en/minios-session-manager.1:102 en/minios-session.1:419
+msgid "Individual session directories containing persistent changes."
+msgstr "Отдельные каталоги сессий, содержащие постоянные изменения."
+
+#. type: SH
+#: en/minios-session-manager.1:102 en/minios-session.1:429
+#, no-wrap
+msgid "NOTES"
+msgstr "ПРИМЕЧАНИЯ"
+
+#. type: SH
+#: en/minios-session-manager.1:109 en/minios-session.1:432
+#, no-wrap
+msgid "SEE ALSO"
+msgstr "СМ. ТАКЖЕ"
+
+#. type: SH
+#: en/minios-session-manager.1:112 en/minios-session.1:436
+#, no-wrap
+msgid "AUTHOR"
+msgstr "АВТОР"
+
+#. type: Plain text
+#: en/minios-session-manager.1:114 en/minios-session.1:438
+msgid "crims0n E<lt>crims0n@minios.devE<gt>"
+msgstr "crims0n E<lt>crims0n@minios.devE<gt>"
+
+#. type: SH
+#: en/minios-session-manager.1:114 en/minios-session.1:438
+#, no-wrap
+msgid "REPORTING BUGS"
+msgstr "СООБЩЕНИЕ ОБ ОШИБКАХ"
+
+#. type: TH
+#: en/minios-session.1:1
+#, no-wrap
+msgid "MINIOS-SESSION"
+msgstr "MINIOS-SESSION"
+
+#. type: Plain text
+#: en/minios-session.1:4
+msgid ""
+"minios-session - command-line interface for managing MiniOS persistent "
+"sessions"
+msgstr ""
+"minios-session - интерфейс командной строки для управления MiniOS "
+"постоянными сессиями"
+
+#. type: Plain text
+#: en/minios-session.1:7
+msgid "B<minios-session> [I<GLOBAL_OPTIONS>] I<command> [I<command_options>]"
+msgstr "B<minios-session> [I<GLOBAL_OPTIONS>] I<command> [I<command_options>]"
+
+#. type: Plain text
+#: en/minios-session.1:11
+msgid ""
+"B<minios-session> is a command-line utility for managing MiniOS persistent "
+"sessions from within the running system.  It provides full control over "
+"session operations including viewing, creating, activating, and deleting "
+"sessions."
+msgstr ""
+"B<minios-session> — это утилита командной строки для управления MiniOS "
+"постоянными сессиями из работающей системы.  Предоставляет полный контроль "
+"над операциями сессии, включая просмотр, создание, активацию и удаление "
+"сессий."
+
+#. type: SH
+#: en/minios-session.1:11
+#, no-wrap
+msgid "GLOBAL OPTIONS"
+msgstr "ГЛОБАЛЬНЫЕ ОПЦИИ"
+
+#. type: TP
+#: en/minios-session.1:12
+#, no-wrap
+msgid "B<--json>"
+msgstr "B<--json>"
+
+#. type: Plain text
+#: en/minios-session.1:15
+msgid "Output results in JSON format (can be used with any command)"
+msgstr ""
+"Выводить результаты в формате JSON (может использоваться с любой командой)"
+
+#. type: TP
+#: en/minios-session.1:15
+#, no-wrap
+msgid "B<--sessions-dir >I<PATH>"
+msgstr "B<--sessions-dir >I<PATH>"
+
+#. type: Plain text
+#: en/minios-session.1:18
+msgid "Use custom sessions directory instead of default location"
+msgstr ""
+"Использовать пользовательский каталог сессий вместо расположения по умолчанию"
+
+#. type: SH
+#: en/minios-session.1:18
+#, no-wrap
+msgid "COMMANDS"
+msgstr "КОМАНДЫ"
+
+#. type: TP
+#: en/minios-session.1:19
+#, no-wrap
+msgid "B<list>"
+msgstr "B<list>"
+
+#. type: Plain text
+#: en/minios-session.1:22
+msgid ""
+"List all available sessions with detailed information including ID, mode, "
+"version, edition, size, and last modification time."
+msgstr ""
+"Показать все доступные сессии с подробной информацией, включая ID, режим, "
+"версию, редакцию, размер и время последнего изменения."
+
+#. type: TP
+#: en/minios-session.1:22
+#, no-wrap
+msgid "B<active>"
+msgstr "B<active>"
+
+#. type: Plain text
+#: en/minios-session.1:25
+msgid ""
+"Show information about the currently active session (session that will boot "
+"next)."
+msgstr ""
+"Показать информацию о текущей активной сессии (сессия, которая будет "
+"загружена следующей)."
+
+#. type: TP
+#: en/minios-session.1:25
+#, no-wrap
+msgid "B<running>"
+msgstr "B<running>"
+
+#. type: Plain text
+#: en/minios-session.1:28
+msgid ""
+"Show information about the currently running session in this boot session."
+msgstr "Показать информацию о текущей запущенной сессии в этой загрузке."
+
+#. type: TP
+#: en/minios-session.1:28
+#, no-wrap
+msgid "B<info>"
+msgstr "B<info>"
+
+#. type: Plain text
+#: en/minios-session.1:31
+msgid "Show filesystem type and compatible session modes for the active media."
+msgstr ""
+"Показать тип файловой системы и совместимые режимы сессии для активного "
+"носителя."
+
+#. type: TP
+#: en/minios-session.1:31
+#, no-wrap
+msgid "B<activate >I<session_id>"
+msgstr "B<activate >I<session_id>"
+
+#. type: Plain text
+#: en/minios-session.1:34
+msgid ""
+"Activate the specified session by setting it as the default session. This "
+"change takes effect on the next boot."
+msgstr ""
+"Активировать указанную сессию, установив её в качестве сессии по умолчанию. "
+"Это изменение вступит в силу при следующей загрузке."
+
+#. type: TP
+#: en/minios-session.1:35 en/minios-session.1:106 en/minios-session.1:125
+#: en/minios-session.1:137 en/minios-session.1:179 en/minios-session.1:204
+#, no-wrap
+msgid "I<session_id> (required)"
+msgstr "I<session_id> (обязательно)"
+
+#. type: Plain text
+#: en/minios-session.1:38
+msgid "ID of the session to activate"
+msgstr "ID сессии для активации"
+
+#. type: TP
+#: en/minios-session.1:39
+#, no-wrap
+msgid "B<save >I<session_id> [--progress]"
+msgstr "B<save >I<session_id> [--progress]"
+
+#. type: Plain text
+#: en/minios-session.1:44
+msgid ""
+"Save the current live changes into a replacement snapshot for the specified "
+"running SquashFS session. With B<--progress> and JSON output enabled, stream "
+"machine-readable progress events."
+msgstr ""
+"Сохранить текущие изменения в live-режиме в виде нового снимка для указанной "
+"работающей сессии SquashFS. При использовании B<--progress> и включённом "
+"выводе в формате JSON, выводить события о ходе выполнения в машиночитаемом "
+"виде."
+
+#. type: TP
+#: en/minios-session.1:44
+#, no-wrap
+msgid "B<mount >I<session_id> [--password-stdin]"
+msgstr "B<mount >I<session_id> [--password-stdin]"
+
+#. type: Plain text
+#: en/minios-session.1:51
+msgid ""
+"Mount an inactive, non-running Raw, DynFileFS, DynBlk, or VMDK session read-"
+"write. The command prints the mount point and remains in the foreground "
+"until standard input closes or Ctrl+C is pressed, then unmounts and detaches "
+"the backing storage. It holds the session mutation lock for the complete "
+"mount lifetime. Active, running, Native, and SquashFS sessions are rejected."
+msgstr ""
+"Смонтировать неактивную, неработающую сессию Raw, DynFileFS, DynBlk или VMDK "
+"в режиме чтения-записи. Команда выводит точку монтирования и остаётся в "
+"переднем плане до закрытия стандартного ввода или нажатия Ctrl+C, после чего "
+"размонтирует и отсоединит базовое хранилище. На всё время монтирования "
+"удерживается блокировка изменений сессии. Активные, работающие, Native и "
+"SquashFS сессии отклоняются."
+
+#. type: Plain text
+#: en/minios-session.1:55
+msgid ""
+"Encrypted sessions prompt for a LUKS passphrase or read one line from "
+"standard input with B<--password-stdin>. If unmounting is busy, the command "
+"fails without killing the backing daemon or detaching the live device."
+msgstr ""
+"Для зашифрованных сессий будет запрошен пароль LUKS или он будет прочитан из "
+"стандартного ввода с помощью B<--password-stdin>. Если размонтирование "
+"занято, команда завершится с ошибкой без завершения работы демона или "
+"отсоединения живого устройства."
+
+#. type: TP
+#: en/minios-session.1:55
+#, no-wrap
+msgid "B<create [>I<mode>] [I<size>] [--encryption none|luks] [--compression CODEC] [--policy manual|shutdown] [--autosave MINUTES] [--activate]"
+msgstr "B<create [>I<mode>] [I<size>] [--encryption none|luks] [--compression CODEC] [--policy manual|shutdown] [--autosave MINUTES] [--activate]"
+
+#. type: Plain text
+#: en/minios-session.1:61
+msgid ""
+"Create a new session with the specified mode and optional size. The new "
+"session will be automatically assigned the next available ID. The tool "
+"automatically detects the filesystem type and only allows compatible session "
+"modes.  With --activate, the new session and its selection as boot default "
+"are published together. The running session is not changed. Use --sessions-"
+"dir to create a session on another mounted MiniOS installation."
+msgstr ""
+"Создать новую сессию с указанным режимом и необязательным размером. Новой "
+"сессии будет автоматически присвоен следующий доступный ID. Утилита "
+"автоматически определяет тип файловой системы и разрешает только совместимые "
+"режимы сессий.  При использовании --activate новая сессия и её выбор в "
+"качестве загрузочной по умолчанию публикуются одновременно. Текущая "
+"работающая сессия не изменяется. Используйте --sessions-dir для создания "
+"сессии на другой смонтированной установке MiniOS."
+
+#. type: TP
+#: en/minios-session.1:62
+#, no-wrap
+msgid "B<--activate> (optional)"
+msgstr "B<--activate> (необязательно)"
+
+#. type: Plain text
+#: en/minios-session.1:68
+msgid ""
+"Select the completed session as the boot default in the same metadata "
+"update.  The running-session selector is preserved. Combine with --sessions-"
+"dir to create and select a session on a target installation medium. Without "
+"this option, the current boot default is unchanged."
+msgstr ""
+"Выбрать завершённую сессию загрузкой по умолчанию в том же обновлении "
+"метаданных.  Селектор текущей сессии сохраняется. Совмещайте с --sessions-"
+"dir для создания и выбора сессии на целевом установочном носителе. Без этой "
+"опции текущая загрузочная сессия по умолчанию не изменяется."
+
+#. type: TP
+#: en/minios-session.1:68
+#, no-wrap
+msgid "I<mode> (optional)"
+msgstr "I<mode> (необязательно)"
+
+#. type: Plain text
+#: en/minios-session.1:71
+msgid ""
+"Session mode: native, squashfs, dynfilefs, dynblk, vmdk, or raw (default: "
+"native). DynBlk is exposed only when its userspace utility, kernel module, "
+"and initrd capability marker are available."
+msgstr ""
+"Режим сессии: native, squashfs, dynfilefs, dynblk, vmdk или raw (по "
+"умолчанию: native). DynBlk доступен только при наличии его утилиты в "
+"пространстве пользователя, модуля ядра и маркера возможностей initrd."
+
+#. type: TP
+#: en/minios-session.1:71
+#, no-wrap
+msgid "I<size> (optional)"
+msgstr "I<size> (необязательно)"
+
+#. type: Plain text
+#: en/minios-session.1:75
+msgid ""
+"Decimal size in MB, GB, or TB for container modes. DynFileFS and raw default "
+"to 4000MB. DynBlk defaults to 16GiB and uses the installed backend limit "
+"(dynblk limits)."
+msgstr ""
+"Десятичный размер в МБ, ГБ или ТБ для контейнерных режимов. DynFileFS и raw "
+"по умолчанию 4000MB. DynBlk по умолчанию 16GiB и использует установленный "
+"лимит бэкенда (ограничения dynblk)."
+
+#. type: TP
+#: en/minios-session.1:75
+#, no-wrap
+msgid "B<--encryption> none|luks (optional)"
+msgstr "B<--encryption> none|luks (необязательно)"
+
+#. type: Plain text
+#: en/minios-session.1:80
+msgid ""
+"Encrypt Raw, DynFileFS, or DynBlk storage with LUKS2. Encrypted creation "
+"reads the passphrase and confirmation interactively or from standard input "
+"with B<--password-stdin>."
+msgstr ""
+"Зашифровать хранилище Raw, DynFileFS или DynBlk с помощью LUKS2. При "
+"создании зашифрованной сессии пароль и подтверждение запрашиваются "
+"интерактивно или читаются из стандартного ввода с помощью B<--password-"
+"stdin>."
+
+#. type: TP
+#: en/minios-session.1:80 en/minios-session.1:164 en/minios-session.1:192
+#: en/minios-session.1:216
+#, no-wrap
+msgid "B<--compression> CODEC (optional)"
+msgstr "B<--compression> CODEC (необязательно)"
+
+#. type: Plain text
+#: en/minios-session.1:87
+msgid ""
+"DynBlk creation codec. Known codecs are none, lz4, lz4hc, lzo, lzo-rle, "
+"zstd, deflate, and 842. Before creating storage, minios-session checks the "
+"running kernel's kmod metadata under /run/initramfs and rejects codecs whose "
+"crypto_comp provider is unavailable there. The option applies only to DynBlk "
+"and cannot be combined with LUKS encryption."
+msgstr ""
+"Кодек создания DynBlk. Известные кодеки: none, lz4, lz4hc, lzo, lzo-rle, "
+"zstd, deflate и 842. Перед созданием хранилища minios-session проверяет "
+"метаданные kmod работающего ядра в /run/initramfs и отклоняет кодеки, для "
+"которых провайдер crypto_comp там недоступен. Опция применяется только к "
+"DynBlk и не может быть совмещена с шифрованием LUKS."
+
+#. type: TP
+#: en/minios-session.1:87
+#, no-wrap
+msgid "B<--policy> manual|shutdown (optional)"
+msgstr "B<--policy> manual|shutdown (необязательно)"
+
+#. type: Plain text
+#: en/minios-session.1:90
+msgid "Set the SquashFS shutdown-save policy. The default is shutdown."
+msgstr ""
+"Установить политику сохранения при завершении работы SquashFS. По умолчанию "
+"— shutdown."
+
+#. type: TP
+#: en/minios-session.1:90
+#, no-wrap
+msgid "B<--autosave> MINUTES (optional)"
+msgstr "B<--autosave> MINUTES (необязательно)"
+
+#. type: Plain text
+#: en/minios-session.1:94
+msgid ""
+"Set the periodic SquashFS save interval to 30, 60, 120, 240, or 480 "
+"minutes.  Use 0 to disable periodic saving."
+msgstr ""
+"Установить периодичность автоматического сохранения SquashFS на 30, 60, 120, "
+"240 или 480 минут.  Используйте 0 для отключения периодического сохранения."
+
+#. type: TP
+#: en/minios-session.1:95
+#, no-wrap
+msgid "B<settings >I<session_id> [--shutdown on|off] [--autosave MINUTES]"
+msgstr "B<settings >I<session_id> [--shutdown on|off] [--autosave MINUTES]"
+
+#. type: Plain text
+#: en/minios-session.1:100
+msgid ""
+"Change automatic saving for a SquashFS session. At least one setting must be "
+"specified. The supported periodic intervals are 30, 60, 120, 240, and 480 "
+"minutes; 0 disables periodic saving."
+msgstr ""
+"Изменить параметры автоматического сохранения для сессии SquashFS. "
+"Необходимо указать хотя бы одну настройку. Поддерживаемые интервалы: 30, 60, "
+"120, 240 и 480 минут; 0 отключает периодическое сохранение."
+
+#. type: TP
+#: en/minios-session.1:100
+#, no-wrap
+msgid "B<delete >I<session_id> [--handoff]"
+msgstr "B<delete >I<session_id> [--handoff]"
+
+#. type: Plain text
+#: en/minios-session.1:105
+msgid ""
+"Delete the specified session by ID. Active sessions cannot be deleted. "
+"Running sessions are rejected unless B<--handoff> is used for a RAM-backed "
+"SquashFS session and a valid active SquashFS snapshot can take over."
+msgstr ""
+"Удалить указанную сессию по ID. Активные сессии не могут быть удалены. "
+"Работающие сессии отклоняются, если только не используется B<--handoff> для "
+"сессии на базе RAM-SquashFS и не существует подходящего активного снимка "
+"SquashFS для передачи управления."
+
+#. type: Plain text
+#: en/minios-session.1:109
+msgid "ID of the session to delete"
+msgstr "ID сессии для удаления"
+
+#. type: TP
+#: en/minios-session.1:110
+#, no-wrap
+msgid "B<reclaim >I<session_id> [--compact]"
+msgstr "B<reclaim >I<session_id> [--compact]"
+
+#. type: Plain text
+#: en/minios-session.1:118
+msgid ""
+"Trim the unencrypted internal ext4 filesystem and reclaim known free "
+"container space for a DynFileFS, DynBlk, or VMDK session. The running device "
+"is validated against the current boot and remains connected; inactive "
+"sessions are attached and mounted temporarily. B<--compact> explicitly "
+"permits live-data relocation and increases flash writes. Encrypted sessions "
+"reclaim only already-known free storage and do not enable discard through "
+"LUKS."
+msgstr ""
+"Обрезать незашифрованную внутреннюю файловую систему ext4 и освободить "
+"известное свободное место контейнера для сессии DynFileFS, DynBlk или VMDK. "
+"Рабочее устройство проверяется на соответствие текущей загрузке и остаётся "
+"подключённым; неактивные сессии временно подключаются и монтируются. B<--"
+"compact> явно разрешает перемещение живых данных и увеличивает количество "
+"операций записи на флеш-память. Для зашифрованных сессий освобождается "
+"только уже известное свободное место, и команда не включает передачу discard "
+"через LUKS."
+
+#. type: Plain text
+#: en/minios-session.1:121
+msgid ""
+"DynFileFS reclamation requires version 4.6.0 or later. If an older daemon is "
+"still running after a package update, reboot with the updated backend first."
+msgstr ""
+"Для освобождения пространства DynFileFS требуется версия 4.6.0 или новее. "
+"Если после обновления пакета по-прежнему работает старый демон, сначала "
+"перезагрузите систему с обновлённым бэкендом."
+
+#. type: TP
+#: en/minios-session.1:121
+#, no-wrap
+msgid "B<resize >I<session_id> I<size>"
+msgstr "B<resize >I<session_id> I<size>"
+
+#. type: Plain text
+#: en/minios-session.1:124
+msgid ""
+"Resize the specified session to a larger size in MB, GB, or TB. Works for "
+"dynfilefs, dynblk, vmdk, and raw sessions, including their encrypted forms. "
+"DynBlk growth expands the virtual block device and then its ext4 filesystem "
+"without preallocating the new virtual capacity. Cannot resize currently "
+"running sessions."
+msgstr ""
+"Изменить размер указанной сессии на больший в МБ, ГБ или ТБ. Работает для "
+"сессий dynfilefs, dynblk, vmdk и raw, включая их зашифрованные варианты. "
+"Рост DynBlk расширяет виртуальное блочное устройство и затем его файловую "
+"систему ext4 без предварительного выделения нового виртуального "
+"пространства. Нельзя изменять размер работающих сессий."
+
+#. type: Plain text
+#: en/minios-session.1:128
+msgid "ID of the session to resize"
+msgstr "ID сессии для изменения размера"
+
+#. type: TP
+#: en/minios-session.1:128
+#, no-wrap
+msgid "I<size> (required)"
+msgstr "I<size> (обязательно)"
+
+#. type: Plain text
+#: en/minios-session.1:131
+msgid "New decimal size in MB, GB, or TB. Must be larger than current size."
+msgstr ""
+"Новый десятичный размер в МБ, ГБ или ТБ. Должен быть больше текущего размера."
+
+#. type: TP
+#: en/minios-session.1:132
+#, no-wrap
+msgid "B<export >I<session_id> I<output_path> [--no-verify]"
+msgstr "B<export >I<session_id> I<output_path> [--no-verify]"
+
+#. type: Plain text
+#: en/minios-session.1:136
+msgid ""
+"Export a session to a .tar.zst archive. Encrypted sessions are decrypted and "
+"exported as logical files; the encrypted container is not copied into the "
+"archive."
+msgstr ""
+"Экспортировать сессию в архив .tar.zst. Зашифрованные сессии "
+"расшифровываются и экспортируются как логические файлы; зашифрованный "
+"контейнер не копируется в архив."
+
+#. type: Plain text
+#: en/minios-session.1:140
+msgid "ID of the session to export"
+msgstr "ID сеанса для экспорта"
+
+#. type: TP
+#: en/minios-session.1:140
+#, no-wrap
+msgid "I<output_path> (required)"
+msgstr "I<output_path> (обязательно)"
+
+#. type: Plain text
+#: en/minios-session.1:143
+msgid ""
+"Path to output file or directory. If directory is provided, filename is auto-"
+"generated."
+msgstr ""
+"Путь к выходному файлу или каталогу. Если указан каталог, имя файла будет "
+"сгенерировано автоматически."
+
+#. type: TP
+#: en/minios-session.1:143 en/minios-session.1:167
+#, no-wrap
+msgid "B<--no-verify> (optional)"
+msgstr "B<--no-verify> (необязательно)"
+
+#. type: Plain text
+#: en/minios-session.1:146
+msgid "Skip archive verification after creation"
+msgstr "Пропустить проверку архива после создания"
+
+#. type: TP
+#: en/minios-session.1:147
+#, no-wrap
+msgid "B<import >I<archive_path> [--auto-convert] [--force-mode I<MODE>] [--force-encryption none|luks] [--compression CODEC] [--skip-compatibility-check] [--no-verify]"
+msgstr "B<import >I<archive_path> [--auto-convert] [--force-mode I<MODE>] [--force-encryption none|luks] [--compression CODEC] [--skip-compatibility-check] [--no-verify]"
+
+#. type: Plain text
+#: en/minios-session.1:150
+msgid ""
+"Import a session from a .tar.zst archive file. Supports automatic mode "
+"conversion."
+msgstr ""
+"Импортировать сеанс из архивного файла .tar.zst. Поддерживается "
+"автоматическое преобразование режима."
+
+#. type: TP
+#: en/minios-session.1:151
+#, no-wrap
+msgid "I<archive_path> (required)"
+msgstr "I<archive_path> (обязательно)"
+
+#. type: Plain text
+#: en/minios-session.1:154
+msgid "Path to the archive file (.tar.zst)"
+msgstr "Путь к архивному файлу (.tar.zst)"
+
+#. type: TP
+#: en/minios-session.1:154
+#, no-wrap
+msgid "B<--auto-convert> (optional)"
+msgstr "B<--auto-convert> (необязательно)"
+
+#. type: Plain text
+#: en/minios-session.1:157
+msgid "Automatically convert to compatible mode for current filesystem"
+msgstr ""
+"Автоматически преобразовать в совместимый режим для текущей файловой системы"
+
+#. type: TP
+#: en/minios-session.1:157
+#, no-wrap
+msgid "B<--force-mode> I<MODE> (optional)"
+msgstr "B<--force-mode> I<MODE> (необязательно)"
+
+#. type: Plain text
+#: en/minios-session.1:160
+msgid ""
+"Force import as a specific storage mode (native/dynfilefs/dynblk/vmdk/raw)"
+msgstr ""
+"Принудительно импортировать как определённый режим хранения (native/"
+"dynfilefs/dynblk/vmdk/raw)"
+
+#. type: TP
+#: en/minios-session.1:160
+#, no-wrap
+msgid "B<--force-encryption> none|luks (optional)"
+msgstr "B<--force-encryption> none|luks (необязательно)"
+
+#. type: Plain text
+#: en/minios-session.1:164
+msgid ""
+"Force target encryption. A LUKS target receives a fresh LUKS header and ext4 "
+"identity."
+msgstr ""
+"Принудительно задать шифрование цели. Для LUKS-цели будет создан новый "
+"заголовок LUKS и идентификатор ext4."
+
+#. type: Plain text
+#: en/minios-session.1:167
+msgid ""
+"Select compression when the import target is DynBlk. Not available with LUKS."
+msgstr "Выбрать сжатие, если целью импорта является DynBlk. Недоступно с LUKS."
+
+#. type: Plain text
+#: en/minios-session.1:170
+msgid "Skip session integrity verification after import"
+msgstr "Пропустить проверку целостности сеанса после импорта"
+
+#. type: TP
+#: en/minios-session.1:170
+#, no-wrap
+msgid "B<--skip-compatibility-check> (optional)"
+msgstr "B<--skip-compatibility-check> (необязательно)"
+
+#. type: Plain text
+#: en/minios-session.1:173
+msgid ""
+"Skip source MiniOS version, edition, and union-filesystem compatibility "
+"checks."
+msgstr ""
+"Пропустить проверку совместимости версии, редакции и union-filesystem "
+"исходного MiniOS."
+
+#. type: TP
+#: en/minios-session.1:174
+#, no-wrap
+msgid "B<copy >I<session_id> [--to-mode I<MODE>] [--to-encryption none|luks] [--size I<SIZE>] [--compression CODEC]"
+msgstr "B<copy >I<session_id> [--to-mode I<MODE>] [--to-encryption none|luks] [--size I<SIZE>] [--compression CODEC]"
+
+#. type: Plain text
+#: en/minios-session.1:178
+msgid ""
+"Logically copy a session through its filesystem, optionally changing "
+"storage, capacity, or encryption. The target receives fresh filesystem and "
+"LUKS identities."
+msgstr ""
+"Логически скопировать сеанс через его файловую систему с возможностью "
+"изменения типа хранения, ёмкости или шифрования. Цель получает новые "
+"идентификаторы файловой системы и LUKS."
+
+#. type: Plain text
+#: en/minios-session.1:182
+msgid "ID of the session to copy"
+msgstr "ID сеанса для копирования"
+
+#. type: TP
+#: en/minios-session.1:182
+#, no-wrap
+msgid "B<--to-mode> I<MODE> (optional)"
+msgstr "B<--to-mode> I<MODE> (необязательно)"
+
+#. type: Plain text
+#: en/minios-session.1:185
+msgid ""
+"Convert to a different storage mode: native, dynfilefs, dynblk, vmdk, or raw"
+msgstr ""
+"Преобразовать в другой режим хранения: native, dynfilefs, dynblk, vmdk или "
+"raw"
+
+#. type: TP
+#: en/minios-session.1:185 en/minios-session.1:210
+#, no-wrap
+msgid "B<--to-encryption> none|luks (optional)"
+msgstr "B<--to-encryption> none|luks (необязательно)"
+
+#. type: Plain text
+#: en/minios-session.1:188 en/minios-session.1:213
+msgid "Select target encryption."
+msgstr "Выбрать шифрование для цели."
+
+#. type: TP
+#: en/minios-session.1:188 en/minios-session.1:213
+#, no-wrap
+msgid "B<--size> I<SIZE> (optional)"
+msgstr "B<--size> I<SIZE> (необязательно)"
+
+#. type: Plain text
+#: en/minios-session.1:192
+msgid ""
+"Decimal size in MB, GB, or TB for dynfilefs, dynblk, vmdk, or raw targets.  "
+"DynBlk defaults to 16GiB; the other container modes default to 4000MB when "
+"no source size is inferred."
+msgstr ""
+"Десятичный размер в MB, GB или TB для целей dynfilefs, dynblk, vmdk или raw. "
+"DynBlk по умолчанию 16GiB; остальные контейнерные режимы по умолчанию "
+"4000MB, если размер источника не определён."
+
+#. type: Plain text
+#: en/minios-session.1:195
+msgid ""
+"Select compression for a newly created DynBlk copy target. Not available "
+"with LUKS."
+msgstr ""
+"Выбрать сжатие для вновь созданной цели копирования DynBlk. Недоступно с "
+"LUKS."
+
+#. type: TP
+#: en/minios-session.1:196
+#, no-wrap
+msgid "B<clone >I<session_id>"
+msgstr "B<clone >I<session_id>"
+
+#. type: Plain text
+#: en/minios-session.1:200
+msgid ""
+"Physically clone a detached session backend. The clone preserves LUKS "
+"headers, keyslots, LUKS UUID, and ext4 UUID and does not require a "
+"passphrase."
+msgstr ""
+"Физически клонировать отсоединённый бэкенд сеанса. Клон сохраняет заголовки "
+"LUKS, ключевые слоты, UUID LUKS и UUID ext4 и не требует парольной фразы."
+
+#. type: TP
+#: en/minios-session.1:200
+#, no-wrap
+msgid "B<convert >I<session_id> I<target_mode> [--to-encryption none|luks] [--size I<SIZE>] [--compression CODEC] [--new-session]"
+msgstr "B<convert >I<session_id> I<target_mode> [--to-encryption none|luks] [--size I<SIZE>] [--compression CODEC] [--new-session]"
+
+#. type: Plain text
+#: en/minios-session.1:203
+msgid "Convert an existing session to a different mode in-place."
+msgstr "Преобразовать существующий сеанс в другой режим на месте."
+
+#. type: Plain text
+#: en/minios-session.1:207
+msgid "ID of the session to convert"
+msgstr "ID сеанса для преобразования"
+
+#. type: TP
+#: en/minios-session.1:207
+#, no-wrap
+msgid "I<target_mode> (required)"
+msgstr "I<target_mode> (обязательно)"
+
+#. type: Plain text
+#: en/minios-session.1:210
+msgid "Target storage mode: native, dynfilefs, dynblk, vmdk, or raw"
+msgstr "Целевой режим хранения: native, dynfilefs, dynblk, vmdk или raw"
+
+#. type: Plain text
+#: en/minios-session.1:216
+msgid ""
+"Decimal size in MB, GB, or TB for dynfilefs, dynblk, vmdk, or raw targets."
+msgstr ""
+"Десятичный размер в MB, GB или TB для целей dynfilefs, dynblk, vmdk или raw."
+
+#. type: Plain text
+#: en/minios-session.1:219
+msgid ""
+"Select compression for the new DynBlk container. Not available with LUKS."
+msgstr "Выбрать сжатие для нового контейнера DynBlk. Недоступно с LUKS."
+
+#. type: TP
+#: en/minios-session.1:219
+#, no-wrap
+msgid "B<--new-session> (optional)"
+msgstr "B<--new-session> (необязательно)"
+
+#. type: Plain text
+#: en/minios-session.1:223
+msgid ""
+"Create a converted session with a new ID and preserve the source. Without "
+"this option conversion replaces the source in-place."
+msgstr ""
+"Создать преобразованный сеанс с новым ID и сохранить исходный. Без этой "
+"опции преобразование заменяет исходный сеанс на месте."
+
+#. type: TP
+#: en/minios-session.1:224
+#, no-wrap
+msgid "B<cleanup [--days >I<N>]"
+msgstr "B<cleanup [--days >I<N>]"
+
+#. type: Plain text
+#: en/minios-session.1:227
+msgid ""
+"Delete all sessions older than N days. The currently active session and "
+"currently running session are never deleted. If called without parameters, "
+"uses default threshold of 30 days."
+msgstr ""
+"Удаляет все сессии старше N дней. Текущая активная сессия и текущая "
+"запущенная сессия никогда не удаляются. Если вызвано без параметров, "
+"используется порог по умолчанию — 30 дней."
+
+#. type: TP
+#: en/minios-session.1:228
+#, no-wrap
+msgid "B<--days> I<N> (optional)"
+msgstr "B<--days> I<N> (необязательно)"
+
+#. type: Plain text
+#: en/minios-session.1:231
+msgid ""
+"Age threshold in days for session deletion (default: 30). Sessions modified "
+"within this period are preserved."
+msgstr ""
+"Порог возраста в днях для удаления сессий (по умолчанию: 30). Сессии, "
+"изменённые в течение этого периода, сохраняются."
+
+#. type: TP
+#: en/minios-session.1:232
+#, no-wrap
+msgid "B<status>"
+msgstr "B<status>"
+
+#. type: Plain text
+#: en/minios-session.1:235
+msgid ""
+"Check sessions directory status and write permissions. Reports filesystem "
+"type and whether session operations are available."
+msgstr ""
+"Проверяет состояние каталога сессий и права на запись. Сообщает тип файловой "
+"системы и доступность операций сессий."
+
+#. type: SH
+#: en/minios-session.1:235
+#, no-wrap
+msgid "COMMAND BEHAVIOR"
+msgstr "ПОВЕДЕНИЕ КОМАНДЫ"
+
+#. type: TP
+#: en/minios-session.1:236
+#, no-wrap
+msgid "B<Filesystem Compatibility Checking>"
+msgstr "B<Проверка совместимости файловой системы>"
+
+#. type: Plain text
+#: en/minios-session.1:241
+msgid ""
+"The B<create> command automatically detects the filesystem type and "
+"validates mode compatibility. If the requested mode is not supported:"
+msgstr ""
+"Команда B<create> автоматически определяет тип файловой системы и проверяет "
+"совместимость режима. Если запрошенный режим не поддерживается:"
+
+#. type: TP
+#: en/minios-session.1:242
+#, no-wrap
+msgid "- On FAT32/NTFS/exFAT with native mode: Returns an error suggesting a container mode"
+msgstr "- На FAT32/NTFS/exFAT с нативным режимом: возвращает ошибку с предложением использовать контейнерный режим"
+
+#. type: TP
+#: en/minios-session.1:244
+#, no-wrap
+msgid "- On read-only media: Returns error stating no sessions can be created"
+msgstr "- На носителях только для чтения: возвращает ошибку, указывающую, что сессии не могут быть созданы"
+
+#. type: TP
+#: en/minios-session.1:246
+#, no-wrap
+msgid "- With dynfilefs mode but package not installed: Returns error requesting dynfilefs package installation"
+msgstr "- В режиме dynfilefs, если пакет не установлен: возвращает ошибку с требованием установить пакет dynfilefs"
+
+#. type: TP
+#: en/minios-session.1:248
+#, no-wrap
+msgid "- With DynBlk mode but no matching initrd/kernel capability: Returns an availability error"
+msgstr "- В режиме DynBlk, но без соответствующей поддержки initrd/ядра: возвращает ошибку о недоступности"
+
+#. type: TP
+#: en/minios-session.1:250
+#, no-wrap
+msgid "- With an oversized raw image on FAT32: Returns an error with the 4000MB limit"
+msgstr "- При слишком большом raw-образе на FAT32: возвращает ошибку с ограничением 4000MB"
+
+#. type: TP
+#: en/minios-session.1:253
+#, no-wrap
+msgid "B<Default Parameter Behavior>"
+msgstr "B<Поведение параметров по умолчанию>"
+
+#. type: TP
+#: en/minios-session.1:256 en/minios-session.1:260 en/minios-session.1:264
+#, no-wrap
+msgid "- "
+msgstr "- "
+
+#. type: Plain text
+#: en/minios-session.1:260
+msgid ""
+"B<create> without mode: Uses native mode, may fail on non-POSIX filesystems"
+msgstr ""
+"B<create> без режима: используется нативный режим, может не работать на не-"
+"POSIX файловых системах"
+
+#. type: Plain text
+#: en/minios-session.1:264
+msgid ""
+"B<create> without size: Uses 16GiB for DynBlk/VMDK and 4000MB for dynfilefs "
+"and raw modes"
+msgstr ""
+"B<create> без размера: используется 16GiB для DynBlk/VMDK и 4000MB для "
+"режимов dynfilefs и raw"
+
+#. type: Plain text
+#: en/minios-session.1:268
+msgid "B<cleanup> without days: Uses 30-day threshold for session deletion"
+msgstr "B<cleanup> без дней: используется порог 30 дней для удаления сессий"
+
+#. type: TP
+#: en/minios-session.1:269
+#, no-wrap
+msgid "B<Session safeguards>"
+msgstr "B<Защита сессий>"
+
+#. type: Plain text
+#: en/minios-session.1:273
+msgid ""
+"Active sessions are protected from deletion and in-place conversion. Running "
+"sessions are protected from deletion, export, copy, resize, and conversion."
+msgstr ""
+"Активные сессии защищены от удаления и преобразования на месте. Запущенные "
+"сессии защищены от удаления, экспорта, копирования, изменения размера и "
+"преобразования."
+
+#. type: Plain text
+#: en/minios-session.1:275
+msgid "MiniOS supports six persistence storage modes:"
+msgstr "MiniOS поддерживает шесть режимов хранения данных с сохранением:"
+
+#. type: TP
+#: en/minios-session.1:275
+#, no-wrap
+msgid "B<native>"
+msgstr "B<native>"
+
+#. type: Plain text
+#: en/minios-session.1:278
+msgid ""
+"Direct storage on POSIX-compatible filesystems (ext4, btrfs, etc.). This is "
+"the default and most efficient mode for compatible filesystems."
+msgstr ""
+"Прямое хранение на POSIX-совместимых файловых системах (ext4, btrfs и др.). "
+"Это режим по умолчанию и наиболее эффективный для совместимых файловых "
+"систем."
+
+#. type: TP
+#: en/minios-session.1:278
+#, no-wrap
+msgid "B<squashfs>"
+msgstr "B<squashfs>"
+
+#. type: Plain text
+#: en/minios-session.1:282
+msgid ""
+"Compressed snapshot of the current live changes. Saving may be manual, at "
+"shutdown, or periodic. SquashFS sessions have no fixed container size."
+msgstr ""
+"Сжатый снимок текущих изменений в live-режиме. Сохранение может быть ручным, "
+"при завершении работы или периодическим. Сессии SquashFS не имеют "
+"фиксированного размера контейнера."
+
+#. type: TP
+#: en/minios-session.1:282
+#, no-wrap
+msgid "B<dynfilefs>"
+msgstr "B<dynfilefs>"
+
+#. type: Plain text
+#: en/minios-session.1:285
+msgid ""
+"Dynamic file-based storage suitable for non-POSIX filesystems (FAT32, NTFS, "
+"exFAT). Creates expandable container files."
+msgstr ""
+"Динамическое файловое хранилище, подходящее для не-POSIX файловых систем "
+"(FAT32, NTFS, exFAT). Создаёт расширяемые файлы-контейнеры."
+
+#. type: TP
+#: en/minios-session.1:285
+#, no-wrap
+msgid "B<dynblk>"
+msgstr "B<dynblk>"
+
+#. type: Plain text
+#: en/minios-session.1:288
+msgid ""
+"Format-1 kernel block storage backed by thin volumeNNN.db files. The mode is "
+"available only when the running system has the dynblk utility and module and "
+"the initramfs advertises dynblk resume support. Its virtual size defaults to "
+"16GiB and is limited by the installed backend (dynblk limits)."
+msgstr ""
+"Блочное хранилище ядра формата 1 на основе файлов thin volumeNNN.db. Режим "
+"доступен только если в системе установлены утилита и модуль dynblk, а "
+"initramfs поддерживает dynblk resume. Виртуальный размер по умолчанию — "
+"16GiB, ограничен установленным бэкендом (ограничения dynblk)."
+
+#. type: TP
+#: en/minios-session.1:288
+#, no-wrap
+msgid "B<vmdk>"
+msgstr "B<vmdk>"
+
+#. type: Plain text
+#: en/minios-session.1:294
+msgid ""
+"Standard split sparse VMDK storage exposed through the DynBlk driver. "
+"Managed sessions contain volume.vmdk and volume-sNNN.vmdk extents. The mode "
+"defaults to 16GiB, uses the installed format limit, does not support backend "
+"compression, and requires the initrd capability marker vmdk-session-v1."
+msgstr ""
+"Стандартное раздельное разрежённое хранилище VMDK, предоставляемое через "
+"драйвер DynBlk. Управляемые сессии содержат volume.vmdk и экстенты volume-"
+"sNNN.vmdk. Режим по умолчанию — 16GiB, использует установленное ограничение "
+"формата, не поддерживает сжатие бэкенда и требует маркера возможностей "
+"initrd vmdk-session-v1."
+
+#. type: TP
+#: en/minios-session.1:294
+#, no-wrap
+msgid "B<raw>"
+msgstr "B<raw>"
+
+#. type: Plain text
+#: en/minios-session.1:297
+msgid ""
+"Fixed-size image file storage compatible with any filesystem. Requires pre-"
+"allocation of storage space."
+msgstr ""
+"Фиксированный по размеру файл-образ, совместимый с любой файловой системой. "
+"Требует предварительного выделения места."
+
+#. type: Plain text
+#: en/minios-session.1:303
+msgid ""
+"Raw, DynFileFS, DynBlk, and VMDK may optionally use LUKS2 encryption. "
+"Passphrases are read interactively or from standard input with B<--password-"
+"stdin> and are never recorded in metadata. Encrypted-to-encrypted logical "
+"copy and conversion read the source passphrase first, followed by the target "
+"passphrase twice."
+msgstr ""
+"Raw, DynFileFS, DynBlk и VMDK могут опционально использовать шифрование "
+"LUKS2. Пароли вводятся интерактивно или из стандартного ввода с помощью B<--"
+"password-stdin> и никогда не сохраняются в метаданных. При копировании и "
+"преобразовании из одного зашифрованного формата в другой сначала "
+"запрашивается пароль источника, затем дважды пароль назначения."
+
+#. type: Plain text
+#: en/minios-session.1:307
+msgid ""
+"LUKS choices and --password-stdin are shown only when the selected backend "
+"tools are available and /run/initramfs/etc/minios-initramfs-crypt contains "
+"luks-layer-v1."
+msgstr ""
+"Выбор LUKS и --password-stdin отображаются только если необходимые бэкенд-"
+"инструменты доступны и /run/initramfs/etc/minios-initramfs-crypt содержит "
+"luks-layer-v1."
+
+#. type: SH
+#: en/minios-session.1:307
+#, no-wrap
+msgid "FILESYSTEM COMPATIBILITY"
+msgstr "СОВМЕСТИМОСТЬ ФАЙЛОВЫХ СИСТЕМ"
+
+#. type: Plain text
+#: en/minios-session.1:309
+msgid ""
+"The tool automatically detects your media's filesystem type and restricts "
+"session creation to compatible modes:"
+msgstr ""
+"Инструмент автоматически определяет тип файловой системы носителя и "
+"ограничивает создание сессий совместимыми режимами:"
+
+#. type: TP
+#: en/minios-session.1:309
+#, no-wrap
+msgid "B<POSIX Filesystems (ext2/3/4, btrfs, xfs, f2fs)>"
+msgstr "B<POSIX файловые системы (ext2/3/4, btrfs, xfs, f2fs)>"
+
+#. type: Plain text
+#: en/minios-session.1:313
+msgid ""
+"Native mode and available container modes are supported. DynBlk is admitted "
+"on ext2/3/4 and Btrfs when its capability check succeeds; XFS/f2fs are not "
+"DynBlk backing targets. Encryption additionally requires cryptsetup and the "
+"backend-specific initrd capabilities."
+msgstr ""
+"Поддерживаются нативный режим и доступные контейнерные режимы. DynBlk "
+"разрешён на ext2/3/4 и Btrfs при успешной проверке возможностей; XFS/f2fs не "
+"являются целями для хранения DynBlk. Для шифрования дополнительно требуются "
+"cryptsetup и специфические для бэкенда возможности initrd."
+
+#. type: TP
+#: en/minios-session.1:313
+#, no-wrap
+msgid "B<FAT32, NTFS, and exFAT>"
+msgstr "B<FAT32, NTFS и exFAT>"
+
+#. type: Plain text
+#: en/minios-session.1:318
+msgid ""
+"DynFileFS and Raw are supported on writable media. DynBlk and VMDK are also "
+"offered on vfat, exFAT, and ntfs3 when their capability checks succeed. "
+"Encryption is supported when its backend-specific capability check succeeds; "
+"fixed Raw files are limited to 4000MB on FAT32 whether encrypted or not. "
+"Native mode is unsupported."
+msgstr ""
+"DynFileFS и Raw поддерживаются на носителях с возможностью записи. DynBlk и "
+"VMDK также доступны на vfat, exFAT и ntfs3, если их проверки возможностей "
+"проходят успешно. Шифрование поддерживается, если его специфическая для "
+"backend проверка возможностей проходит успешно; фиксированные файлы Raw "
+"ограничены 4000 МБ на FAT32 независимо от того, зашифрованы они или нет. "
+"Родной режим не поддерживается."
+
+#. type: TP
+#: en/minios-session.1:318
+#, no-wrap
+msgid "B<Read-only Media>"
+msgstr "B<Только для чтения носители>"
+
+#. type: Plain text
+#: en/minios-session.1:321
+msgid "No session creation possible. Sessions can only be activated or listed."
+msgstr ""
+"Создание сессии невозможно. Сессии можно только активировать или "
+"просматривать."
+
+#. type: Plain text
+#: en/minios-session.1:323
+msgid ""
+"Under UEFI Secure Boot, DynBlk and VMDK creation is disabled because MiniOS "
+"does not sign the external DynBlk kernel module."
+msgstr ""
+"В режиме UEFI Secure Boot создание DynBlk и VMDK отключено, потому что "
+"MiniOS не подписывает внешний модуль ядра DynBlk."
+
+#. type: Plain text
+#: en/minios-session.1:327
+msgid ""
+"Use the B<info> command to check filesystem compatibility before creating "
+"sessions."
+msgstr ""
+"Используйте команду B<info> для проверки совместимости файловой системы "
+"перед созданием сессий."
+
+#. type: Plain text
+#: en/minios-session.1:330
+msgid "List all sessions:"
+msgstr "Показать все сессии:"
+
+#. type: Plain text
+#: en/minios-session.1:332
+msgid "B<minios-session list>"
+msgstr "B<minios-session list>"
+
+#. type: Plain text
+#: en/minios-session.1:335
+msgid "Show active session:"
+msgstr "Показать активную сессию:"
+
+#. type: Plain text
+#: en/minios-session.1:337
+msgid "B<minios-session active>"
+msgstr "B<minios-session active>"
+
+#. type: Plain text
+#: en/minios-session.1:340
+msgid "Activate session:"
+msgstr "Активировать сессию:"
+
+#. type: Plain text
+#: en/minios-session.1:342
+msgid "B<minios-session activate 2>"
+msgstr "B<minios-session activate 2>"
+
+#. type: Plain text
+#: en/minios-session.1:345
+msgid "Delete old sessions:"
+msgstr "Удалить старые сессии:"
+
+#. type: Plain text
+#: en/minios-session.1:347
+msgid "B<minios-session cleanup --days 7>"
+msgstr "B<minios-session cleanup --days 7>"
+
+#. type: Plain text
+#: en/minios-session.1:350
+msgid "Create sessions:"
+msgstr "Создать сессии:"
+
+#. type: Plain text
+#: en/minios-session.1:352
+msgid "B<minios-session create>"
+msgstr "B<minios-session create>"
+
+#. type: Plain text
+#: en/minios-session.1:354
+msgid "B<minios-session create native>"
+msgstr "B<minios-session create native>"
+
+#. type: Plain text
+#: en/minios-session.1:356
+msgid "B<minios-session create squashfs --policy shutdown --autosave 60>"
+msgstr "B<minios-session create squashfs --policy shutdown --autosave 60>"
+
+#. type: Plain text
+#: en/minios-session.1:358
+msgid "B<minios-session create dynfilefs 8000>"
+msgstr "B<minios-session create dynfilefs 8000>"
+
+#. type: Plain text
+#: en/minios-session.1:360
+msgid "B<minios-session create dynblk 16GB>"
+msgstr "B<minios-session create dynblk 16GB>"
+
+#. type: Plain text
+#: en/minios-session.1:362
+msgid "B<minios-session create raw 2000>"
+msgstr "B<minios-session create raw 2000>"
+
+#. type: Plain text
+#: en/minios-session.1:365
+msgid "Resize session:"
+msgstr "Изменить размер сессии:"
+
+#. type: Plain text
+#: en/minios-session.1:367
+msgid "B<minios-session resize 2 8000>"
+msgstr "B<minios-session resize 2 8000>"
+
+#. type: Plain text
+#: en/minios-session.1:370
+msgid "Export session:"
+msgstr "Экспортировать сессию:"
+
+#. type: Plain text
+#: en/minios-session.1:372
+msgid "B<minios-session export 3 /tmp/backup.tar.zst>"
+msgstr "B<minios-session export 3 /tmp/backup.tar.zst>"
+
+#. type: Plain text
+#: en/minios-session.1:374
+msgid "B<minios-session export 3 /tmp/>"
+msgstr "B<minios-session export 3 /tmp/>"
+
+#. type: Plain text
+#: en/minios-session.1:377
+msgid "Import session:"
+msgstr "Импортировать сессию:"
+
+#. type: Plain text
+#: en/minios-session.1:379
+msgid "B<minios-session import /tmp/backup.tar.zst>"
+msgstr "B<minios-session import /tmp/backup.tar.zst>"
+
+#. type: Plain text
+#: en/minios-session.1:381
+msgid "B<minios-session import /tmp/backup.tar.zst --force-mode dynblk>"
+msgstr "B<minios-session import /tmp/backup.tar.zst --force-mode dynblk>"
+
+#. type: Plain text
+#: en/minios-session.1:383
+msgid "B<minios-session import /tmp/backup.tar.zst --auto-convert>"
+msgstr "B<minios-session import /tmp/backup.tar.zst --auto-convert>"
+
+#. type: Plain text
+#: en/minios-session.1:386
+msgid "Copy session:"
+msgstr "Копировать сессию:"
+
+#. type: Plain text
+#: en/minios-session.1:388
+msgid "B<minios-session copy 2>"
+msgstr "B<minios-session copy 2>"
+
+#. type: Plain text
+#: en/minios-session.1:390
+msgid "B<minios-session copy 2 --to-mode raw --size 2000>"
+msgstr "B<minios-session copy 2 --to-mode raw --size 2000>"
+
+#. type: Plain text
+#: en/minios-session.1:393
+msgid "Convert session:"
+msgstr "Конвертировать сессию:"
+
+#. type: Plain text
+#: en/minios-session.1:395
+msgid "B<minios-session convert 3 dynblk --size 16GB>"
+msgstr "B<minios-session convert 3 dynblk --size 16GB>"
+
+#. type: Plain text
+#: en/minios-session.1:398
+msgid "JSON output:"
+msgstr "JSON вывод:"
+
+#. type: Plain text
+#: en/minios-session.1:400
+msgid "B<minios-session --json list>"
+msgstr "B<minios-session --json list>"
+
+#. type: Plain text
+#: en/minios-session.1:403
+msgid "Check directory status:"
+msgstr "Проверить состояние каталога:"
+
+#. type: Plain text
+#: en/minios-session.1:405
+msgid "B<minios-session status>"
+msgstr "B<minios-session status>"
+
+#. type: TP
+#: en/minios-session.1:419
+#, no-wrap
+msgid "B</etc/minios-release>"
+msgstr "B</etc/minios-release>"
+
+#. type: Plain text
+#: en/minios-session.1:422
+msgid ""
+"System version and edition information used for session compatibility "
+"checking."
+msgstr ""
+"Информация о версии и редакции системы, используемая для проверки "
+"совместимости сессии."
+
+#. type: SH
+#: en/minios-session.1:422
+#, no-wrap
+msgid "EXIT STATUS"
+msgstr "ВЫХОДНОЙ СТАТУС"
+
+#. type: TP
+#: en/minios-session.1:423
+#, no-wrap
+msgid "B<0>"
+msgstr "B<0>"
+
+#. type: Plain text
+#: en/minios-session.1:426
+msgid "Success"
+msgstr "Успех"
+
+#. type: TP
+#: en/minios-session.1:426
+#, no-wrap
+msgid "B<1>"
+msgstr "B<1>"
+
+#. type: Plain text
+#: en/minios-session.1:429
+msgid ""
+"Error occurred (invalid arguments, session not found, permission denied, "
+"etc.)"
+msgstr ""
+"Произошла ошибка (неверные аргументы, сессия не найдена, отказано в доступе "
+"и т.д.)"
+
+#. type: Plain text
+#: en/minios-session.1:432
+msgid ""
+"Session activation takes effect on the next boot. The tool automatically "
+"detects session storage location and requests authentication via PolicyKit "
+"when needed."
+msgstr ""
+"Активация сессии вступает в силу при следующей загрузке. Инструмент "
+"автоматически определяет расположение хранилища сессии и запрашивает "
+"аутентификацию через PolicyKit при необходимости."
+
+#. type: Plain text
+#: en/minios-session.1:436
+msgid "B<minios-session-manager>(1), B<live-config>(7), B<systemd.special>(7)"
+msgstr "B<minios-session-manager>(1), B<live-config>(7), B<systemd.special>(7)"
+
+#. type: Plain text
+#: en/minios-session.1:439
+msgid ""
+"Report bugs to: https://github.com/minios-linux/minios-session-manager/issues"
+msgstr ""
+"Сообщать об ошибках: https://github.com/minios-linux/minios-session-manager/"
+"issues"

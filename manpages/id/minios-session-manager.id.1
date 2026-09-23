@@ -1,0 +1,129 @@
+.\"*******************************************************************
+.\"
+.\" This file was generated with po4a. Translate the source file.
+.\"
+.\"*******************************************************************
+.TH MINIOS\-SESSION\-MANAGER 1 "September 2026" "Manajer Sesi MiniOS" "Perintah Pengguna"
+.SH NAMA
+minios\-session\-manager \- antarmuka grafis untuk mengelola sesi persisten
+MiniOS
+.SH SINOPSIS
+\fBminios\-session\-manager\fP [\fI\-\-help\fP]
+.SH DESKRIPSI
+\fBminios\-session\-manager\fP menyediakan antarmuka pengguna grafis untuk
+mengelola sesi persisten MiniOS.  Aplikasi ini menawarkan cara intuitif
+untuk menelusuri, membuat, mengaktifkan, mengubah ukuran, menghapus,
+mengekspor, mengimpor, menyalin, dan mengonversi sesi tanpa menggunakan
+baris perintah.
+.PP
+Aplikasi ini secara internal menggunakan \fBminios\-session\fP(1) untuk
+melakukan operasi sesi sebenarnya, menyediakan antarmuka frontend yang ramah
+pengguna untuk fungsionalitas baris perintah.
+.SH OPSI
+.TP
+\fB\-h, \-\-help\fP
+Tampilkan pesan penggunaan singkat dan keluar.
+.SH "MODE SESI"
+Aplikasi ini mendukung pembuatan sesi dalam enam mode penyimpanan:
+.TP
+\fBMode Native\fP
+Untuk filesystem yang kompatibel POSIX (ext4, btrfs, dll.). Pilihan paling
+efisien.
+.TP
+\fBMode DynFileFS\fP
+Untuk filesystem non\-POSIX termasuk FAT32, NTFS, dan exFAT. Menggunakan file
+kontainer yang dapat diperluas dan memerlukan utilitas dynfilefs.
+.TP
+\fBMode DynBlk\fP
+Menggunakan perangkat blok kernel format\-1 DynBlk dengan file backing
+tipis. Hanya ditampilkan jika sistem yang berjalan memiliki utilitas dan
+modul dynblk serta initramfs mengiklankan dukungan resume dynblk.
+.TP
+\fBMode VMDK\fP
+Menggunakan penyimpanan VMDK sparse split standar melalui driver
+DynBlk. Hanya ditampilkan jika kemampuan userspace, kernel, dan initrd yang
+sesuai tersedia; kompresi backend tidak didukung.
+.TP
+\fBMode Raw\fP
+Untuk filesystem yang dapat ditulis. Menggunakan file image ext4 berukuran
+tetap.
+.TP
+\fBMode SquashFS\fP
+Menggunakan snapshot terkompresi yang persis dari perubahan live saat ini
+dan mendukung kebijakan penyimpanan manual atau saat shutdown/periodik.
+.TP
+\fBEnkripsi\fP
+Penyimpanan Raw, DynFileFS, dan DynBlk dapat secara opsional menggunakan
+enkripsi LUKS2. Ini memerlukan cryptsetup, alat yang dibutuhkan backend yang
+dipilih, dan penanda kemampuan initrd MiniOS yang berisi luks\-layer\-v1. GUI
+akan meminta passphrase dan tidak menyimpannya di metadata sesi.
+.SH ANTARMUKA
+Jendela utama menampilkan sesi yang tersedia dan statusnya.  Tindakan
+membuat, mengimpor, dan membersihkan tersedia dari toolbar.  Tindakan
+tambahan untuk sesi yang dipilih, seperti aktifkan, mount atau unmount, ubah
+ukuran, ekspor, salin, klon, konversi, buka folder, dan hapus, tersedia dari
+menu konteks. Sesi Raw, DynFileFS, DynBlk, dan VMDK yang tidak aktif dan
+tidak berjalan dapat di\-mount baca\-tulis; sesi terenkripsi akan meminta
+passphrase LUKS mereka. Tindakan yang bertentangan tetap dinonaktifkan
+hingga Lepaskan Mount Sesi dipilih. Pengaturan Simpan Sekarang dan simpan
+otomatis khusus SquashFS hanya ditampilkan di sana untuk sesi SquashFS.
+.PP
+Ekspor terenkripsi berisi file logis yang telah didekripsi, bukan backend
+terenkripsi. Salin akan membuat identitas filesystem dan enkripsi baru; klon
+mempertahankan data backend dan identitas. Konversi akan menggantikan sumber
+kecuali operasi sesi baru dipilih. DynFileFS dan Raw default ke 4000MB;
+DynBlk default ke 16GiB dan menggunakan batas backend terinstal (batas
+dynblk). Target DynBlk baru hanya menampilkan codec kompresi yang disediakan
+kernel yang berjalan dan metadata modul/built\-in di /run/initramfs. Codec
+yang dikenal adalah none, lz4, lz4hc, lzo, lzo\-rle, zstd, deflate, dan 842;
+codec yang tidak tersedia tidak ditampilkan. Kompresi tidak tersedia dengan
+LUKS.  Mode kontainer yang dapat diubah ukurannya hanya dapat bertambah
+besar.
+.SH CONTOH
+.TP
+\fBminios\-session\-manager\fP
+Luncurkan manajer sesi grafis.
+.TP
+Menu Aplikasi → Sistem → Manajer Sesi MiniOS
+Luncurkan dari menu aplikasi desktop.
+.TP
+Klik kanan pada sesi apa pun untuk mengakses menu konteks dengan operasi yang tersedia.
+.SH BERKAS
+.TP
+\fB/usr/share/applications/minios\-session\-manager.desktop\fP
+Berkas entri desktop untuk integrasi menu aplikasi.
+.TP
+\fB/usr/share/polkit\-1/actions/dev.minios.session\-manager.policy\fP
+Konfigurasi PolicyKit untuk operasi administratif.
+.TP
+\fB/usr/lib/minios\-session\-manager/\fP
+Direktori instalasi yang berisi modul Python dan aplikasi utama.
+.TP
+\fB/usr/share/minios\-session\-manager/style.css\fP
+Stylesheet aplikasi untuk penyesuaian tampilan GUI.
+.TP
+\fB/run/initramfs/memory/data/minios/changes/\fP
+Lokasi utama untuk data sesi dan metadata.
+.TP
+\fB/run/initramfs/memory/data/minios/changes/session.json\fP
+Metadata sesi dalam format JSON (disarankan).
+.TP
+\fB/run/initramfs/memory/data/minios/changes/session.conf\fP
+Metadata sesi dalam format lama (cadangan).
+.TP
+\fB/run/initramfs/memory/data/minios/changes/[0\-9]+/\fP
+Direktori sesi individual yang berisi perubahan persisten.
+.SH CATATAN
+.PP
+Antarmuka grafis memerlukan sesi X11 atau Wayland yang sedang
+berjalan. Untuk sistem tanpa tampilan atau hanya teks, gunakan
+\fBminios\-session\fP(1) sebagai gantinya.
+.PP
+Aplikasi dijalankan tanpa memerlukan hak akses root dan secara otomatis
+meminta autentikasi saat dibutuhkan.
+.SH "LIHAT JUGA"
+\fBminios\-session\fP(1), \fBlive\-config\fP(7)
+.SH PENULIS
+crims0n <crims0n@minios.dev>
+.SH "LAPORKAN BUG"
+Laporkan bug ke: https://github.com/minios\-linux/minios\-live/issues

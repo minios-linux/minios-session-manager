@@ -2,12 +2,15 @@
 *.mo
 
 # Debian package build files
+/.pc/
+/obj-*/
 debian/.debhelper/
 debian/debhelper-build-stamp
 debian/files
 debian/*.substvars
 debian/*.debhelper
 debian/*.log
+debian/minios-session/
 debian/minios-session-manager/
 debian/tmp/
 
