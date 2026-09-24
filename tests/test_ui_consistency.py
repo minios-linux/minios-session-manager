@@ -234,6 +234,7 @@ def test_translated_manpages_preserve_cli_command_names():
         r"\fBactivate \fP",
         r"\fBsave \fP",
         r"\fBmount \fP",
+        r"\fBchange\-passphrase \fP",
         r"\fBcreate [",
         r"\fBsettings \fP",
         r"\fBdelete \fP",
@@ -254,3 +255,11 @@ def test_translated_manpages_preserve_cli_command_names():
         for signature in command_signatures:
             assert signature in contents, "{} is missing from {}".format(
                 signature, manpage)
+
+
+def test_luks_passphrase_dialog_has_content_margins():
+    start = SOURCE.index("def _prompt_luks_passphrase")
+    end = SOURCE.index("def _get_session_mode", start)
+    dialog_source = SOURCE[start:end]
+    for edge in ("start", "end", "top", "bottom"):
+        assert "content.set_margin_{}(12)".format(edge) in dialog_source

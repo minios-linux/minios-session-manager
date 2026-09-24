@@ -6,8 +6,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: minios-session-manager 2.5.0\n"
-"POT-Creation-Date: 2026-09-22 22:14+0300\n"
-"PO-Revision-Date: 2026-09-22 19:38+0000\n"
+"POT-Creation-Date: 2026-09-24 16:25+0300\n"
+"PO-Revision-Date: 2026-09-24 13:25+0000\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: es\n"
@@ -114,7 +114,7 @@ msgid "Show a short usage message and exit."
 msgstr "Muestra un mensaje corto de uso y sale."
 
 #. type: SH
-#: en/minios-session-manager.1:19 en/minios-session.1:273
+#: en/minios-session-manager.1:19 en/minios-session.1:288
 #, no-wrap
 msgid "SESSION MODES"
 msgstr "MODOS DE SESIÓN"
@@ -219,7 +219,7 @@ msgstr ""
 "admite política de guardado manual o al apagar/periódica."
 
 #. type: TP
-#: en/minios-session-manager.1:42 en/minios-session.1:297
+#: en/minios-session-manager.1:42 en/minios-session.1:312
 #, no-wrap
 msgid "B<Encryption>"
 msgstr "B<Cifrado>"
@@ -245,32 +245,53 @@ msgid "INTERFACE"
 msgstr "INTERFAZ"
 
 #. type: Plain text
-#: en/minios-session-manager.1:58
+#: en/minios-session-manager.1:68
 msgid ""
 "The main window shows the available sessions and their status.  Create, "
 "import, and cleanup actions are available from the toolbar.  Additional "
 "actions for the selected session, such as activate, mount or unmount, "
-"resize, export, copy, clone, convert, open folder, and delete, are available "
-"from the context menu. Inactive, non-running Raw, DynFileFS, DynBlk, and "
-"VMDK sessions can be mounted read-write; encrypted sessions request their "
-"LUKS passphrase. Conflicting actions remain disabled until Unmount Session "
-"is selected. SquashFS-only Save Now and automatic-save settings are shown "
-"there only for SquashFS sessions."
+"resize, export, copy, clone, convert, open session folder, and delete, are "
+"available from the context menu. Inactive, non-running Raw, DynFileFS, "
+"DynBlk, and VMDK sessions can be mounted read-write; encrypted sessions "
+"request their LUKS passphrase. Multiple sessions can be mounted at once.  "
+"Inactive, detached LUKS sessions offer Change Passphrase in the context "
+"menu; the current passphrase and a confirmed replacement are required. The "
+"change does not re-encrypt the session data or modify its other keyslots. "
+"The MOUNTED badge and Unmount Session action remain available after closing "
+"and reopening the manager; closing its window does not unmount sessions. "
+"Conflicting actions on the mounted session remain disabled, while other "
+"sessions can still be used.  Open Session Folder shows the numbered backing "
+"directory; Open Mounted Folder shows the attached filesystem. If unmounting "
+"is busy, the mount remains connected and can be retried after the folder is "
+"no longer in use.  Free Space operates on the already mounted DynFileFS, "
+"DynBlk, or VMDK storage.  SquashFS-only Save Now and automatic-save settings "
+"are shown there only for SquashFS sessions."
 msgstr ""
 "La ventana principal muestra las sesiones disponibles y su estado. Las "
 "acciones de crear, importar y limpiar están disponibles en la barra de "
 "herramientas. Acciones adicionales para la sesión seleccionada, como "
 "activar, montar o desmontar, redimensionar, exportar, copiar, clonar, "
-"convertir, abrir carpeta y eliminar, están disponibles en el menú "
-"contextual. Las sesiones Raw, DynFileFS, DynBlk y VMDK inactivas y no "
-"ejecutándose pueden montarse en modo lectura-escritura; las sesiones "
-"cifradas solicitan su contraseña LUKS. Las acciones en conflicto permanecen "
-"deshabilitadas hasta que se seleccione Desmontar sesión. Las opciones "
-"Guardar ahora y guardado automático solo se muestran allí para sesiones "
-"SquashFS de solo SquashFS."
+"convertir, abrir la carpeta de la sesión y eliminar, están disponibles en el "
+"menú contextual. Las sesiones Raw inactivas y no ejecutándose, DynFileFS, "
+"DynBlk y VMDK pueden montarse en modo lectura-escritura; las sesiones "
+"cifradas solicitan su frase de contraseña LUKS. Se pueden montar varias "
+"sesiones a la vez. Las sesiones LUKS inactivas y separadas ofrecen Cambiar "
+"frase de contraseña en el menú contextual; se requiere la frase de "
+"contraseña actual y una nueva confirmada. El cambio no vuelve a cifrar los "
+"datos de la sesión ni modifica sus otros keyslots. La insignia MONTADO y la "
+"acción Desmontar sesión permanecen disponibles después de cerrar y volver a "
+"abrir el gestor; cerrar su ventana no desmonta las sesiones. Las acciones en "
+"conflicto sobre la sesión montada permanecen deshabilitadas, mientras que "
+"otras sesiones aún pueden usarse. Abrir carpeta de sesión muestra el "
+"directorio de respaldo numerado; Abrir carpeta montada muestra el sistema de "
+"archivos adjunto. Si el desmontaje está ocupado, el montaje permanece "
+"conectado y puede reintentarse después de que la carpeta deje de estar en "
+"uso. Espacio libre opera sobre el almacenamiento DynFileFS, DynBlk o VMDK ya "
+"montado. Las opciones Guardar ahora y guardar automáticamente solo para "
+"SquashFS se muestran ahí solo para sesiones SquashFS."
 
 #. type: Plain text
-#: en/minios-session-manager.1:68
+#: en/minios-session-manager.1:78
 msgid ""
 "Encrypted exports contain decrypted logical files rather than the encrypted "
 "backend. Copy creates fresh filesystem and encryption identities; clone "
@@ -297,146 +318,146 @@ msgstr ""
 "de contenedor redimensionables solo pueden crecer."
 
 #. type: SH
-#: en/minios-session-manager.1:68 en/minios-session.1:327
+#: en/minios-session-manager.1:78 en/minios-session.1:342
 #, no-wrap
 msgid "EXAMPLES"
 msgstr "EJEMPLOS"
 
 #. type: TP
-#: en/minios-session-manager.1:69
+#: en/minios-session-manager.1:79
 #, no-wrap
 msgid "B<minios-session-manager>"
 msgstr "B<minios-session-manager>"
 
 #. type: Plain text
-#: en/minios-session-manager.1:72
+#: en/minios-session-manager.1:82
 msgid "Launch the graphical session manager."
 msgstr "Inicia el gestor gráfico de sesiones."
 
 #. type: TP
-#: en/minios-session-manager.1:72
+#: en/minios-session-manager.1:82
 #, no-wrap
 msgid "Application Menu → System → MiniOS Session Manager"
 msgstr "Menú de aplicaciones → Sistema → Gestor de sesiones de MiniOS"
 
 #. type: Plain text
-#: en/minios-session-manager.1:75
+#: en/minios-session-manager.1:85
 msgid "Launch from the desktop application menu."
 msgstr "Iniciar desde el menú de aplicaciones del escritorio."
 
 #. type: TP
-#: en/minios-session-manager.1:75
+#: en/minios-session-manager.1:85
 #, no-wrap
 msgid "Right-click on any session to access context menu with available operations."
 msgstr "Haz clic derecho en cualquier sesión para acceder al menú contextual con las operaciones disponibles."
 
 #. type: SH
-#: en/minios-session-manager.1:77 en/minios-session.1:406
+#: en/minios-session-manager.1:87 en/minios-session.1:421
 #, no-wrap
 msgid "FILES"
 msgstr "ARCHIVOS"
 
 #. type: TP
-#: en/minios-session-manager.1:78
+#: en/minios-session-manager.1:88
 #, no-wrap
 msgid "B</usr/share/applications/minios-session-manager.desktop>"
 msgstr "B</usr/share/applications/minios-session-manager.desktop>"
 
 #. type: Plain text
-#: en/minios-session-manager.1:81
+#: en/minios-session-manager.1:91
 msgid "Desktop entry file for application menu integration."
 msgstr ""
 "Archivo de entrada de escritorio para la integración en el menú de "
 "aplicaciones."
 
 #. type: TP
-#: en/minios-session-manager.1:81
+#: en/minios-session-manager.1:91
 #, no-wrap
 msgid "B</usr/share/polkit-1/actions/dev.minios.session-manager.policy>"
 msgstr "B</usr/share/polkit-1/actions/dev.minios.session-manager.policy>"
 
 #. type: Plain text
-#: en/minios-session-manager.1:84
+#: en/minios-session-manager.1:94
 msgid "PolicyKit configuration for administrative operations."
 msgstr "Configuración de PolicyKit para operaciones administrativas."
 
 #. type: TP
-#: en/minios-session-manager.1:84
+#: en/minios-session-manager.1:94
 #, no-wrap
 msgid "B</usr/lib/minios-session-manager/>"
 msgstr "B</usr/lib/minios-session-manager/>"
 
 #. type: Plain text
-#: en/minios-session-manager.1:87
+#: en/minios-session-manager.1:97
 msgid "Installation directory containing Python modules and main application."
 msgstr ""
 "Directorio de instalación que contiene los módulos de Python y la aplicación "
 "principal."
 
 #. type: TP
-#: en/minios-session-manager.1:87
+#: en/minios-session-manager.1:97
 #, no-wrap
 msgid "B</usr/share/minios-session-manager/style.css>"
 msgstr "B</usr/share/minios-session-manager/style.css>"
 
 #. type: Plain text
-#: en/minios-session-manager.1:90
+#: en/minios-session-manager.1:100
 msgid "Application stylesheet for custom GUI styling."
 msgstr ""
 "Hoja de estilos de la aplicación para personalizar la apariencia de la GUI."
 
 #. type: TP
-#: en/minios-session-manager.1:90 en/minios-session.1:407
+#: en/minios-session-manager.1:100 en/minios-session.1:422
 #, no-wrap
 msgid "B</run/initramfs/memory/data/minios/changes/>"
 msgstr "B</run/initramfs/memory/data/minios/changes/>"
 
 #. type: Plain text
-#: en/minios-session-manager.1:93 en/minios-session.1:410
+#: en/minios-session-manager.1:103 en/minios-session.1:425
 msgid "Primary location for session data and metadata."
 msgstr "Ubicación principal para los datos y metadatos de la sesión."
 
 #. type: TP
-#: en/minios-session-manager.1:93 en/minios-session.1:410
+#: en/minios-session-manager.1:103 en/minios-session.1:425
 #, no-wrap
 msgid "B</run/initramfs/memory/data/minios/changes/session.json>"
 msgstr "B</run/initramfs/memory/data/minios/changes/session.json>"
 
 #. type: Plain text
-#: en/minios-session-manager.1:96 en/minios-session.1:413
+#: en/minios-session-manager.1:106 en/minios-session.1:428
 msgid "Session metadata in JSON format (preferred)."
 msgstr "Metadatos de sesión en formato JSON (preferido)."
 
 #. type: TP
-#: en/minios-session-manager.1:96 en/minios-session.1:413
+#: en/minios-session-manager.1:106 en/minios-session.1:428
 #, no-wrap
 msgid "B</run/initramfs/memory/data/minios/changes/session.conf>"
 msgstr "B</run/initramfs/memory/data/minios/changes/session.conf>"
 
 #. type: Plain text
-#: en/minios-session-manager.1:99 en/minios-session.1:416
+#: en/minios-session-manager.1:109 en/minios-session.1:431
 msgid "Session metadata in legacy format (fallback)."
 msgstr "Metadatos de sesión en formato heredado (alternativo)."
 
 #. type: TP
-#: en/minios-session-manager.1:99 en/minios-session.1:416
+#: en/minios-session-manager.1:109 en/minios-session.1:431
 #, no-wrap
 msgid "B</run/initramfs/memory/data/minios/changes/[0-9]+/>"
 msgstr "B</run/initramfs/memory/data/minios/changes/[0-9]+/>"
 
 #. type: Plain text
-#: en/minios-session-manager.1:102 en/minios-session.1:419
+#: en/minios-session-manager.1:112 en/minios-session.1:434
 msgid "Individual session directories containing persistent changes."
 msgstr "Directorios de sesión individuales que contienen cambios persistentes."
 
 #. type: SH
-#: en/minios-session-manager.1:102 en/minios-session.1:429
+#: en/minios-session-manager.1:112 en/minios-session.1:444
 #, no-wrap
 msgid "NOTES"
 msgstr "NOTAS"
 
 #. type: Plain text
-#: en/minios-session-manager.1:107
+#: en/minios-session-manager.1:117
 msgid ""
 "The graphical interface requires a running X11 or Wayland session. For "
 "headless or text-only systems, use B<minios-session>(1)  instead."
@@ -446,7 +467,7 @@ msgstr ""
 "lugar."
 
 #. type: Plain text
-#: en/minios-session-manager.1:109
+#: en/minios-session-manager.1:119
 msgid ""
 "The application starts without requiring root privileges and automatically "
 "requests authentication when needed."
@@ -455,34 +476,34 @@ msgstr ""
 "autenticación automáticamente cuando es necesario."
 
 #. type: SH
-#: en/minios-session-manager.1:109 en/minios-session.1:432
+#: en/minios-session-manager.1:119 en/minios-session.1:447
 #, no-wrap
 msgid "SEE ALSO"
 msgstr "VÉASE TAMBIÉN"
 
 #. type: Plain text
-#: en/minios-session-manager.1:112
+#: en/minios-session-manager.1:122
 msgid "B<minios-session>(1), B<live-config>(7)"
 msgstr "B<minios-session>(1), B<live-config>(7)"
 
 #. type: SH
-#: en/minios-session-manager.1:112 en/minios-session.1:436
+#: en/minios-session-manager.1:122 en/minios-session.1:451
 #, no-wrap
 msgid "AUTHOR"
 msgstr "AUTOR"
 
 #. type: Plain text
-#: en/minios-session-manager.1:114 en/minios-session.1:438
+#: en/minios-session-manager.1:124 en/minios-session.1:453
 msgid "crims0n E<lt>crims0n@minios.devE<gt>"
 msgstr "crims0n E<lt>crims0n@minios.devE<gt>"
 
 #. type: SH
-#: en/minios-session-manager.1:114 en/minios-session.1:438
+#: en/minios-session-manager.1:124 en/minios-session.1:453
 #, no-wrap
 msgid "REPORTING BUGS"
 msgstr "INFORME DE ERRORES"
 
 #. type: Plain text
-#: en/minios-session-manager.1:115
+#: en/minios-session-manager.1:125
 msgid "Report bugs to: https://github.com/minios-linux/minios-live/issues"
 msgstr "Informe errores en: https://github.com/minios-linux/minios-live/issues"

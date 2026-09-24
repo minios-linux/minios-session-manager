@@ -49,11 +49,21 @@ passphrases and does not store them in session metadata.
 The main window shows the available sessions and their status.
 Create, import, and cleanup actions are available from the toolbar.
 Additional actions for the selected session, such as activate, mount or
-unmount, resize, export, copy, clone, convert, open folder, and delete, are
+unmount, resize, export, copy, clone, convert, open session folder, and delete, are
 available from the context menu. Inactive, non-running Raw, DynFileFS, DynBlk,
 and VMDK sessions can be mounted read-write; encrypted sessions request their
-LUKS passphrase. Conflicting actions remain disabled until Unmount Session is
-selected. SquashFS-only Save Now and automatic-save settings are shown there
+LUKS passphrase. Multiple sessions can be mounted at once.
+Inactive, detached LUKS sessions offer Change Passphrase in the context menu;
+the current passphrase and a confirmed replacement are required. The change
+does not re-encrypt the session data or modify its other keyslots. The MOUNTED badge
+and Unmount Session action remain available after closing and reopening the
+manager; closing its window does not unmount sessions. Conflicting actions on
+the mounted session remain disabled, while other sessions can still be used.
+Open Session Folder shows the numbered backing directory; Open Mounted Folder
+shows the attached filesystem. If unmounting is busy, the mount remains
+connected and can be retried after the folder is no longer in use.
+Free Space operates on the already mounted DynFileFS, DynBlk, or VMDK storage.
+SquashFS-only Save Now and automatic-save settings are shown there
 only for SquashFS sessions.
 .PP
 Encrypted exports contain decrypted logical files rather than the encrypted

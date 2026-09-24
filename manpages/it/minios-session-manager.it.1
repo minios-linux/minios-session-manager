@@ -60,17 +60,27 @@ backend selezionato e un marker di capacità initrd MiniOS contenente
 luks\-layer\-v1. L'interfaccia grafica richiede le passphrase e non le
 memorizza nei metadati della sessione.
 .SH INTERFACCIA
-La finestra principale mostra le sessioni disponibili e il loro stato.  Le
+La finestra principale mostra le sessioni disponibili e il loro stato. Le
 azioni di creazione, importazione e pulizia sono disponibili dalla barra
-degli strumenti.  Azioni aggiuntive per la sessione selezionata, come
+degli strumenti. Azioni aggiuntive per la sessione selezionata, come
 attivare, montare o smontare, ridimensionare, esportare, copiare, clonare,
-convertire, aprire la cartella ed eliminare, sono disponibili dal menu
-contestuale. Le sessioni Raw, DynFileFS, DynBlk e VMDK inattive e non in
-esecuzione possono essere montate in lettura\-scrittura; le sessioni cifrate
-richiedono la passphrase LUKS. Le azioni in conflitto rimangono disabilitate
-finché non viene selezionato Smonta sessione. Le impostazioni Salva ora e
-salvataggio automatico solo SquashFS sono mostrate lì solo per le sessioni
-SquashFS.
+convertire, aprire la cartella della sessione e eliminare, sono disponibili
+dal menu contestuale. Le sessioni Raw inattive e non in esecuzione,
+DynFileFS, DynBlk e VMDK possono essere montate in lettura\-scrittura; per le
+sessioni cifrate viene richiesta la passphrase LUKS. È possibile montare più
+sessioni contemporaneamente. Le sessioni LUKS inattive e scollegate offrono
+Cambia Passphrase nel menu contestuale; sono richieste la passphrase attuale
+e una nuova confermata. La modifica non ri\-cifra i dati della sessione né
+modifica gli altri keyslot. Il badge MOUNTED e l'azione Smonta sessione
+rimangono disponibili dopo la chiusura e la riapertura del gestore; chiudere
+la finestra non smonta le sessioni. Le azioni in conflitto sulla sessione
+montata rimangono disabilitate, mentre le altre sessioni possono essere
+comunque utilizzate. Apri cartella sessione mostra la directory di supporto
+numerata; Apri cartella montata mostra il filesystem collegato. Se lo
+smontaggio è occupato, il mount rimane connesso e può essere riprovato dopo
+che la cartella non è più in uso. Spazio libero opera sullo storage già
+montato DynFileFS, DynBlk o VMDK. Le impostazioni Salva ora e salvataggio
+automatico solo SquashFS sono mostrate lì solo per le sessioni SquashFS.
 .PP
 Le esportazioni cifrate contengono file logici decriptati invece del backend
 cifrato. Copia crea nuove identità di filesystem e crittografia; clona

@@ -61,13 +61,24 @@ metadados da sessão.
 A janela principal mostra as sessões disponíveis e seu status. As ações de
 criar, importar e limpar estão disponíveis na barra de ferramentas. Ações
 adicionais para a sessão selecionada, como ativar, montar ou desmontar,
-redimensionar, exportar, copiar, clonar, converter, abrir pasta e excluir,
-estão disponíveis no menu de contexto. Sessões Raw, DynFileFS, DynBlk e VMDK
-inativas e não em execução podem ser montadas como leitura e escrita;
-sessões criptografadas solicitam a senha LUKS. Ações conflitantes permanecem
-desabilitadas até que Desmontar Sessão seja selecionado. As opções Salvar
-Agora e configurações de salvamento automático apenas para SquashFS são
-exibidas ali apenas para sessões SquashFS.
+redimensionar, exportar, copiar, clonar, converter, abrir a pasta da sessão
+e excluir, estão disponíveis no menu de contexto. Sessões Raw, DynFileFS,
+DynBlk e VMDK inativas e não em execução podem ser montadas como leitura e
+escrita; sessões criptografadas solicitam sua senha LUKS. Várias sessões
+podem ser montadas ao mesmo tempo. Sessões LUKS inativas e desanexadas
+oferecem Alterar Senha no menu de contexto; a senha atual e uma nova senha
+confirmada são necessárias. A alteração não recriptografa os dados da sessão
+nem modifica suas outras keyslots. O selo MONTADO e a ação Desmontar Sessão
+permanecem disponíveis após fechar e reabrir o gerenciador; fechar sua
+janela não desmonta as sessões. Ações conflitantes na sessão montada
+permanecem desabilitadas, enquanto outras sessões ainda podem ser
+usadas. Abrir Pasta da Sessão mostra o diretório de apoio numerado; Abrir
+Pasta Montada mostra o sistema de arquivos anexado. Se o processo de
+desmontar estiver ocupado, a montagem permanece conectada e pode ser tentada
+novamente depois que a pasta não estiver mais em uso. Espaço Livre opera no
+armazenamento DynFileFS, DynBlk ou VMDK já montado. As configurações Salvar
+Agora e salvar automático somente para SquashFS são mostradas ali apenas
+para sessões SquashFS.
 .PP
 Exportações criptografadas contêm arquivos lógicos descriptografados em vez
 do backend criptografado. Copiar cria identidades novas de sistema de

@@ -14,6 +14,7 @@ import errno
 import fcntl
 import stat
 import subprocess
+import threading
 import pytest
 import tempfile
 import shutil
@@ -368,7 +369,80 @@ class TestSafeUnmount:
 
 
 class TestPersistentMount:
-    def test_mount_session_holds_lock_for_mount_lifetime(self, temp_sessions_dir):
+    @pytest.mark.parametrize('session_name,layer,expected', [
+        ('2', 'filesystem', 'minios-session-2-filesystem-'),
+        ('2', 'backend', 'minios-session-2-backend-'),
+        ('.tmp_conversion', 'filesystem',
+         'minios-session-staging-filesystem-'),
+    ])
+    def test_mount_directory_naming_covers_sessions_and_staging(
+            self, tmp_path, session_name, layer, expected):
+        from minios_session import SessionManager
+
+        with patch('minios_session.tempfile.mkdtemp',
+                   return_value='/tmp/created') as create:
+            assert SessionManager._make_session_mount_point(
+                str(tmp_path / session_name), layer) == '/tmp/created'
+        create.assert_called_once_with(prefix=expected)
+
+    def test_list_json_exposes_mount_status_for_reopened_gui(self):
+        from minios_session import format_sessions_json
+
+        session = {
+            'id': '2', 'mode': 'raw', 'version': '6.0',
+            'edition': 'standard', 'union': 'overlayfs',
+            'size': 123, 'modified': None, 'path': '/mock/2',
+            'is_default': False, 'is_mounted': True,
+            'mount_point': '/mounted/changes',
+        }
+        result = json.loads(format_sessions_json([session]))
+        assert result[0]['is_mounted'] is True
+        assert result[0]['mount_point'] == '/mounted/changes'
+
+    def test_list_keeps_mounted_folder_path_after_owner_exits(self, tmp_path):
+        from minios_session import SessionManager
+
+        session_dir = tmp_path / '2'
+        session_dir.mkdir()
+        root = tmp_path / 'mounted'
+        (root / 'changes').mkdir(parents=True)
+        (session_dir / '.minios-session-mount').write_text(str(root) + '\n')
+        manager = SessionManager(custom_sessions_dir=str(tmp_path))
+        manager._read_sessions_metadata = MagicMock(return_value={
+            'sessions': {'2': {'mode': 'raw'}}})
+        manager._get_session_size_info = MagicMock(return_value={
+            'used_size': 0, 'display': '0B'})
+
+        with patch('minios_session.os.path.ismount',
+                   side_effect=lambda path: path == str(root)):
+            session = next(item for item in manager.list_sessions(
+                include_running_check=False) if item['id'] == '2')
+
+        assert session['is_mounted'] is True
+        assert session['mount_point'] == str(root / 'changes')
+
+    def test_orphaned_mounted_session_cannot_be_modified(self, tmp_path):
+        from minios_session import SessionManager
+
+        session_dir = tmp_path / '2'
+        session_dir.mkdir()
+        mount_root = tmp_path / 'mounted'
+        mount_root.mkdir()
+        (session_dir / '.minios-session-mount').write_text(
+            str(mount_root) + '\n')
+        manager = SessionManager(custom_sessions_dir=str(tmp_path))
+
+        with patch('minios_session.os.path.ismount',
+                   side_effect=lambda path: path == str(mount_root)):
+            activated, activation_error = manager.activate_session('2')
+            deleted, deletion_error = manager.delete_session('2')
+
+        assert not activated and 'mounted or busy' in activation_error
+        assert not deleted and 'mounted or busy' in deletion_error
+        assert session_dir.is_dir()
+
+    def test_mount_session_releases_global_lock_but_holds_session_lease(
+            self, temp_sessions_dir):
         from minios_session import SessionManager
 
         os.mkdir(os.path.join(temp_sessions_dir, '2'))
@@ -384,6 +458,14 @@ class TestPersistentMount:
                 events.append('lock-exit')
 
         @contextlib.contextmanager
+        def lease(session_id):
+            events.append(('lease-enter', session_id))
+            try:
+                yield os.path.join(temp_sessions_dir, session_id)
+            finally:
+                events.append(('lease-exit', session_id))
+
+        @contextlib.contextmanager
         def mounted(*args, **kwargs):
             events.append(('mount', args, kwargs))
             try:
@@ -392,6 +474,7 @@ class TestPersistentMount:
                 events.append('unmount')
 
         manager._mutation_lock = lock
+        manager._session_lease = lease
         manager._read_sessions_metadata = lambda: {
             'default': '1', 'running': '3',
             'sessions': {'2': {'mode': 'raw', 'encryption': 'luks'}},
@@ -400,16 +483,245 @@ class TestPersistentMount:
 
         with manager.mount_session('2', password=b'secret') as mount_point:
             assert mount_point == '/mnt/session/changes'
-            assert events[0] == 'lock-enter'
+            assert events[:3] == [
+                ('lease-enter', '2'), 'lock-enter', 'lock-exit']
             assert events[-1][0] == 'mount'
 
-        assert events[-2:] == ['unmount', 'lock-exit']
-        _name, args, kwargs = events[1]
+        assert events[-2:] == ['unmount', ('lease-exit', '2')]
+        _name, args, kwargs = events[3]
         assert args == (os.path.join(temp_sessions_dir, '2'), 'raw')
-        assert kwargs == {
-            'password': b'secret', 'encryption': 'luks',
-            'writable': True, 'strict_cleanup': True,
-        }
+        assert kwargs['password'] == b'secret'
+        assert kwargs['encryption'] == 'luks'
+        assert kwargs['writable'] is True
+        assert kwargs['strict_cleanup'] is True
+        assert kwargs['mount_state']['session_id'] == '2'
+
+    def test_session_lease_blocks_only_the_same_session(self, temp_sessions_dir):
+        from minios_session import SessionBusyError, SessionManager
+
+        os.mkdir(os.path.join(temp_sessions_dir, '2'))
+        os.mkdir(os.path.join(temp_sessions_dir, '3'))
+        first = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        second = SessionManager(custom_sessions_dir=temp_sessions_dir)
+
+        with first._session_lease('2'):
+            with pytest.raises(SessionBusyError, match='mounted or busy'):
+                with second._session_lease('2'):
+                    pass
+            with second._session_lease('3') as path:
+                assert path == os.path.join(temp_sessions_dir, '3')
+
+    def test_activation_cannot_target_mounted_session(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        os.mkdir(os.path.join(temp_sessions_dir, '2'))
+        mount_owner = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        command = SessionManager(custom_sessions_dir=temp_sessions_dir)
+
+        with mount_owner._session_lease('2'):
+            success, message = command.activate_session('2')
+
+        assert not success
+        assert 'mounted or busy' in message
+
+    def test_reserved_destination_is_leased_until_publication(
+            self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        owner = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        command = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        session_id, path, lease = owner._reserve_session(acquire_lease=True)
+        try:
+            success, message = command.delete_session(session_id)
+            assert not success
+            assert 'mounted or busy' in message
+            assert os.path.isdir(path)
+        finally:
+            lease.close()
+
+    def test_detached_mount_control_survives_client_disconnect(
+            self, temp_sessions_dir):
+        import socket
+        import threading
+        from minios_session import (_mount_socket_path, _send_mount_control,
+                                    _serve_detached_mount, SessionManager)
+
+        session_path = os.path.join(temp_sessions_dir, '2')
+        os.mkdir(session_path)
+        socket_path = os.path.join(temp_sessions_dir, 'control.sock')
+        manager = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        manager.reclaim_mounted_session = MagicMock(return_value=(
+            True, 'reclaimed', {'freed_bytes': 42}))
+        manager._safe_unmount = MagicMock(return_value=True)
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+            listener.bind(socket_path)
+            listener.listen(4)
+            def serve():
+                client = _serve_detached_mount(
+                    manager, {'session_id': '2',
+                              'filesystem_mount': '/mounted'}, listener)
+                with client:
+                    client.sendall(b'{"success":true}\n')
+
+            worker = threading.Thread(
+                target=serve)
+            worker.start()
+            try:
+                with patch('minios_session._mount_socket_path',
+                           return_value=socket_path):
+                    # Simulate the first GUI exiting without an unmount request.
+                    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                        client.connect(socket_path)
+                    reply = _send_mount_control(manager, '2', 'reclaim', True)
+                    assert reply['success'] and reply['reclaim']['freed_bytes'] == 42
+                    assert _send_mount_control(manager, '2', 'unmount')['success']
+            finally:
+                worker.join(timeout=3)
+                assert not worker.is_alive()
+
+    def test_busy_unmount_keeps_owner_available_for_retry(self, temp_sessions_dir):
+        import socket
+        from minios_session import (_send_mount_control, _serve_detached_mount,
+                                    SessionManager)
+
+        os.mkdir(os.path.join(temp_sessions_dir, '2'))
+        socket_path = os.path.join(temp_sessions_dir, 'control.sock')
+        manager = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        manager._safe_unmount = MagicMock(side_effect=(False, True))
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+            listener.bind(socket_path)
+            listener.listen(4)
+            finished = []
+
+            def serve():
+                client = _serve_detached_mount(
+                    manager, {'filesystem_mount': '/mounted'}, listener)
+                finished.append(True)
+                with client:
+                    client.sendall(b'{"success":true}\n')
+
+            worker = threading.Thread(target=serve)
+            worker.start()
+            try:
+                with patch('minios_session._mount_socket_path',
+                           return_value=socket_path):
+                    failed = _send_mount_control(manager, '2', 'unmount')
+                    assert failed['success'] is False
+                    assert 'backing storage was left attached' in failed['message']
+                    assert not finished
+                    assert _send_mount_control(manager, '2', 'unmount')['success']
+                manager._safe_unmount.assert_has_calls([
+                    call('/mounted', use_lazy=False),
+                    call('/mounted', use_lazy=False)])
+            finally:
+                worker.join(timeout=3)
+                assert not worker.is_alive()
+
+    @pytest.mark.parametrize('failure', ['send', 'read'])
+    def test_detached_mount_survives_control_connection_errors(self, failure):
+        from minios_session import _serve_detached_mount
+
+        manager = MagicMock()
+        manager.reclaim_mounted_session.return_value = (True, 'reclaimed', {})
+        manager._safe_unmount.return_value = True
+        disconnected = MagicMock()
+        stream = disconnected.makefile.return_value.__enter__.return_value
+        stream.readline.return_value = '{"command":"reclaim"}\n'
+        if failure == 'send':
+            disconnected.sendall.side_effect = BrokenPipeError()
+        else:
+            stream.readline.side_effect = TimeoutError()
+        unmount = MagicMock()
+        unmount.makefile.return_value.__enter__.return_value.readline.return_value = (
+            '{"command":"unmount"}\n')
+        listener = MagicMock()
+        listener.accept.side_effect = [(disconnected, None), (unmount, None)]
+
+        assert _serve_detached_mount(
+            manager, {'filesystem_mount': '/mounted'}, listener) is unmount
+        disconnected.close.assert_called_once()
+        unmount.close.assert_not_called()
+        if failure == 'send':
+            manager.reclaim_mounted_session.assert_called_once_with(
+                {'filesystem_mount': '/mounted'}, compact=False)
+
+    def test_reopened_gui_recognizes_mounted_session(self):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        children = [MagicMock() for _index in range(17)]
+        gui.context_menu = MagicMock()
+        gui.context_menu.get_children.return_value = children
+        gui.mount_item = children[10]
+        gui.change_passphrase_item = children[11]
+        gui.open_mounted_folder_item = children[13]
+        gui.reclaim_item = children[16]
+        gui.sessions_writable = True
+        gui._session_mounts = {}
+        gui._sessions_by_id = {'2': {
+            'is_mounted': True, 'mount_point': '/mounted/changes'}}
+        row = SimpleNamespace(
+            session_id='2', mode='dynblk', configuration_supported=True,
+            is_active=False, is_running=False)
+
+        gui._prepare_context_menu(row)
+
+        gui.mount_item.set_label.assert_called_with('_Unmount Session')
+        gui.mount_item.set_sensitive.assert_called_with(True)
+        children[0].set_sensitive.assert_called_with(False)
+        children[15].set_sensitive.assert_called_with(False)
+        gui.open_mounted_folder_item.set_visible.assert_called_with(True)
+        gui.open_mounted_folder_item.set_sensitive.assert_called_with(True)
+
+        gui.selected_session_id = '2'
+        gui._stop_session_mount = MagicMock()
+        gui._on_context_mount(None)
+        gui._stop_session_mount.assert_called_once_with('2')
+
+    def test_gui_opens_session_and_mounted_folders_separately(self, tmp_path):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        session_path = tmp_path / '2'
+        mounted_path = tmp_path / 'mounted' / 'changes'
+        session_path.mkdir()
+        mounted_path.mkdir(parents=True)
+        gui.selected_session_id = '2'
+        gui._session_mounts = {}
+        gui._sessions_by_id = {'2': {
+            'path': str(session_path), 'is_mounted': True,
+            'mount_point': str(mounted_path)}}
+        gui._show_error = MagicMock()
+
+        with patch('minios_session_manager.subprocess.Popen') as opener:
+            gui._on_context_open_folder(None)
+            gui._on_context_open_mounted_folder(None)
+            assert opener.call_args_list == [
+                call(['xdg-open', str(session_path)]),
+                call(['xdg-open', str(mounted_path)])]
+
+            opener.reset_mock()
+            gui._sessions_by_id['2']['is_mounted'] = False
+            gui._on_context_open_mounted_folder(None)
+            opener.assert_not_called()
+            gui._show_error.assert_called_once_with(
+                'Mounted session folder not found')
+
+    def test_closing_gui_does_not_unmount_persistent_session(self):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        gui._cli_process_lock = threading.Lock()
+        gui._cli_process = None
+        mount_process = MagicMock()
+        gui._session_mounts = {'2': {'process': mount_process}}
+
+        with patch('minios_session_manager.Gtk.main_quit'):
+            gui._on_window_destroy(None)
+
+        assert gui._closing is True
+        mount_process.stdin.close.assert_not_called()
+        mount_process.terminate.assert_not_called()
 
     @pytest.mark.parametrize('metadata, message', [
         ({'default': '2', 'sessions': {'2': {'mode': 'raw'}}}, 'active'),
@@ -432,6 +744,44 @@ class TestPersistentMount:
                 pass
         manager._mount_session_read.assert_not_called()
 
+    @pytest.mark.parametrize('mode, container', [
+        ('raw', 'changes.img'), ('dynfilefs', 'changes.dat')])
+    def test_encrypted_mount_marker_records_filesystem_root(
+            self, tmp_path, mode, container):
+        from minios_session import SessionManager
+
+        session = tmp_path / '2'
+        session.mkdir()
+        (session / container).touch()
+        root = tmp_path / 'luks'
+        (root / 'changes').mkdir(parents=True)
+        manager = SessionManager(custom_sessions_dir=str(tmp_path))
+        manager._read_sessions_metadata = MagicMock(return_value={
+            'sessions': {'2': {'mode': mode, 'encryption': 'luks'}}})
+        manager._session_configuration_supported = MagicMock(return_value=True)
+        manager._wait_for_mount = MagicMock(return_value=True)
+        manager._safe_unmount = MagicMock(return_value=True)
+        manager._cleanup_process = MagicMock()
+        luks = MagicMock()
+        luks.__enter__.return_value = str(root)
+        luks.__exit__.return_value = False
+        manager._mount_luks = MagicMock(return_value=luks)
+        manager._safe_rmtree = MagicMock(return_value=True)
+
+        with patch('minios_session.subprocess.Popen'), \
+                patch('minios_session.tempfile.mkdtemp',
+                      return_value=str(tmp_path / 'dynfilefs')) as create, \
+                patch('minios_session.os.path.ismount',
+                      side_effect=lambda path: path == str(root)):
+            with manager.mount_session('2', password=b'secret') as mounted:
+                assert mounted == str(root / 'changes')
+                assert (session / '.minios-session-mount').read_text() == str(root) + '\n'
+                assert manager._detached_mount_exists(str(session))
+        if mode == 'dynfilefs':
+            create.assert_called_once_with(prefix='minios-session-2-backend-')
+        manager._mount_luks.assert_called_once()
+        assert manager._mount_luks.call_args[1]['session_path'] == str(session)
+
     def test_existing_raw_mount_is_writable_and_never_formats(self,
                                                                temp_sessions_dir):
         from minios_session import SessionManager
@@ -443,7 +793,8 @@ class TestPersistentMount:
         manager._safe_unmount = MagicMock(return_value=True)
         manager._safe_rmtree = MagicMock(return_value=True)
 
-        with patch('minios_session.tempfile.mkdtemp', return_value='/tmp/raw-mount'), \
+        with patch('minios_session.tempfile.mkdtemp',
+                   return_value='/tmp/raw-mount') as create, \
                 patch('minios_session.subprocess.run') as run:
             run.return_value = MagicMock(returncode=0)
             with manager._mount_session_read(
@@ -455,6 +806,7 @@ class TestPersistentMount:
         assert ['mount', '-o', 'loop', os.path.join(session_path, 'changes.img'),
                 '/tmp/raw-mount'] in commands
         assert not any(command and command[0] == 'mke2fs' for command in commands)
+        create.assert_called_once_with(prefix='minios-session-2-filesystem-')
         manager._safe_unmount.assert_called_once_with(
             '/tmp/raw-mount', use_lazy=False)
 
@@ -472,7 +824,7 @@ class TestPersistentMount:
         process = MagicMock()
 
         with patch('minios_session.tempfile.mkdtemp',
-                   side_effect=['/tmp/dyn-mount', '/tmp/inner-mount']), \
+                   side_effect=['/tmp/dyn-mount', '/tmp/inner-mount']) as create, \
                 patch('minios_session.subprocess.Popen', return_value=process), \
                 patch('minios_session.subprocess.run',
                       return_value=MagicMock(returncode=0)):
@@ -483,6 +835,8 @@ class TestPersistentMount:
                     pass
 
         manager._cleanup_process.assert_not_called()
+        assert [item[1]['prefix'] for item in create.call_args_list] == [
+            'minios-session-2-backend-', 'minios-session-2-filesystem-']
 
     def test_mount_cli_json_password_line_and_lifetime_stdin(self, monkeypatch,
                                                               capsys):
@@ -510,7 +864,10 @@ class TestPersistentMount:
 
         assert exit_info.value.code == 0
         assert stdin.buffer.read() == b''
-        manager.mount_session.assert_called_once_with('2', password=b'secret')
+        manager.mount_session.assert_called_once()
+        assert manager.mount_session.call_args[0] == ('2',)
+        assert manager.mount_session.call_args[1]['password'] == b'secret'
+        assert manager.mount_session.call_args[1]['mount_state'] == {}
         result = json.loads(capsys.readouterr().out)
         assert result == {
             'success': True,
@@ -518,6 +875,30 @@ class TestPersistentMount:
             'mount_point': '/mnt/session',
             'session_id': '2',
         }
+
+    def test_mount_cli_empty_password_returns_json_error(self, monkeypatch, capsys):
+        import minios_session
+
+        manager = MagicMock()
+        manager.sessions_dir = '/sessions'
+        manager._validate_session_id.return_value = '2'
+        manager._read_sessions_metadata.return_value = {
+            'sessions': {'2': {'mode': 'raw', 'encryption': 'luks'}}}
+        monkeypatch.setattr(sys, 'stdin', SimpleNamespace(buffer=io.BytesIO(b'\n')))
+        monkeypatch.setattr(sys, 'argv', [
+            'minios-session', 'mount', '2', '--password-stdin', '--json'])
+        with patch('minios_session.os.geteuid', return_value=0), \
+                patch('minios_session.luks_runtime_available', return_value=True), \
+                patch('minios_session.SessionManager', return_value=manager), \
+                pytest.raises(SystemExit) as exit_info:
+            minios_session.main()
+
+        assert exit_info.value.code == 1
+        result = json.loads(capsys.readouterr().out)
+        assert result['success'] is False
+        assert result['message'] == 'LUKS passphrase must not be empty.'
+        assert result['mount_point'] is None
+        manager.mount_session.assert_not_called()
 
     def test_mount_cli_ignores_repeated_interrupt_during_cleanup(self,
                                                                   monkeypatch):
@@ -561,13 +942,36 @@ class TestPersistentMount:
             for signal_number in protected_signals
         ]
 
+    def test_mount_control_routes_reclaim_without_ending_mount(self,
+                                                                monkeypatch,
+                                                                capsys):
+        import minios_session
+
+        manager = MagicMock()
+        manager.reclaim_mounted_session.return_value = (
+            True, 'reclaimed', {'complete': True})
+        request = json.dumps({
+            'command': 'reclaim', 'request_id': 7, 'compact': True,
+        }).encode() + b'\n'
+        monkeypatch.setattr(
+            sys, 'stdin', SimpleNamespace(buffer=io.BytesIO(request)))
+
+        minios_session._serve_mount_control(manager, {'session_id': '2'})
+
+        manager.reclaim_mounted_session.assert_called_once_with(
+            {'session_id': '2'}, compact=True)
+        assert json.loads(capsys.readouterr().out) == {
+            'type': 'reclaim', 'request_id': 7, 'success': True,
+            'message': 'reclaimed', 'reclaim': {'complete': True},
+        }
+
     def test_completion_offers_mount_sessions_and_capability_password(self):
         completion = os.path.join(
             os.path.dirname(__file__), '..', 'completion', 'minios-session')
         with open(completion, encoding='utf-8') as stream:
             contents = stream.read()
-        assert 'save mount create' in contents
-        assert 'activate|save|mount|delete|clone|reclaim)' in contents
+        assert 'save mount change-passphrase create' in contents
+        assert 'activate|save|mount|change-passphrase|delete|clone|reclaim)' in contents
         assert 'cmd_opts="--help --json --sessions-dir${luks_opt}"' in contents
 
 
@@ -1032,13 +1436,16 @@ class TestAuditRegressions:
         from minios_session_manager import SessionManagerGUI
 
         gui = object.__new__(SessionManagerGUI)
-        children = [MagicMock() for _index in range(15)]
+        children = [MagicMock() for _index in range(17)]
         gui.context_menu = MagicMock()
         gui.context_menu.get_children.return_value = children
         gui.mount_item = children[10]
-        gui.reclaim_item = children[14]
+        gui.change_passphrase_item = children[11]
+        gui.open_mounted_folder_item = children[13]
+        gui.reclaim_item = children[16]
         gui.sessions_writable = True
         gui._session_mounts = {}
+        gui._sessions_by_id = {}
         row = SimpleNamespace(
             session_id='2', mode='dynblk', configuration_supported=True,
             is_active=False, is_running=False)
@@ -1055,7 +1462,117 @@ class TestAuditRegressions:
         gui.mount_item.set_sensitive.assert_called_with(True)
         children[0].set_sensitive.assert_called_with(False)
         children[6].set_sensitive.assert_called_with(False)
-        children[13].set_sensitive.assert_called_with(False)
+        children[15].set_sensitive.assert_called_with(False)
+
+    def test_gui_mount_does_not_block_a_different_session(self):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        children = [MagicMock() for _index in range(17)]
+        gui.context_menu = MagicMock()
+        gui.context_menu.get_children.return_value = children
+        gui.mount_item = children[10]
+        gui.change_passphrase_item = children[11]
+        gui.open_mounted_folder_item = children[13]
+        gui.reclaim_item = children[16]
+        gui.sessions_writable = True
+        gui._session_mounts = {'2': {
+            'ready': True, 'stopping': False, 'reclaiming': False}}
+        gui._sessions_by_id = {}
+        row = SimpleNamespace(
+            session_id='3', mode='dynblk', configuration_supported=True,
+            is_active=False, is_running=False)
+
+        gui._prepare_context_menu(row)
+
+        gui.mount_item.set_label.assert_called_once_with('_Mount Session')
+        gui.mount_item.set_sensitive.assert_called_once_with(True)
+        gui.reclaim_item.set_sensitive.assert_called_once_with(True)
+        children[0].set_sensitive.assert_called_once_with(True)
+        children[6].set_sensitive.assert_called_once_with(True)
+        children[15].set_sensitive.assert_called_once_with(True)
+        gui.open_mounted_folder_item.set_visible.assert_called_once_with(False)
+
+    def test_gui_change_passphrase_is_limited_to_detached_luks_session(self):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        children = [MagicMock() for _index in range(17)]
+        gui.context_menu = MagicMock()
+        gui.context_menu.get_children.return_value = children
+        gui.mount_item = children[10]
+        gui.change_passphrase_item = children[11]
+        gui.open_mounted_folder_item = children[13]
+        gui.reclaim_item = children[16]
+        gui.sessions_writable = True
+        gui.selected_session_id = '2'
+        gui._session_mounts = {}
+        gui._sessions_by_id = {'2': {
+            'mode': 'dynblk', 'encryption': 'luks',
+            'is_running': False, 'is_default': False}}
+        gui._prompt_luks_change_passphrase = MagicMock(
+            return_value='old\nnew\nnew\n')
+        gui._start_cli_task = MagicMock()
+        gui._show_loading = MagicMock()
+        row = SimpleNamespace(
+            session_id='2', mode='dynblk', configuration_supported=True,
+            is_active=False, is_running=False)
+
+        gui._prepare_context_menu(row)
+        gui.change_passphrase_item.set_visible.assert_called_with(True)
+        gui.change_passphrase_item.set_sensitive.assert_called_with(True)
+        gui._on_context_change_passphrase(None)
+        assert gui._start_cli_task.call_args[0][0] == [
+            'change-passphrase', '2', '--json', '--password-stdin']
+        assert gui._start_cli_task.call_args[0][2] == 'old\nnew\nnew\n'
+
+        gui._start_cli_task.reset_mock()
+        gui._session_mounts['2'] = {'ready': True}
+        gui._prepare_context_menu(row)
+        gui.change_passphrase_item.set_sensitive.assert_called_with(False)
+        gui._on_context_change_passphrase(None)
+        gui._start_cli_task.assert_not_called()
+
+    def test_gui_change_passphrase_reports_backend_failure(self):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        gui._show_loading = MagicMock()
+        gui._show_error = MagicMock()
+        gui._show_info = MagicMock()
+        gui._on_change_passphrase_complete(
+            False, '{"success":false,"message":"incorrect old key"}', '')
+        gui._show_error.assert_called_once_with('incorrect old key')
+        gui._show_info.assert_not_called()
+
+    def test_gui_change_passphrase_dialog_confirms_new_key(self):
+        import minios_session_manager as module
+
+        gui = object.__new__(module.SessionManagerGUI)
+        gui.window = MagicMock()
+        gui._show_error = MagicMock()
+        dialog = MagicMock()
+        dialog.run.return_value = module.Gtk.ResponseType.OK
+        entries = [MagicMock(), MagicMock(), MagicMock()]
+        for entry, secret in zip(entries, ('old', 'new', 'new')):
+            entry.get_text.return_value = secret
+
+        with patch('minios_session_manager.Gtk.Dialog', return_value=dialog), \
+                patch('minios_session_manager.Gtk.Entry', side_effect=entries), \
+                patch('minios_session_manager.Gtk.Label'), \
+                patch('minios_session_manager._style_dialog_affirmative'):
+            assert gui._prompt_luks_change_passphrase() == 'old\nnew\nnew\n'
+        for entry in entries:
+            entry.set_visibility.assert_called_once_with(False)
+        gui._show_error.assert_not_called()
+
+        entries[2].get_text.return_value = 'different'
+        with patch('minios_session_manager.Gtk.Dialog', return_value=dialog), \
+                patch('minios_session_manager.Gtk.Entry', side_effect=entries), \
+                patch('minios_session_manager.Gtk.Label'), \
+                patch('minios_session_manager._style_dialog_affirmative'):
+            assert gui._prompt_luks_change_passphrase() is None
+        gui._show_error.assert_called_once()
 
     @pytest.mark.parametrize('mode', ('dynfilefs', 'dynblk', 'vmdk', 'raw'))
     def test_gui_mount_action_starts_supported_detached_session(self, mode):
@@ -1073,7 +1590,7 @@ class TestAuditRegressions:
         gui._on_context_mount(None)
 
         gui._start_session_mount.assert_called_once_with(
-            '2', ['mount', '2', '--json'], None)
+            '2', ['mount', '2', '--json', '--persistent'], None)
 
     def test_gui_unmount_action_closes_existing_mount_lifetime(self):
         from minios_session_manager import SessionManagerGUI
@@ -1086,6 +1603,164 @@ class TestAuditRegressions:
         gui._on_context_mount(None)
 
         gui._stop_session_mount.assert_called_once_with('2')
+
+    def test_gui_mount_badge_uses_shared_accent_style(self):
+        import minios_session_manager as module
+
+        gui = object.__new__(module.SessionManagerGUI)
+        row = SimpleNamespace(
+            status_box=MagicMock(), mount_badge=None, is_mounted=False)
+        badge = MagicMock()
+
+        with patch('minios_session_manager.Gtk.Label', return_value=badge):
+            gui._set_session_row_mounted(row, True)
+
+        badge.get_style_context.return_value.add_class.assert_has_calls([
+            call('badge'), call('badge-accent')])
+        assert 'MOUNTED' in badge.set_markup.call_args[0][0]
+        row.status_box.pack_start.assert_called_once_with(
+            badge, False, False, 0)
+        badge.show.assert_called_once_with()
+        assert row.mount_badge is badge
+        assert row.is_mounted is True
+
+        gui._set_session_row_mounted(row, False)
+
+        row.status_box.remove.assert_called_once_with(badge)
+        assert row.mount_badge is None
+        assert row.is_mounted is False
+
+    def test_gui_mount_lifecycle_updates_visible_badge(self):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        process = MagicMock()
+        gui._session_mounts = {'2': {
+            'process': process, 'generation': 3, 'mount_point': None,
+            'stopping': False, 'ready': False, 'message': None,
+        }}
+        gui._closing = False
+        gui._update_session_mount_badge = MagicMock()
+        gui._show_loading = MagicMock()
+        gui.refresh_session_list = MagicMock()
+        gui._show_error = MagicMock()
+
+        with patch('minios_session_manager.subprocess.Popen'):
+            gui._on_session_mount_ready('2', 3, '/mnt/session')
+        gui._update_session_mount_badge.assert_called_once_with('2', True)
+
+        gui._update_session_mount_badge.reset_mock()
+        gui._on_session_mount_exited('2', 3, 0, '')
+        gui._update_session_mount_badge.assert_called_once_with('2', False)
+
+    def test_gui_normal_unmount_does_not_report_unexpected_disconnect(self):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        state = {'generation': 3, 'ready': True, 'stopping': False}
+        gui._session_mounts = {'2': state}
+        gui._closing = False
+        gui._show_loading = MagicMock()
+        gui._show_error = MagicMock()
+        gui._update_session_mount_badge = MagicMock()
+        gui.refresh_session_list = MagicMock()
+        gui._start_cli_task = MagicMock()
+
+        gui._stop_session_mount('2')
+        assert state['stopping'] is True
+        args, _kwargs = gui._start_cli_task.call_args
+        assert args[0] == ['mount-control', '2', 'unmount', '--json']
+        args[1](True, '{"success":true}', '')
+        assert state['stopping'] is True
+
+        gui._on_session_mount_exited('2', 3, 0, '')
+        gui._show_error.assert_not_called()
+        assert '2' not in gui._session_mounts
+
+    @pytest.mark.parametrize('owner_exits_first', (False, True))
+    def test_gui_failed_unmount_shows_one_error(self, owner_exits_first):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        state = {'generation': 3, 'ready': True, 'stopping': False}
+        gui._session_mounts = {'2': state}
+        gui._closing = False
+        gui._show_loading = MagicMock()
+        gui._show_error = MagicMock()
+        gui._update_session_mount_badge = MagicMock()
+        gui.refresh_session_list = MagicMock()
+        gui._start_cli_task = MagicMock()
+        gui._cli_error_text = lambda _output: 'DynBlk device was left attached'
+
+        gui._stop_session_mount('2')
+        finished = gui._start_cli_task.call_args[0][1]
+        if owner_exits_first:
+            gui._on_session_mount_exited('2', 3, 1, 'DynBlk cleanup failed')
+        finished(False, '{"success":false}', '')
+        if not owner_exits_first:
+            gui._on_session_mount_exited('2', 3, 1, 'DynBlk cleanup failed')
+
+        gui._show_error.assert_called_once()
+        assert state['unmount_error_reported'] is True
+
+    def test_gui_failed_unmount_retry_can_report_a_new_error(self):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        state = {'stopping': False}
+        gui._session_mounts = {'2': state}
+        gui._show_loading = MagicMock()
+        gui._show_error = MagicMock()
+        gui.refresh_session_list = MagicMock()
+        gui._start_cli_task = MagicMock()
+        gui._cli_error_text = lambda _output: 'Cannot contact mount owner'
+
+        for attempt in range(2):
+            gui._stop_session_mount('2')
+            gui._start_cli_task.call_args[0][1](False, '', 'connection failed')
+            assert state['stopping'] is False
+            assert gui._show_error.call_count == attempt + 1
+
+    def test_gui_requests_reclaim_through_mounted_session_process(self):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        process = MagicMock()
+        gui._session_mounts = {'2': {
+            'process': process, 'generation': 3, 'mount_point': '/mnt/session',
+            'stopping': False, 'ready': True, 'message': None,
+            'reclaiming': False, 'reclaim_request_id': None,
+        }}
+        gui._mount_request_generation = 0
+        gui._show_loading = MagicMock()
+        gui._start_cli_task = MagicMock()
+
+        gui._request_mounted_reclaim('2', True)
+
+        assert gui._start_cli_task.call_args[0][0] == [
+            'mount-control', '2', 'reclaim', '--json', '--compact']
+        process.stdin.write.assert_not_called()
+        assert gui._session_mounts['2']['reclaiming'] is True
+        gui._show_loading.assert_called_once_with(
+            True, 'Reclaiming mounted session space...')
+
+    def test_gui_footer_remains_available_while_session_is_mounted(self):
+        from minios_session_manager import SessionManagerGUI
+
+        gui = object.__new__(SessionManagerGUI)
+        gui._loading_visible = False
+        gui._session_mounts = {'2': {'ready': True}}
+        gui.sessions_writable = True
+        gui._filesystem_info = {'filesystem': {'type': 'ext4'}}
+        gui.create_btn = MagicMock()
+        gui.import_btn = MagicMock()
+        gui.cleanup_btn = MagicMock()
+
+        gui._update_footer_sensitivity()
+
+        gui.create_btn.set_sensitive.assert_called_once_with(True)
+        gui.import_btn.set_sensitive.assert_called_once_with(True)
+        gui.cleanup_btn.set_sensitive.assert_called_once_with(True)
 
     def test_loading_overlay_can_be_shown_again_after_initial_hide(self):
         from minios_session_manager import SessionManagerGUI
@@ -2041,6 +2716,112 @@ class TestSquashfsSave:
 
 
 class TestLuksLayer:
+    def test_change_passphrase_cli_reads_three_stdin_lines(self,
+                                                         monkeypatch, capsys):
+        import minios_session
+
+        manager = MagicMock()
+        manager.sessions_dir = '/sessions'
+        manager.change_session_passphrase.return_value = (True, 'changed')
+        monkeypatch.setattr(sys, 'stdin', SimpleNamespace(
+            buffer=io.BytesIO(b'old-secret\nnew-secret\nnew-secret\n')))
+        monkeypatch.setattr(sys, 'argv', [
+            'minios-session', 'change-passphrase', '2',
+            '--password-stdin', '--json'])
+        with patch('minios_session.os.geteuid', return_value=0), \
+                patch('minios_session.luks_runtime_available', return_value=True), \
+                patch('minios_session.SessionManager', return_value=manager), \
+                pytest.raises(SystemExit) as exit_info:
+            minios_session.main()
+
+        assert exit_info.value.code == 0
+        assert json.loads(capsys.readouterr().out) == {
+            'success': True, 'message': 'changed'}
+        manager.change_session_passphrase.assert_called_once_with(
+            '2', b'old-secret', b'new-secret')
+
+    @pytest.mark.parametrize('mode', ('raw', 'dynfilefs', 'dynblk', 'vmdk'))
+    def test_change_passphrase_uses_anonymous_fd_and_existing_backend(
+            self, temp_sessions_dir, mode):
+        from minios_session import SessionManager
+
+        os.mkdir(os.path.join(temp_sessions_dir, '2'))
+        manager = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        manager._read_sessions_metadata = MagicMock(return_value={
+            'sessions': {'2': {'mode': mode, 'encryption': 'luks'}}})
+        manager._check_luks_available = MagicMock(return_value=(True, None))
+
+        @contextlib.contextmanager
+        def attached(session_path, backend):
+            assert session_path == os.path.join(temp_sessions_dir, '2')
+            assert backend == mode
+            yield '/dev/dynblk7'
+
+        manager._luks_rotation_device = MagicMock(side_effect=attached)
+
+        def cryptsetup(args, **kwargs):
+            assert args[0:2] == ['cryptsetup', 'luksChangeKey']
+            assert b'old-secret\n' == kwargs['input']
+            assert '--key-file' in args and '--new-keyfile-size' in args
+            assert 'old-secret' not in ' '.join(args)
+            assert 'new-secret' not in ' '.join(args)
+            descriptor = kwargs['pass_fds'][0]
+            assert args[-1] == (
+                '/proc/self/fd/{}'.format(descriptor))
+            assert os.read(descriptor, 4096) == b'new-secret\n'
+            return MagicMock(returncode=0, stdout=b'', stderr=b'')
+
+        with patch('minios_session.subprocess.run', side_effect=cryptsetup) as run:
+            success, message = manager.change_session_passphrase(
+                '2', b'old-secret', b'new-secret')
+        assert success, message
+        run.assert_called_once()
+        manager._luks_rotation_device.assert_called_once()
+
+    @pytest.mark.parametrize('status,encryption', [
+        ('default', 'luks'), ('running', 'luks'), (None, 'none')])
+    def test_change_passphrase_rejects_ineligible_session(
+            self, temp_sessions_dir, status, encryption):
+        from minios_session import SessionManager
+
+        os.mkdir(os.path.join(temp_sessions_dir, '2'))
+        manager = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        metadata = {'sessions': {'2': {'mode': 'raw', 'encryption': encryption}}}
+        if status:
+            metadata[status] = '2'
+        manager._read_sessions_metadata = lambda: metadata
+        manager._luks_rotation_device = MagicMock()
+        success, _message = manager.change_session_passphrase(
+            '2', b'old', b'new')
+        assert not success
+        manager._luks_rotation_device.assert_not_called()
+
+    def test_change_passphrase_refuses_a_mounted_session(self, temp_sessions_dir):
+        from minios_session import SessionManager
+
+        os.mkdir(os.path.join(temp_sessions_dir, '2'))
+        owner = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        manager = SessionManager(custom_sessions_dir=temp_sessions_dir)
+        manager._luks_rotation_device = MagicMock()
+        with owner._session_lease('2'):
+            success, message = manager.change_session_passphrase(
+                '2', b'old', b'new')
+        assert not success and 'mounted or busy' in message
+        manager._luks_rotation_device.assert_not_called()
+
+    def test_change_passphrase_stdin_requires_matching_new_password(self,
+                                                                  monkeypatch):
+        from minios_session import luks_change_passwords_from_args
+
+        monkeypatch.setattr(sys, 'stdin', SimpleNamespace(
+            buffer=io.BytesIO(b'old\nnew\nnew\n')))
+        assert luks_change_passwords_from_args(
+            SimpleNamespace(password_stdin=True)) == (b'old', b'new')
+        monkeypatch.setattr(sys, 'stdin', SimpleNamespace(
+            buffer=io.BytesIO(b'old\nnew\ndifferent\n')))
+        with pytest.raises(ValueError, match='do not match'):
+            luks_change_passwords_from_args(SimpleNamespace(password_stdin=True))
+
     def test_perchsize_units_and_backend_neutral_integer_limit(self):
         from minios_session import parse_perch_size
 
@@ -2175,7 +2956,8 @@ class TestLuksLayer:
             'compatible': True, 'issues': []}
         sm._validate_target_mode = lambda *args, **kwargs: (True, None)
         sm._check_free_space = lambda path, size: (True, None)
-        sm._reserve_session = lambda: ('1', target)
+        sm._reserve_session = lambda acquire_lease=False: (
+            '1', target, contextlib.ExitStack())
         mount_context = MagicMock()
         mount_context.__enter__.return_value = target
         mount_context.__exit__.return_value = False
@@ -2455,6 +3237,7 @@ class TestSquashfsSaveDelegation:
         manager = SessionManager(custom_sessions_dir=temp_sessions_dir)
         manager.custom_sessions_dir = None
         manager.SQUASHFS_SAVE_COMMAND = command
+        os.mkdir(os.path.join(temp_sessions_dir, '1'))
         return manager
 
     @staticmethod

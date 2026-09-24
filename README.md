@@ -115,23 +115,27 @@ LUKS2 requires cryptsetup, the selected backend's tools, and `luks-layer-v1` in 
 
 Encrypted creation prompts for a passphrase and confirmation, or accepts two stdin lines with `--password-stdin` when the LUKS capability is available. Encrypted export and resize need one passphrase line with `--password-stdin`. Logical copy/convert prompts interactively unless that flag is used: supply the source passphrase if needed, then the target passphrase twice if the target is encrypted. Passphrases are not placed in arguments or session metadata. Physical cloning preserves the encrypted backend without unlocking it.
 
+To change the LUKS passphrase of an inactive, detached encrypted Raw, DynFileFS, DynBlk, or VMDK session, use **Change Passphrase...** from its context menu or `sudo minios-session change-passphrase SESSION_ID`. The CLI prompts for the current passphrase, the new passphrase, and confirmation; `--password-stdin` reads these three lines in the same order. The new passphrase replaces the selected existing keyslot without re-encrypting files or formatting the container. An active, running, or mounted session must be detached before changing its passphrase. Additional keyslots managed outside Session Manager are not changed.
+
 Encrypted exports contain **decrypted logical files**, not an encrypted archive. Import defaults to an unencrypted destination even for an encrypted source; `--force-encryption luks` creates a fresh encrypted backend. Only `.tar.zst` session archives are accepted; paths and types are validated and extraction is bounded.
 
 ## Mounting a detached session
 
-Right-click an inactive, non-running Raw, DynFileFS, DynBlk, or VMDK session and choose **Mount Session** to attach its existing filesystem read-write and open it in the file manager. Encrypted sessions prompt for their LUKS passphrase. While a session is mounted, conflicting session actions remain disabled; choose **Unmount Session** before activating, resizing, moving, or deleting session data. Closing Session Manager also requests an ordered unmount.
+Right-click an inactive, non-running Raw, DynFileFS, DynBlk, or VMDK session and choose **Mount Session** to attach its existing filesystem read-write and open it in the file manager. Encrypted sessions prompt for their LUKS passphrase. Multiple sessions can be mounted at once; operations on other session IDs remain available. The mounted row shows **MOUNTED**, and conflicting actions for that session stay disabled. **Open Session Folder** opens the numbered directory containing the backing storage; **Open Mounted Folder** opens the attached filesystem. Closing Session Manager leaves mounts intact. Reopen it to see the mounted sessions and choose **Unmount Session** when done.
 
-The CLI keeps the mount alive until standard input closes or it receives Ctrl+C. It holds the session mutation lock for that lifetime, never formats a failed existing mount, and refuses active or running sessions:
+The standalone CLI keeps the mount alive until standard input closes or it receives Ctrl+C. It holds a lease on that session only, never formats a failed existing mount, and refuses active or running sessions:
 
 ```bash
 sudo minios-session mount SESSION_ID --json
 ```
 
-If unmounting is busy, the backend reports failure and leaves the backing daemon or device attached rather than disconnecting it underneath a live filesystem.
+If unmounting is busy, the backend reports failure and leaves the backing daemon or device attached rather than disconnecting it underneath a live filesystem. GUI-managed mounts retain their control socket and recorded mount path so Unmount can be retried after the process using the folder has left it. The standalone CLI exits after a failed unmount.
+
+New temporary mount directories follow `/tmp/minios-session-<ID>-filesystem-*` for the folder containing session files and `/tmp/minios-session-<ID>-backend-*` for intermediate storage mounts. An in-progress conversion without a target ID uses `staging` in place of `<ID>`. Existing mounts keep their original paths until unmounted.
 
 ## Returning unused DynFileFS, DynBlk and VMDK space
 
-Right-click a DynFileFS, DynBlk or VMDK session and choose **Free Space...**. For plaintext sessions, the backend runs FITRIM on the actual inner ext4, not the combined AUFS/OverlayFS root, then invokes the owning backend's reclaim command. Detached plaintext sessions are temporarily attached and mounted. Running DynBlk/VMDK sessions keep their device; it is validated against protected current-boot state.
+Right-click a DynFileFS, DynBlk or VMDK session and choose **Free Space...**. For plaintext sessions, the backend runs FITRIM on the actual inner ext4, not the combined AUFS/OverlayFS root, then invokes the owning backend's reclaim command. A session mounted by Session Manager reuses its existing image or device, including after reopening the GUI. Detached plaintext sessions are temporarily attached and mounted. Running DynBlk/VMDK sessions keep their device; it is validated against protected current-boot state.
 
 DynFileFS reclamation requires version 4.6.0 or later; the backend checks command support before mounting or trimming. Older versions remain usable for existing session operations. Running sessions are supported: a short-lived worker creates a recursively private mount namespace to access `virtual.dat` below MiniOS's ext4 overmount. The working session's mounts, loop device and daemon remain untouched in the original namespace. The worker verifies protected boot state, mount/loop/image identities, and the actual running daemon's reclaim ioctl before trim. Installing a new CLI alone does not upgrade an already running daemon; reboot to use the new daemon if the check fails. Temporary mounts of detached sessions are released without lazy unmount; if teardown is busy, their daemon is retained rather than killed underneath a live filesystem. DynFileFS used size is measured from allocated blocks, so hole punching is reflected in the session list.
 

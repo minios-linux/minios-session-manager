@@ -60,14 +60,28 @@ Monta una sessione Raw, DynFileFS, DynBlk o VMDK inattiva e non in
 esecuzione in modalità lettura\-scrittura. Il comando stampa il punto di
 mount e rimane in primo piano fino alla chiusura dello standard input o alla
 pressione di Ctrl+C, quindi smonta e scollega lo storage
-sottostante. Mantiene il lock di mutazione della sessione per tutta la
-durata del mount. Le sessioni attive, in esecuzione, Native e SquashFS
-vengono rifiutate.
+sottostante. Mantiene un lease esclusivo su questa sessione, permettendo che
+altri ID di sessione vengano montati o modificati contemporaneamente. Le
+sessioni attive, in esecuzione, Native e SquashFS vengono rifiutate.
+.PP
+Le directory di mount temporanee usano lo stesso schema per tutte le
+modalità container: minios\-session\-ID\-filesystem\-*, con
+minios\-session\-ID\-backend\-* per i mount di storage intermedi. I mount
+esistenti mantengono i loro percorsi fino a quando non vengono smontati.
 .PP
 Le sessioni cifrate richiedono una passphrase LUKS o leggono una riga dallo
 standard input con \fB\-\-password\-stdin\fP. Se lo smontaggio è occupato, il
 comando fallisce senza terminare il demone sottostante o scollegare il
 dispositivo live.
+.TP
+\fBchange\-passphrase \fP\fIsession_id\fP [\-\-password\-stdin]
+Cambia una passphrase LUKS per una sessione Raw cifrata inattiva e
+scollegata, DynFileFS, DynBlk o VMDK. Il comando richiede la passphrase
+attuale, la nuova passphrase e la sua conferma. Con \fB\-\-password\-stdin\fP,
+fornire queste tre righe in quest'ordine. Le passphrase non vengono passate
+come argomenti né memorizzate nei metadati della sessione. Le sessioni
+attive, in esecuzione e montate vengono rifiutate. L'operazione modifica un
+solo keyslot senza ri\-cifrare i dati della sessione.
 .TP
 \fBcreate [\fP\fImode\fP] [\fIsize\fP] [\-\-encryption none|luks] [\-\-compression CODEC] [\-\-policy manual|shutdown] [\-\-autosave MINUTES] [\-\-activate]
 Crea una nuova sessione con la modalità specificata e dimensione
@@ -135,13 +149,14 @@ ID della sessione da eliminare
 .TP
 \fBreclaim \fP\fIsession_id\fP [\-\-compact]
 Esegue il trim del filesystem ext4 interno non cifrato e recupera lo spazio
-libero noto del container per una sessione DynFileFS, DynBlk o VMDK. Il
-dispositivo in esecuzione viene validato rispetto all'avvio corrente e
-rimane connesso; le sessioni inattive vengono collegate e montate
-temporaneamente. \fB\-\-compact\fP consente esplicitamente la rilocazione dei
-dati live e aumenta le scritture su flash. Le sessioni cifrate recuperano
-solo lo storage già noto come libero e non abilitano il discard tramite
-LUKS.
+libero noto del contenitore per una sessione DynFileFS, DynBlk o VMDK. Il
+dispositivo in esecuzione viene validato rispetto al boot corrente e rimane
+connesso; le sessioni inattive vengono collegate e montate
+temporaneamente. Session Manager può recuperare le proprie sessioni montate
+senza ricollegare lo storage sottostante, anche dopo il riavvio della
+GUI. \fB\-\-compact\fP consente esplicitamente la rilocazione dei dati live e
+aumenta le scritture su flash. Le sessioni cifrate recuperano solo lo spazio
+libero già noto e non abilitano il discard tramite LUKS.
 .PP
 La reclamazione DynFileFS richiede la versione 4.6.0 o successiva. Se un
 demone più vecchio è ancora in esecuzione dopo un aggiornamento del

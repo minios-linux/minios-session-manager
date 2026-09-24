@@ -55,17 +55,32 @@ sesión SquashFS en ejecución especificada. Con \fB\-\-progress\fP y salida JSO
 habilitada, transmite eventos de progreso legibles por máquina.
 .TP
 \fBmount \fP\fIsession_id\fP [\-\-password\-stdin]
-Monta una sesión Raw, DynFileFS, DynBlk o VMDK inactiva y no en ejecución en
+Monta una sesión Raw, DynFileFS, DynBlk o VMDK inactiva y no ejecutándose en
 modo lectura\-escritura. El comando imprime el punto de montaje y permanece
-en primer plano hasta que se cierre la entrada estándar o se pulse Ctrl+C;
-luego desmonta y desconecta el almacenamiento subyacente. Mantiene el
-bloqueo de mutación de la sesión durante toda la vida útil del montaje. Se
-rechazan las sesiones activas, en ejecución, Native y SquashFS.
+en primer plano hasta que se cierre la entrada estándar o se presione
+Ctrl+C, luego desmonta y desacopla el almacenamiento subyacente. Mantiene un
+arrendamiento exclusivo sobre esta sesión, permitiendo que otros ID de
+sesión se monten o modifiquen de forma concurrente. Las sesiones activas, en
+ejecución, Native y SquashFS son rechazadas.
+.PP
+Los directorios de montaje temporales usan el mismo patrón para todos los
+modos de contenedor: minios\-session\-ID\-filesystem\-*, con
+minios\-session\-ID\-backend\-* para montajes de almacenamiento intermedio. Los
+montajes existentes mantienen sus rutas hasta que se desmontan.
 .PP
 Las sesiones cifradas solicitan una frase de paso LUKS o leen una línea de
 la entrada estándar con \fB\-\-password\-stdin\fP. Si el desmontaje está ocupado,
 el comando falla sin matar el demonio subyacente ni desconectar el
 dispositivo en vivo.
+.TP
+\fBchange\-passphrase \fP\fIsession_id\fP [\-\-password\-stdin]
+Cambie una frase de paso LUKS para una sesión cifrada Raw, DynFileFS, DynBlk
+o VMDK inactiva y desmontada. El comando solicita la frase de paso actual,
+la nueva frase de paso y su confirmación. Con \fB\-\-password\-stdin\fP,
+proporcione estas tres líneas en ese orden. Las frases de paso no se pasan
+como argumentos ni se almacenan en los metadatos de la sesión. Se rechazan
+las sesiones activas, en ejecución y montadas. La operación cambia una
+ranura de clave sin volver a cifrar los datos de la sesión.
 .TP
 \fBcreate [\fP\fImode\fP] [\fIsize\fP] [\-\-encryption none|luks] [\-\-compression CODEC] [\-\-policy manual|shutdown] [\-\-autosave MINUTES] [\-\-activate]
 Crea una nueva sesión con el modo especificado y tamaño opcional. A la nueva
@@ -137,11 +152,13 @@ ID de la sesión a eliminar
 Recorta el sistema de archivos ext4 interno no cifrado y recupera el espacio
 libre conocido del contenedor para una sesión DynFileFS, DynBlk o VMDK. El
 dispositivo en ejecución se valida contra el arranque actual y permanece
-conectado; las sesiones inactivas se adjuntan y montan
-temporalmente. \fB\-\-compact\fP permite explícitamente la reubicación de datos
-en vivo e incrementa las escrituras en flash. Las sesiones cifradas solo
-recuperan el almacenamiento libre ya conocido y no habilitan discard a
-través de LUKS.
+conectado; las sesiones inactivas se acoplan y montan temporalmente. El
+Gestor de Sesiones puede recuperar sus propias sesiones montadas sin volver
+a conectar el almacenamiento subyacente, incluso después de reiniciar la
+interfaz gráfica. \fB\-\-compact\fP permite explícitamente la reubicación de
+datos en vivo e incrementa las escrituras en la memoria flash. Las sesiones
+cifradas solo recuperan el almacenamiento libre ya conocido y no habilitan
+el descarte a través de LUKS.
 .PP
 La recuperación de DynFileFS requiere la versión 4.6.0 o posterior. Si un
 demonio antiguo sigue en ejecución tras una actualización del paquete,

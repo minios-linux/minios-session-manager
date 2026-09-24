@@ -62,17 +62,30 @@ Werkzeuge und ein MiniOS Initrd\-Fähigkeitsmarker mit luks\-layer\-v1
 benötigt. Die GUI fragt nach Passphrasen und speichert diese nicht in den
 Sitzungsmetadaten.
 .SH OBERFLÄCHE
-Das Hauptfenster zeigt die verfügbaren Sitzungen und deren Status an.
-Aktionen wie Erstellen, Importieren und Aufräumen sind über die Symbolleiste
-verfügbar.  Weitere Aktionen für die ausgewählte Sitzung, wie Aktivieren,
-Einhängen oder Aushängen, Vergrößern, Exportieren, Kopieren, Klonen,
-Konvertieren, Ordner öffnen und Löschen, sind über das Kontextmenü
-erreichbar. Inaktive, nicht laufende Raw\-, DynFileFS\-, DynBlk\- und
-VMDK\-Sitzungen können mit Schreibzugriff eingehängt werden; für
-verschlüsselte Sitzungen wird die LUKS\-Passphrase abgefragt. Sich
-widersprechende Aktionen bleiben deaktiviert, bis "Sitzung aushängen"
-gewählt wird. SquashFS\-Nur "Jetzt speichern" und automatische
-Speicheroptionen werden dort nur für SquashFS\-Sitzungen angezeigt.
+Das Hauptfenster zeigt die verfügbaren Sitzungen und deren Status
+an. Aktionen wie Erstellen, Importieren und Aufräumen sind über die
+Symbolleiste verfügbar. Weitere Aktionen für die ausgewählte Sitzung, wie
+Aktivieren, Einhängen oder Aushängen, Größe ändern, Exportieren, Kopieren,
+Klonen, Konvertieren, Sitzungsordner öffnen und Löschen, sind über das
+Kontextmenü verfügbar. Inaktive, nicht laufende Raw\-, DynFileFS\-, DynBlk\-
+und VMDK\-Sitzungen können mit Lese\-/Schreibrechten eingehängt werden;
+verschlüsselte Sitzungen fordern ihre LUKS\-Passphrase an. Mehrere Sitzungen
+können gleichzeitig eingehängt werden. Inaktive, getrennte LUKS\-Sitzungen
+bieten im Kontextmenü die Option "Passphrase ändern"; die aktuelle
+Passphrase und eine bestätigte neue Passphrase sind erforderlich. Die
+Änderung verschlüsselt die Sitzungsdaten nicht neu und verändert auch keine
+anderen Keyslots. Das MOUNTED\-Abzeichen und die Aktion "Sitzung aushängen"
+bleiben auch nach dem Schließen und erneuten Öffnen des Managers verfügbar;
+das Schließen des Fensters hängt Sitzungen nicht aus. Konfliktierende
+Aktionen für die eingehängte Sitzung bleiben deaktiviert, während andere
+Sitzungen weiterhin verwendet werden können. "Sitzungsordner öffnen" zeigt
+das nummerierte Backing\-Verzeichnis; "Eingehängten Ordner öffnen" zeigt das
+angehängte Dateisystem. Wenn das Aushängen beschäftigt ist, bleibt das
+Laufwerk verbunden und kann erneut versucht werden, sobald der Ordner nicht
+mehr verwendet wird. "Freier Speicher" arbeitet auf dem bereits eingehängten
+DynFileFS\-, DynBlk\- oder VMDK\-Speicher. SquashFS\-nur "Jetzt speichern" und
+automatische Speicheroptionen werden dort nur für SquashFS\-Sitzungen
+angezeigt.
 .PP
 Verschlüsselte Exporte enthalten entschlüsselte logische Dateien anstelle
 des verschlüsselten Backends. Kopieren erstellt neue Dateisystem\- und

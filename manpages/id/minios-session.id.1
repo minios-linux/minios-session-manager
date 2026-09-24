@@ -55,16 +55,31 @@ secara streaming.
 .TP
 \fBmount \fP\fIsession_id\fP [\-\-password\-stdin]
 Mount sesi Raw, DynFileFS, DynBlk, atau VMDK yang tidak aktif dan tidak
-berjalan secara read\-write. Perintah ini akan menampilkan titik mount dan
-tetap di foreground sampai input standar ditutup atau Ctrl+C ditekan, lalu
-melakukan unmount dan melepaskan storage yang mendasarinya. Perintah ini
-memegang kunci mutasi sesi selama masa mount. Sesi yang aktif, berjalan,
-Native, dan SquashFS akan ditolak.
+berjalan secara baca\-tulis. Perintah ini mencetak titik mount dan tetap di
+latar depan sampai masukan standar ditutup atau Ctrl+C ditekan, lalu
+melakukan unmount dan melepaskan storage pendukung. Perintah ini memegang
+sewa eksklusif pada sesi ini, memungkinkan ID sesi lain untuk di\-mount atau
+dimodifikasi secara bersamaan. Sesi yang aktif, berjalan, Native, dan
+SquashFS akan ditolak.
+.PP
+Direktori mount sementara menggunakan pola yang sama untuk semua mode
+container: minios\-session\-ID\-filesystem\-*, dengan
+minios\-session\-ID\-backend\-* untuk mount penyimpanan sementara. Mount yang
+sudah ada akan mempertahankan path\-nya hingga dilepas (unmounted).
 .PP
 Sesi terenkripsi akan meminta passphrase LUKS atau membaca satu baris dari
 input standar dengan \fB\-\-password\-stdin\fP. Jika proses unmount sedang sibuk,
 perintah akan gagal tanpa mematikan daemon yang mendasari atau melepaskan
 perangkat live.
+.TP
+\fBchange\-passphrase \fP\fIsession_id\fP [\-\-password\-stdin]
+Ubah satu frasa sandi LUKS untuk sesi Raw terenkripsi yang tidak aktif dan
+terlepas, DynFileFS, DynBlk, atau VMDK. Perintah ini akan meminta frasa
+sandi saat ini, frasa sandi baru, dan konfirmasinya. Dengan
+\fB\-\-password\-stdin\fP, berikan tiga baris tersebut secara berurutan. Frasa
+sandi tidak diberikan sebagai argumen atau disimpan dalam metadata
+sesi. Sesi yang aktif, berjalan, dan terpasang akan ditolak. Operasi ini
+mengubah satu keyslot tanpa mengenkripsi ulang data sesi.
 .TP
 \fBcreate [\fP\fImode\fP] [\fIsize\fP] [\-\-encryption none|luks] [\-\-compression CODEC] [\-\-policy manual|shutdown] [\-\-autosave MINUTES] [\-\-activate]
 Buat sesi baru dengan mode yang ditentukan dan ukuran opsional. Sesi baru
@@ -129,13 +144,16 @@ ID sesi yang akan dihapus
 .RE
 .TP
 \fBreclaim \fP\fIsession_id\fP [\-\-compact]
-Trim filesystem internal ext4 yang tidak terenkripsi dan reclaim ruang
-kontainer yang diketahui bebas untuk sesi DynFileFS, DynBlk, atau
+Trim filesystem ext4 internal yang tidak terenkripsi dan mengklaim kembali
+ruang container yang diketahui kosong untuk sesi DynFileFS, DynBlk, atau
 VMDK. Perangkat yang sedang berjalan divalidasi terhadap boot saat ini dan
 tetap terhubung; sesi yang tidak aktif akan di\-attach dan di\-mount
-sementara. \fB\-\-compact\fP secara eksplisit mengizinkan relokasi data live dan
-meningkatkan penulisan flash. Sesi terenkripsi hanya reclaim storage yang
-sudah diketahui bebas dan tidak mengaktifkan discard melalui LUKS.
+sementara. Session Manager dapat mengklaim kembali sesi yang di\-mount
+sendiri tanpa harus menghubungkan ulang storage pendukung, bahkan setelah
+GUI dimulai ulang.  \fB\-\-compact\fP secara eksplisit mengizinkan relokasi data
+langsung dan meningkatkan penulisan ke flash. Sesi terenkripsi hanya
+mengklaim kembali storage kosong yang sudah diketahui dan tidak mengaktifkan
+discard melalui LUKS.
 .PP
 Reklamasi DynFileFS memerlukan versi 4.6.0 atau lebih baru. Jika daemon lama
 masih berjalan setelah pembaruan paket, reboot terlebih dahulu dengan

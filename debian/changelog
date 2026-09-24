@@ -1,3 +1,41 @@
+minios-session-manager (2.6.0) unstable; urgency=medium
+
+  * Add LUKS passphrase changes for detached encrypted sessions in the CLI and
+    graphical context menu, keeping both passphrases out of process arguments
+    and session metadata.
+
+ -- crims0n <crims0n@minios.dev>  Thu, 24 Sep 2026 18:21:48 +0300
+
+minios-session-manager (2.5.2) unstable; urgency=medium
+
+  * Keep encrypted Raw and DynFileFS mounts visible after reopening the
+    manager, including sessions with a changes subdirectory.
+  * Keep persistent mounts running when a control client disconnects or
+    times out, and return structured errors for early mount failures.
+  * Avoid reporting a successful unmount as an unexpected disconnection.
+  * Show only one error dialog when an unmount fails in both the control
+    command and the mount-owner process.
+  * Retain the mounted path and control connection after a busy unmount so the
+    operation can be retried, and give session and mounted folders separate
+    context-menu actions.
+  * Reject CLI changes to a mounted session even if an older mount owner has
+    already exited while leaving its filesystem attached.
+  * Name temporary mount directories consistently by session ID and filesystem
+    or backend role across Raw, DynFileFS, DynBlk, VMDK and LUKS operations.
+
+ -- crims0n <crims0n@minios.dev>  Thu, 24 Sep 2026 15:52:16 +0300
+
+minios-session-manager (2.5.1) unstable; urgency=medium
+
+  * Add balanced padding around LUKS passphrase fields.
+  * Show a status badge while a session is mounted from the manager.
+  * Keep mounts available across manager restarts; reconnect for unmount and
+    online space reclamation without remounting the storage.
+  * Allow concurrent mounts of different sessions and other-session actions
+    while protecting each mounted session with a lifetime lease.
+
+ -- crims0n <crims0n@minios.dev>  Wed, 23 Sep 2026 20:58:41 +0300
+
 minios-session-manager (2.5.0) unstable; urgency=medium
 
   * Widen the default manager window so complete DynFileFS session rows fit

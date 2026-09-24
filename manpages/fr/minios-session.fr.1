@@ -58,17 +58,34 @@ et la sortie JSON activée, diffusez des événements de progression lisibles
 par machine.
 .TP
 \fBmount \fP\fIsession_id\fP [\-\-password\-stdin]
-Montez une session Raw, DynFileFS, DynBlk ou VMDK inactive et non en cours
-d'exécution en lecture\-écriture. La commande affiche le point de montage et
-reste au premier plan jusqu'à la fermeture de l'entrée standard ou l'appui
-sur Ctrl+C, puis démonte et détache le stockage sous\-jacent. Elle détient le
-verrou de mutation de session pendant toute la durée du montage. Les
-sessions actives, en cours d'exécution, Native et SquashFS sont rejetées.
+Monte une session Raw, DynFileFS, DynBlk ou VMDK inactive et non exécutée en
+lecture\-écriture. La commande affiche le point de montage et reste au
+premier plan jusqu'à la fermeture de l'entrée standard ou l'appui sur
+Ctrl+C, puis démonte et détache le stockage sous\-jacent. Elle détient un
+verrou exclusif sur cette session, permettant à d'autres identifiants de
+session d'être montés ou modifiés simultanément. Les sessions actives, en
+cours d'exécution, Native et SquashFS sont rejetées.
+.PP
+Les répertoires de montage temporaires utilisent le même modèle pour tous
+les modes de conteneur : minios\-session\-ID\-filesystem\-*, avec
+minios\-session\-ID\-backend\-* pour les montages de stockage
+intermédiaires. Les montages existants conservent leurs chemins jusqu'à leur
+démontage.
 .PP
 Les sessions chiffrées demandent une phrase de passe LUKS ou en lisent une
 ligne depuis l'entrée standard avec \fB\-\-password\-stdin\fP. Si le démontage est
 occupé, la commande échoue sans tuer le démon sous\-jacent ni détacher le
 périphérique en cours.
+.TP
+\fBchange\-passphrase \fP\fIsession_id\fP [\-\-password\-stdin]
+Changez une phrase secrète LUKS pour une session chiffrée Raw, DynFileFS,
+DynBlk ou VMDK inactive et détachée. La commande demande l'ancienne phrase
+secrète, la nouvelle phrase secrète, puis sa confirmation. Avec
+\fB\-\-password\-stdin\fP, fournissez ces trois lignes dans cet ordre. Les phrases
+secrètes ne sont pas passées comme arguments ni stockées dans les
+métadonnées de session. Les sessions actives, en cours d'exécution ou
+montées sont rejetées. L'opération modifie un seul keyslot sans ré\-encrypter
+les données de la session.
 .TP
 \fBcreate [\fP\fImode\fP] [\fIsize\fP] [\-\-encryption none|luks] [\-\-compression CODEC] [\-\-policy manual|shutdown] [\-\-autosave MINUTES] [\-\-activate]
 Créez une nouvelle session avec le mode spécifié et une taille
@@ -137,14 +154,16 @@ ID de la session à supprimer
 .RE
 .TP
 \fBreclaim \fP\fIsession_id\fP [\-\-compact]
-Optimisez le système de fichiers ext4 interne non chiffré et récupérez
-l'espace conteneur libre connu pour une session DynFileFS, DynBlk ou
+Optimise le système de fichiers ext4 interne non chiffré et récupère
+l'espace libre connu du conteneur pour une session DynFileFS, DynBlk ou
 VMDK. Le périphérique en cours d'exécution est validé par rapport au
 démarrage actuel et reste connecté ; les sessions inactives sont attachées
-et montées temporairement. \fB\-\-compact\fP autorise explicitement la
-relocalisation de données en direct et augmente les écritures sur la mémoire
-flash. Les sessions chiffrées ne récupèrent que l'espace déjà identifié
-comme libre et n'activent pas le discard via LUKS.
+et montées temporairement. Le Gestionnaire de sessions peut récupérer ses
+propres sessions montées sans reconnecter le stockage sous\-jacent, même
+après le redémarrage de l'interface graphique. \fB\-\-compact\fP autorise
+explicitement la relocalisation des données en direct et augmente les
+écritures sur la mémoire flash. Les sessions chiffrées ne récupèrent que
+l'espace déjà connu comme libre et n'activent pas le discard via LUKS.
 .PP
 La récupération DynFileFS nécessite la version 4.6.0 ou ultérieure. Si un
 ancien démon fonctionne toujours après une mise à jour du paquet, redémarrez

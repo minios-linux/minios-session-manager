@@ -84,6 +84,36 @@ def test_running_dynfilefs_uses_online_worker(tmp_path):
     run.assert_not_called()
 
 
+def test_mounted_dynfilefs_reuses_existing_image_and_filesystem(tmp_path):
+    manager = cli.SessionManager.__new__(cli.SessionManager)
+    manager.sessions_dir = str(tmp_path)
+    manager._check_dynfilefs_reclaim = Mock()
+    manager._get_dynfilefs_size = Mock(side_effect=[4096, 1024])
+    manager._trim_block_filesystem = Mock()
+    manager._invalidate_size_cache = Mock()
+    image = tmp_path / 'virtual.dat'
+    image.touch()
+    state = {
+        'session_id': '1', 'session_path': str(tmp_path),
+        'mode': 'dynfilefs', 'encryption': 'none',
+        'mount_point': '/mounted/changes',
+        'filesystem_mount': '/mounted', 'filesystem_device': '/dev/loop7',
+        'backend_image': str(image),
+    }
+
+    with patch.object(cli.subprocess, 'run', return_value=result()) as run:
+        success, message, details = manager.reclaim_mounted_session(
+            state, compact=True)
+
+    assert success, message
+    manager._trim_block_filesystem.assert_called_once_with(
+        '/dev/loop7', '/mounted/changes')
+    run.assert_called_once_with(
+        ['dynfilefs', '--compact', str(image)], stdout=cli.subprocess.PIPE,
+        stderr=cli.subprocess.PIPE)
+    assert details['freed_bytes'] == 3072
+
+
 def test_old_backend_rejected_before_exposure(tmp_path):
     manager = manager_for(tmp_path)
     manager._dynfilefs_reclaim_image = Mock()

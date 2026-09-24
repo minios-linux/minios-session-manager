@@ -100,6 +100,7 @@ class SessionManagerGUI:
         self._loading_visible = False
         self._session_mounts = {}
         self._mount_generation = 0
+        self._mount_request_generation = 0
         self._snapshot_time = None
         self._sessions_by_id = {}
         self._filesystem_info = {}
@@ -253,6 +254,11 @@ class SessionManagerGUI:
                            Gtk.STOCK_OK, Gtk.ResponseType.OK)
         _style_dialog_affirmative(dialog, _('Continue'))
         content = dialog.get_content_area()
+        content.set_spacing(6)
+        content.set_margin_start(12)
+        content.set_margin_end(12)
+        content.set_margin_top(12)
+        content.set_margin_bottom(12)
         first = Gtk.Entry()
         first.set_visibility(False)
         content.pack_start(Gtk.Label(label=_("Passphrase:")), False, False, 6)
@@ -276,6 +282,37 @@ class SessionManagerGUI:
         payload = password + '\n'
         return payload + password + '\n' if confirm else payload
 
+    def _prompt_luks_change_passphrase(self):
+        """Request the current key and a confirmed replacement in one dialog."""
+        dialog = Gtk.Dialog(title=_('Change LUKS Passphrase'), parent=self.window)
+        dialog.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+                           _('Change Passphrase'), Gtk.ResponseType.OK)
+        _style_dialog_affirmative(dialog, _('Change Passphrase'))
+        content = dialog.get_content_area()
+        content.set_spacing(6)
+        content.set_margin_start(12)
+        content.set_margin_end(12)
+        content.set_margin_top(12)
+        content.set_margin_bottom(12)
+        fields = []
+        for label in (_('Current passphrase:'), _('New passphrase:'),
+                      _('Confirm new passphrase:')):
+            entry = Gtk.Entry()
+            entry.set_visibility(False)
+            content.pack_start(Gtk.Label(label=label), False, False, 6)
+            content.pack_start(entry, False, False, 6)
+            fields.append(entry)
+        dialog.show_all()
+        accepted = dialog.run() == Gtk.ResponseType.OK
+        current, new, confirmation = (entry.get_text() for entry in fields)
+        dialog.destroy()
+        if not accepted:
+            return None
+        if not current or not new or new != confirmation:
+            self._show_error(_('Current and new passphrases must be nonempty and match confirmation.'))
+            return None
+        return '{}\n{}\n{}\n'.format(current, new, confirmation)
+
     def _get_session_mode(self, session_id):
         return self._sessions_by_id.get(session_id, {}).get('mode')
 
@@ -288,15 +325,10 @@ class SessionManagerGUI:
         return self._filesystem_info.get('limitations', {}).get('max_file_size')
 
     def _on_window_destroy(self, _window):
-        """Terminate the active privileged child before the GUI exits."""
+        """Leave persistent mounts running when the GUI exits."""
         with self._cli_process_lock:
             self._closing = True
             process = self._cli_process
-        for mount in list(self._session_mounts.values()):
-            try:
-                mount['process'].stdin.close()
-            except (BrokenPipeError, OSError, ValueError):
-                pass
         try:
             if process and process.poll() is None:
                 try:
@@ -823,6 +855,13 @@ class SessionManagerGUI:
             return False
         if not isinstance(session.get('configuration_supported', True), bool):
             return False
+        if not isinstance(session.get('is_mounted', False), bool):
+            return False
+        mount_point = session.get('mount_point')
+        if mount_point is not None and (
+                not isinstance(mount_point, str) or
+                not os.path.isabs(mount_point)):
+            return False
         size = session.get('size')
         if not isinstance(size, int) or isinstance(size, bool) or size < 0:
             return False
@@ -1062,8 +1101,38 @@ class SessionManagerGUI:
         row.mode = mode
         row.encryption = encryption
         row.configuration_supported = configuration_supported
+        row.status_box = status_box
+        row.mount_badge = None
+        self._set_session_row_mounted(
+            row, bool(self._session_mounts.get(session_id, {}).get('ready') or
+                      self._sessions_by_id.get(session_id, {}).get('is_mounted', False)))
         
         self.sessions_list.add(row)
+
+    def _set_session_row_mounted(self, row, mounted):
+        """Update the mounted-state badge for one session row."""
+        badge = getattr(row, 'mount_badge', None)
+        if mounted and badge is None:
+            badge = Gtk.Label()
+            badge.get_style_context().add_class('badge')
+            badge.get_style_context().add_class('badge-accent')
+            badge.set_markup('<span size="small" weight="bold">{}</span>'.format(
+                GLib.markup_escape_text(_('MOUNTED'))))
+            badge.set_halign(Gtk.Align.CENTER)
+            row.status_box.pack_start(badge, False, False, 0)
+            row.mount_badge = badge
+            badge.show()
+        elif not mounted and badge is not None:
+            row.status_box.remove(badge)
+            row.mount_badge = None
+        row.is_mounted = mounted
+
+    def _update_session_mount_badge(self, session_id, mounted):
+        """Update the visible row when a foreground mount changes state."""
+        for row in self.sessions_list.get_children():
+            if getattr(row, 'session_id', None) == session_id:
+                self._set_session_row_mounted(row, mounted)
+                break
 
     def _on_session_selected(self, list_box, row):
         """Handle session selection"""
@@ -1132,11 +1201,23 @@ class SessionManagerGUI:
         self.mount_item.connect("activate", self._on_context_mount)
         self.context_menu.append(self.mount_item)
 
-        # Open folder menu item
-        open_folder_item = Gtk.MenuItem.new_with_mnemonic(_("_Open Folder"))
-        open_folder_item.get_style_context().add_class('context-menu-open-folder')
-        open_folder_item.connect("activate", self._on_context_open_folder)
-        self.context_menu.append(open_folder_item)
+        self.change_passphrase_item = Gtk.MenuItem.new_with_mnemonic(
+            _('Change _Passphrase...'))
+        self.change_passphrase_item.connect(
+            'activate', self._on_context_change_passphrase)
+        self.context_menu.append(self.change_passphrase_item)
+
+        self.open_session_folder_item = Gtk.MenuItem.new_with_mnemonic(
+            _("Open _Session Folder"))
+        self.open_session_folder_item.get_style_context().add_class('context-menu-open-folder')
+        self.open_session_folder_item.connect("activate", self._on_context_open_folder)
+        self.context_menu.append(self.open_session_folder_item)
+
+        self.open_mounted_folder_item = Gtk.MenuItem.new_with_mnemonic(
+            _("Open _Mounted Folder"))
+        self.open_mounted_folder_item.get_style_context().add_class('context-menu-open-folder')
+        self.open_mounted_folder_item.connect("activate", self._on_context_open_mounted_folder)
+        self.context_menu.append(self.open_mounted_folder_item)
 
         # Separator
         separator3 = Gtk.SeparatorMenuItem()
@@ -1181,25 +1262,42 @@ class SessionManagerGUI:
         children = self.context_menu.get_children()
         activate_item, save_now_item, save_settings_item, resize_item = children[0:4]
         export_item, copy_item, clone_item, convert_item = children[5:9]
-        delete_item = children[13]
+        delete_item = children[15]
         mode = getattr(row, 'mode', 'unknown')
         session_id = getattr(row, 'session_id', None)
-        mounted = session_id in self._session_mounts
-        mount_in_progress = bool(self._session_mounts)
+        mounted = (session_id in self._session_mounts or
+                   self._sessions_by_id.get(session_id, {}).get('is_mounted', False))
+        mount_state = self._session_mounts.get(session_id, {})
+        mount_busy = bool(mount_state.get('stopping') or
+                          mount_state.get('reclaiming'))
         mountable = (mode in ('dynfilefs', 'dynblk', 'vmdk', 'raw') and
                      getattr(row, 'configuration_supported', True))
         self.mount_item.set_visible(mountable)
         self.mount_item.set_label(
             _("_Unmount Session") if mounted else _("_Mount Session"))
         self.mount_item.set_sensitive(
-            mounted or (mountable and self.sessions_writable and
-                        not getattr(row, 'is_active', False) and
-                        not getattr(row, 'is_running', False) and
-                        not mount_in_progress))
+            (mounted and not mount_busy) or
+            (not mounted and mountable and self.sessions_writable and
+              not getattr(row, 'is_active', False) and
+              not getattr(row, 'is_running', False)))
+        encrypted = (self._sessions_by_id.get(session_id, {}).get('encryption') == 'luks')
+        self.change_passphrase_item.set_visible(encrypted)
+        self.change_passphrase_item.set_sensitive(
+            encrypted and not mounted and self.sessions_writable and
+            not getattr(row, 'is_active', False) and
+            not getattr(row, 'is_running', False) and
+            getattr(row, 'configuration_supported', True))
+        self.open_mounted_folder_item.set_visible(mounted)
+        self.open_mounted_folder_item.set_sensitive(
+            mounted and not mount_busy and bool(
+                mount_state.get('mount_point') or
+                self._sessions_by_id.get(session_id, {}).get('mount_point')))
         self.reclaim_item.set_visible(mode in ('dynfilefs', 'dynblk', 'vmdk'))
-        self.reclaim_item.set_sensitive(not mount_in_progress and
-                                        self.sessions_writable and
-                                        getattr(row, 'configuration_supported', True))
+        self.reclaim_item.set_sensitive(
+            self.sessions_writable and not mount_busy and
+            (not mounted or bool(mount_state.get('ready') or
+                                 self._sessions_by_id.get(session_id, {}).get('is_mounted'))) and
+            getattr(row, 'configuration_supported', True))
         is_squashfs = mode == 'squashfs'
         resize_available = mode in ('dynfilefs', 'dynblk', 'vmdk', 'raw')
         supported_operations = getattr(row, 'mode', 'unknown') != 'squashfs'
@@ -1210,31 +1308,31 @@ class SessionManagerGUI:
         running = getattr(row, 'is_running', False)
 
         activate_item.set_sensitive(
-            not mount_in_progress and self.sessions_writable and not active and
+            not mounted and self.sessions_writable and not active and
             getattr(row, 'configuration_supported', True))
         save_now_item.set_visible(is_squashfs)
         save_settings_item.set_visible(is_squashfs)
         save_now_item.set_sensitive(
-            not mount_in_progress and self.sessions_writable and
+            self.sessions_writable and
             is_squashfs and running)
         save_settings_item.set_sensitive(
-            not mount_in_progress and self.sessions_writable and is_squashfs)
+            self.sessions_writable and is_squashfs)
         resize_item.set_sensitive(
-            not mount_in_progress and self.sessions_writable and
+            not mounted and self.sessions_writable and
             not running and resize_available)
         export_item.set_sensitive(
-            not mount_in_progress and not running and supported_operations)
+            not mounted and not running and supported_operations)
         copy_item.set_sensitive(
-            not mount_in_progress and self.sessions_writable and
+            not mounted and self.sessions_writable and
             not running and supported_operations)
         clone_item.set_sensitive(
-            not mount_in_progress and self.sessions_writable and
+            not mounted and self.sessions_writable and
             not running and supported_operations)
         convert_item.set_sensitive(
-            not mount_in_progress and self.sessions_writable and
+            not mounted and self.sessions_writable and
             not running and supported_operations)
         delete_item.set_sensitive(
-            not mount_in_progress and self.sessions_writable and not active and
+            not mounted and self.sessions_writable and not active and
             (not running or getattr(row, 'mode', 'unknown') == 'squashfs'))
 
     def _on_context_activate(self, menu_item):
@@ -1262,7 +1360,8 @@ class SessionManagerGUI:
         session_id = self.selected_session_id
         if not session_id:
             return
-        if session_id in self._session_mounts:
+        if (session_id in self._session_mounts or
+                self._sessions_by_id.get(session_id, {}).get('is_mounted')):
             self._stop_session_mount(session_id)
             return
         session = self._sessions_by_id.get(session_id, {})
@@ -1270,13 +1369,42 @@ class SessionManagerGUI:
                 session.get('mode') not in ('dynfilefs', 'dynblk', 'vmdk', 'raw')):
             return
         password = None
-        args = ['mount', session_id, '--json']
+        args = ['mount', session_id, '--json', '--persistent']
         if session.get('encryption', 'none') == 'luks':
             password = self._prompt_luks_passphrase()
             if password is None:
                 return
             args.append('--password-stdin')
         self._start_session_mount(session_id, args, password)
+
+    def _on_context_change_passphrase(self, _menu_item):
+        session_id = self.selected_session_id
+        session = self._sessions_by_id.get(session_id, {})
+        if (not session_id or session.get('encryption') != 'luks' or
+                session_id in self._session_mounts or session.get('is_mounted') or
+                session.get('is_running') or session.get('is_default') or
+                not self.sessions_writable):
+            return
+        password_input = self._prompt_luks_change_passphrase()
+        if password_input is None:
+            return
+        self._show_loading(True, _('Changing LUKS passphrase...'))
+        self._start_cli_task(
+            ['change-passphrase', session_id, '--json', '--password-stdin'],
+            self._on_change_passphrase_complete, password_input)
+
+    def _on_change_passphrase_complete(self, success, output, error):
+        self._show_loading(False)
+        try:
+            result = _strict_json_loads(output) if output else None
+        except (TypeError, ValueError):
+            result = None
+        if isinstance(result, dict) and result.get('success') is True and success:
+            self._show_info(result.get('message') or _('LUKS passphrase changed.'))
+        else:
+            message = result.get('message') if isinstance(result, dict) else None
+            self._show_error(message or (self._cli_error_text(error) if error else
+                                         _('Failed to change LUKS passphrase.')))
 
     def _start_session_mount(self, session_id, args, password=None):
         """Start the privileged foreground mount and wait for its ready frame."""
@@ -1287,7 +1415,8 @@ class SessionManagerGUI:
             process = subprocess.Popen(
                 _privileged_command([self.cli_command] + args),
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE, universal_newlines=True, bufsize=1)
+                stderr=subprocess.PIPE, universal_newlines=True, bufsize=1,
+                start_new_session=True)
             if password is not None:
                 process.stdin.write(password)
                 process.stdin.flush()
@@ -1299,6 +1428,7 @@ class SessionManagerGUI:
         state = {
             'process': process, 'generation': generation, 'mount_point': None,
             'stopping': False, 'ready': False, 'message': None,
+            'reclaiming': False, 'reclaim_request_id': None,
         }
         self._session_mounts[session_id] = state
         self._show_loading(True, _("Mounting session, please wait..."))
@@ -1334,6 +1464,19 @@ class SessionManagerGUI:
                     process.stdin.close()
                 except (BrokenPipeError, OSError, ValueError):
                     pass
+            else:
+                for line in process.stdout:
+                    try:
+                        event = _strict_json_loads(line)
+                    except (TypeError, ValueError):
+                        event = {
+                            'type': 'reclaim', 'success': False,
+                            'message': _(
+                                "Invalid response from the session backend."),
+                        }
+                    GLib.idle_add(
+                        self._on_session_mount_event, session_id, generation,
+                        event)
             return_code = process.wait()
             try:
                 error_text = process.stderr.read().strip()
@@ -1358,6 +1501,7 @@ class SessionManagerGUI:
             return False
         state['ready'] = True
         state['mount_point'] = mount_point
+        self._update_session_mount_badge(session_id, True)
         self._show_loading(False)
         try:
             subprocess.Popen(['xdg-open', mount_point])
@@ -1366,16 +1510,69 @@ class SessionManagerGUI:
                 str(error)))
         return False
 
+    def _on_session_mount_event(self, session_id, generation, event):
+        state = self._session_mounts.get(session_id)
+        if (state is None or state['generation'] != generation or
+                self._closing):
+            return False
+        if (not isinstance(event, dict) or event.get('type') != 'reclaim' or
+                type(event.get('success')) is not bool or
+                event.get('request_id') != state.get('reclaim_request_id')):
+            return False
+        state['reclaiming'] = False
+        state['reclaim_request_id'] = None
+        self._show_loading(False)
+        self.refresh_session_list()
+        message = event.get('message') or _("Space reclamation finished.")
+        if event['success']:
+            self._show_info(message)
+        else:
+            self._show_error(message)
+        return False
+
+    def _request_mounted_reclaim(self, session_id, compact):
+        state = self._session_mounts.get(session_id)
+        if (state and (not state.get('ready') or
+                       state.get('reclaiming') or state.get('stopping'))):
+            return
+        if state:
+            state['reclaiming'] = True
+        self._show_loading(True, _("Reclaiming mounted session space..."))
+        args = ['mount-control', session_id, 'reclaim', '--json']
+        if compact:
+            args.append('--compact')
+
+        def finished(success, output, error):
+            if state:
+                state['reclaiming'] = False
+            self._on_reclaim_complete(success, output, error)
+
+        self._start_cli_task(args, finished)
+
     def _stop_session_mount(self, session_id):
         state = self._session_mounts.get(session_id)
-        if state is None or state['stopping']:
+        if state and state['stopping']:
             return
-        state['stopping'] = True
+        if state:
+            state['stopping'] = True
+            state['unmount_error_reported'] = False
         self._show_loading(True, _("Unmounting session, please wait..."))
-        try:
-            state['process'].stdin.close()
-        except (BrokenPipeError, OSError, ValueError):
-            pass
+
+        def finished(success, output, error):
+            # Keep the intent until the mount owner's exit callback runs;
+            # otherwise a successful unmount looks like an unexpected disconnect.
+            if state and not success:
+                state['stopping'] = False
+            self._show_loading(False)
+            if not success and not (state and state.get('unmount_error_reported')):
+                if state:
+                    state['unmount_error_reported'] = True
+                self._show_error(self._cli_error_text(output or error) or
+                                 _("Failed to unmount session."))
+            self.refresh_session_list()
+
+        self._start_cli_task(
+            ['mount-control', session_id, 'unmount', '--json'], finished)
 
     def _on_session_mount_exited(self, session_id, generation, return_code,
                                  error_text):
@@ -1385,11 +1582,14 @@ class SessionManagerGUI:
         self._session_mounts.pop(session_id, None)
         if self._closing:
             return False
+        self._update_session_mount_badge(session_id, False)
         self._show_loading(False)
         self.refresh_session_list()
         message = state.get('message') or error_text
         if return_code != 0:
-            self._show_error(message or _("Failed to unmount session."))
+            if not state.get('unmount_error_reported'):
+                state['unmount_error_reported'] = True
+                self._show_error(message or _("Failed to unmount session."))
         elif state['ready'] and not state['stopping']:
             self._show_error(_("The mounted session was disconnected unexpectedly."))
         return False
@@ -1429,6 +1629,10 @@ class SessionManagerGUI:
         move_data = compact.get_active()
         dialog.destroy()
         if response != Gtk.ResponseType.OK:
+            return
+        if (session_id in self._session_mounts or
+                session.get('is_mounted')):
+            self._request_mounted_reclaim(session_id, move_data)
             return
         args = ['reclaim', session_id, '--json']
         if move_data:
@@ -1495,19 +1699,30 @@ class SessionManagerGUI:
             self._show_convert_dialog(self.selected_session_id)
 
     def _on_context_open_folder(self, menu_item):
-        """Handle open folder from context menu"""
+        """Open the numbered session directory, never its mounted filesystem."""
         if self.selected_session_id:
-            import subprocess
             session = self._sessions_by_id.get(self.selected_session_id, {})
-            mount = self._session_mounts.get(self.selected_session_id, {})
-            session_path = mount.get('mount_point') or session.get('path')
-            try:
-                if session_path and os.path.exists(session_path):
-                    subprocess.Popen(['xdg-open', session_path])
-                else:
-                    self._show_error(_("Session folder not found"))
-            except Exception as e:
-                self._show_error(_("Failed to open folder: {}").format(str(e)))
+            self._open_folder_path(session.get('path'), _("Session folder not found"))
+
+    def _on_context_open_mounted_folder(self, _menu_item):
+        """Open only the filesystem already attached for this session."""
+        session_id = self.selected_session_id
+        if session_id:
+            state = self._session_mounts.get(session_id, {})
+            session = self._sessions_by_id.get(session_id, {})
+            path = state.get('mount_point') or session.get('mount_point')
+            if not state.get('ready') and not session.get('is_mounted'):
+                path = None
+            self._open_folder_path(path, _("Mounted session folder not found"))
+
+    def _open_folder_path(self, path, missing_message):
+        try:
+            if path and os.path.isdir(path):
+                subprocess.Popen(['xdg-open', path])
+            else:
+                self._show_error(missing_message)
+        except Exception as error:
+            self._show_error(_("Failed to open folder: {}").format(str(error)))
 
 
     def on_create_clicked(self, button):
@@ -2108,8 +2323,6 @@ class SessionManagerGUI:
                 'create_btn', 'import_btn', 'cleanup_btn')):
             return
         available = not getattr(self, '_loading_visible', False)
-        available = available and not bool(
-            getattr(self, '_session_mounts', {}))
         self.create_btn.set_sensitive(
             available and self.sessions_writable and bool(self._filesystem_info))
         self.import_btn.set_sensitive(available and self.sessions_writable)

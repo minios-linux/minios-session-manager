@@ -53,18 +53,33 @@ angegebene laufende SquashFS\-Sitzung. Mit \fB\-\-progress\fP und aktiviertem
 JSON\-Ausgabe werden maschinenlesbare Fortschrittsereignisse gestreamt.
 .TP
 \fBmount \fP\fIsession_id\fP [\-\-password\-stdin]
-Mountet eine inaktive, nicht laufende Raw\-, DynFileFS\-, DynBlk\- oder
-VMDK\-Sitzung mit Lese\-/Schreibzugriff. Der Befehl gibt den Einhängepunkt aus
+Mounten Sie eine inaktive, nicht laufende Raw\-, DynFileFS\-, DynBlk\- oder
+VMDK\-Sitzung im Lese\-/Schreibmodus. Der Befehl gibt den Einhängepunkt aus
 und bleibt im Vordergrund, bis die Standardeingabe geschlossen wird oder
-Strg+C gedrückt wird; danach wird ausgehängt und der zugrundeliegende
-Speicher getrennt. Während der gesamten Mount\-Dauer wird das
-Sitzungs\-Mutationssperre gehalten. Aktive, laufende, Native\- und
-SquashFS\-Sitzungen werden abgelehnt.
+Strg+C gedrückt wird; anschließend wird ausgehängt und der zugrunde liegende
+Speicher getrennt. Es wird eine exklusive Sperre für diese Sitzung gehalten,
+sodass andere Sitzungs\-IDs gleichzeitig eingehängt oder geändert werden
+können. Aktive, laufende, Native\- und SquashFS\-Sitzungen werden abgelehnt.
+.PP
+Temporäre Einhängepunkte verwenden für alle Containermodi dasselbe Muster:
+minios\-session\-ID\-filesystem\-*, mit minios\-session\-ID\-backend\-* für
+Zwischenspeicher\-Einhängungen. Bestehende Einhängungen behalten ihre Pfade,
+bis sie ausgehängt werden.
 .PP
 Verschlüsselte Sitzungen fordern eine LUKS\-Passphrase an oder lesen eine
 Zeile von der Standardeingabe mit \fB\-\-password\-stdin\fP. Wenn das Aushängen
 beschäftigt ist, schlägt der Befehl fehl, ohne den zugrundeliegenden Daemon
 zu beenden oder das Live\-Gerät zu trennen.
+.TP
+\fBchange\-passphrase \fP\fIsession_id\fP [\-\-password\-stdin]
+Ändert eine LUKS\-Passphrase für eine inaktive, getrennte verschlüsselte
+Raw\-, DynFileFS\-, DynBlk\- oder VMDK\-Session. Der Befehl fordert zur Eingabe
+der aktuellen Passphrase, der neuen Passphrase und deren Bestätigung
+auf. Mit \fB\-\-password\-stdin\fP geben Sie diese drei Zeilen in dieser
+Reihenfolge ein. Passphrasen werden weder als Argumente übergeben noch in
+den Sitzungsmetadaten gespeichert. Aktive, laufende und eingehängte Sessions
+werden abgelehnt. Der Vorgang ändert einen Keyslot, ohne die Sitzungsdaten
+neu zu verschlüsseln.
 .TP
 \fBcreate [\fP\fImode\fP] [\fIsize\fP] [\-\-encryption none|luks] [\-\-compression CODEC] [\-\-policy manual|shutdown] [\-\-autosave MINUTES] [\-\-activate]
 Erstellt eine neue Sitzung mit dem angegebenen Modus und optionaler
@@ -130,13 +145,16 @@ ID der zu löschenden Sitzung
 .RE
 .TP
 \fBreclaim \fP\fIsession_id\fP [\-\-compact]
-Trimmt das unverschlüsselte interne ext4\-Dateisystem und gibt bekannten
-freien Containerplatz für eine DynFileFS\-, DynBlk\- oder VMDK\-Sitzung
-frei. Das laufende Gerät wird gegen den aktuellen Boot validiert und bleibt
-verbunden; inaktive Sitzungen werden temporär eingebunden und
-gemountet. \fB\-\-compact\fP erlaubt explizit die Verlagerung von Live\-Daten und
-erhöht die Flash\-Schreibvorgänge. Verschlüsselte Sitzungen geben nur bereits
-bekannten freien Speicherplatz frei und aktivieren kein Discard durch LUKS.
+Trimmen Sie das unverschlüsselte interne ext4\-Dateisystem und geben Sie
+bekannten freien Container\-Speicherplatz für eine DynFileFS\-, DynBlk\- oder
+VMDK\-Sitzung frei. Das laufende Gerät wird gegen den aktuellen Boot
+validiert und bleibt verbunden; inaktive Sitzungen werden temporär angehängt
+und eingehängt. Der Sitzungsmanager kann seine eigenen eingehängten
+Sitzungen zurückgewinnen, ohne den zugrunde liegenden Speicher erneut zu
+verbinden, selbst nach einem Neustart der GUI.  \fB\-\-compact\fP erlaubt
+ausdrücklich die Verlagerung von Live\-Daten und erhöht die
+Flash\-Schreibvorgänge. Verschlüsselte Sitzungen geben nur bereits als frei
+bekannten Speicherplatz frei und aktivieren kein Discard über LUKS.
 .PP
 DynFileFS\-Wiederherstellung erfordert Version 4.6.0 oder neuer. Falls nach
 einem Paketupdate noch ein älterer Daemon läuft, starten Sie zuerst mit dem

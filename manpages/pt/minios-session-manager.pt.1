@@ -58,16 +58,27 @@ backend selecionado e um marcador de capacidade initrd MiniOS contendo
 luks\-layer\-v1. A interface gráfica solicita as senhas e não as armazena nos
 metadados da sessão.
 .SH INTERFACE
-A janela principal mostra as sessões disponíveis e seu status.  As ações de
-criar, importar e limpar estão disponíveis na barra de ferramentas.  Ações
+A janela principal mostra as sessões disponíveis e seu status. As ações de
+criar, importar e limpar estão disponíveis na barra de ferramentas. Ações
 adicionais para a sessão selecionada, como ativar, montar ou desmontar,
-redimensionar, exportar, copiar, clonar, converter, abrir pasta e excluir,
-estão disponíveis no menu de contexto. Sessões Raw, DynFileFS, DynBlk e VMDK
-inativas e não em execução podem ser montadas como leitura\-escrita; sessões
-criptografadas solicitam sua senha LUKS. Ações conflitantes permanecem
-desativadas até que Desmontar Sessão seja selecionado. As opções Salvar
-Agora e configurações de salvamento automático apenas para SquashFS são
-exibidas ali apenas para sessões SquashFS.
+redimensionar, exportar, copiar, clonar, converter, abrir a pasta da sessão
+e excluir, estão disponíveis no menu de contexto. Sessões Raw, DynFileFS,
+DynBlk e VMDK inativas e não em execução podem ser montadas como leitura e
+escrita; sessões criptografadas solicitam sua senha LUKS. Várias sessões
+podem ser montadas ao mesmo tempo. Sessões LUKS inativas e destacadas
+oferecem Alterar Senha no menu de contexto; a senha atual e uma nova senha
+confirmada são necessárias. A alteração não recriptografa os dados da sessão
+nem modifica seus outros keyslots. O selo MONTADO e a ação Desmontar Sessão
+permanecem disponíveis após fechar e reabrir o gerenciador; fechar sua
+janela não desmonta as sessões. Ações conflitantes na sessão montada
+permanecem desabilitadas, enquanto outras sessões ainda podem ser
+usadas. Abrir Pasta da Sessão mostra o diretório de base numerado; Abrir
+Pasta Montada mostra o sistema de arquivos anexado. Se o processo de
+desmontagem estiver ocupado, a montagem permanece conectada e pode ser
+tentada novamente após a pasta não estar mais em uso. Espaço Livre opera no
+armazenamento DynFileFS, DynBlk ou VMDK já montado. As configurações de
+Salvar Agora e salvamento automático somente para SquashFS são exibidas ali
+apenas para sessões SquashFS.
 .PP
 Exportações criptografadas contêm arquivos lógicos descriptografados em vez
 do backend criptografado. Copiar cria identidades novas de sistema de

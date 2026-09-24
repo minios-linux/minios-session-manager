@@ -6,8 +6,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: minios-session-manager 2.5.0\n"
-"POT-Creation-Date: 2026-09-22 22:14+0300\n"
-"PO-Revision-Date: 2026-09-22 19:42+0000\n"
+"POT-Creation-Date: 2026-09-24 16:25+0300\n"
+"PO-Revision-Date: 2026-09-24 13:25+0000\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
 "Language: id\n"
@@ -52,98 +52,98 @@ msgid "DESCRIPTION"
 msgstr "DESKRIPSI"
 
 #. type: SH
-#: en/minios-session-manager.1:19 en/minios-session.1:273
+#: en/minios-session-manager.1:19 en/minios-session.1:288
 #, no-wrap
 msgid "SESSION MODES"
 msgstr "MODE SESI"
 
 #. type: TP
-#: en/minios-session-manager.1:42 en/minios-session.1:297
+#: en/minios-session-manager.1:42 en/minios-session.1:312
 #, no-wrap
 msgid "B<Encryption>"
 msgstr "B<Enkripsi>"
 
 #. type: SH
-#: en/minios-session-manager.1:68 en/minios-session.1:327
+#: en/minios-session-manager.1:78 en/minios-session.1:342
 #, no-wrap
 msgid "EXAMPLES"
 msgstr "CONTOH"
 
 #. type: SH
-#: en/minios-session-manager.1:77 en/minios-session.1:406
+#: en/minios-session-manager.1:87 en/minios-session.1:421
 #, no-wrap
 msgid "FILES"
 msgstr "BERKAS"
 
 #. type: TP
-#: en/minios-session-manager.1:90 en/minios-session.1:407
+#: en/minios-session-manager.1:100 en/minios-session.1:422
 #, no-wrap
 msgid "B</run/initramfs/memory/data/minios/changes/>"
 msgstr "B</run/initramfs/memory/data/minios/changes/>"
 
 #. type: Plain text
-#: en/minios-session-manager.1:93 en/minios-session.1:410
+#: en/minios-session-manager.1:103 en/minios-session.1:425
 msgid "Primary location for session data and metadata."
 msgstr "Lokasi utama untuk data sesi dan metadata."
 
 #. type: TP
-#: en/minios-session-manager.1:93 en/minios-session.1:410
+#: en/minios-session-manager.1:103 en/minios-session.1:425
 #, no-wrap
 msgid "B</run/initramfs/memory/data/minios/changes/session.json>"
 msgstr "B</run/initramfs/memory/data/minios/changes/session.json>"
 
 #. type: Plain text
-#: en/minios-session-manager.1:96 en/minios-session.1:413
+#: en/minios-session-manager.1:106 en/minios-session.1:428
 msgid "Session metadata in JSON format (preferred)."
 msgstr "Metadata sesi dalam format JSON (disarankan)."
 
 #. type: TP
-#: en/minios-session-manager.1:96 en/minios-session.1:413
+#: en/minios-session-manager.1:106 en/minios-session.1:428
 #, no-wrap
 msgid "B</run/initramfs/memory/data/minios/changes/session.conf>"
 msgstr "B</run/initramfs/memory/data/minios/changes/session.conf>"
 
 #. type: Plain text
-#: en/minios-session-manager.1:99 en/minios-session.1:416
+#: en/minios-session-manager.1:109 en/minios-session.1:431
 msgid "Session metadata in legacy format (fallback)."
 msgstr "Metadata sesi dalam format lama (cadangan)."
 
 #. type: TP
-#: en/minios-session-manager.1:99 en/minios-session.1:416
+#: en/minios-session-manager.1:109 en/minios-session.1:431
 #, no-wrap
 msgid "B</run/initramfs/memory/data/minios/changes/[0-9]+/>"
 msgstr "B</run/initramfs/memory/data/minios/changes/[0-9]+/>"
 
 #. type: Plain text
-#: en/minios-session-manager.1:102 en/minios-session.1:419
+#: en/minios-session-manager.1:112 en/minios-session.1:434
 msgid "Individual session directories containing persistent changes."
 msgstr "Direktori sesi individual yang berisi perubahan persisten."
 
 #. type: SH
-#: en/minios-session-manager.1:102 en/minios-session.1:429
+#: en/minios-session-manager.1:112 en/minios-session.1:444
 #, no-wrap
 msgid "NOTES"
 msgstr "CATATAN"
 
 #. type: SH
-#: en/minios-session-manager.1:109 en/minios-session.1:432
+#: en/minios-session-manager.1:119 en/minios-session.1:447
 #, no-wrap
 msgid "SEE ALSO"
 msgstr "LIHAT JUGA"
 
 #. type: SH
-#: en/minios-session-manager.1:112 en/minios-session.1:436
+#: en/minios-session-manager.1:122 en/minios-session.1:451
 #, no-wrap
 msgid "AUTHOR"
 msgstr "PENULIS"
 
 #. type: Plain text
-#: en/minios-session-manager.1:114 en/minios-session.1:438
+#: en/minios-session-manager.1:124 en/minios-session.1:453
 msgid "crims0n E<lt>crims0n@minios.devE<gt>"
 msgstr "crims0n E<lt>crims0n@minios.devE<gt>"
 
 #. type: SH
-#: en/minios-session-manager.1:114 en/minios-session.1:438
+#: en/minios-session-manager.1:124 en/minios-session.1:453
 #, no-wrap
 msgid "REPORTING BUGS"
 msgstr "LAPORKAN BUG"
@@ -287,8 +287,8 @@ msgstr ""
 "ini berlaku pada boot berikutnya."
 
 #. type: TP
-#: en/minios-session.1:35 en/minios-session.1:106 en/minios-session.1:125
-#: en/minios-session.1:137 en/minios-session.1:179 en/minios-session.1:204
+#: en/minios-session.1:35 en/minios-session.1:119 en/minios-session.1:140
+#: en/minios-session.1:152 en/minios-session.1:194 en/minios-session.1:219
 #, no-wrap
 msgid "I<session_id> (required)"
 msgstr "I<session_id> (wajib)"
@@ -323,23 +323,38 @@ msgid "B<mount >I<session_id> [--password-stdin]"
 msgstr "B<mount >I<session_id> [--password-stdin]"
 
 #. type: Plain text
-#: en/minios-session.1:51
+#: en/minios-session.1:52
 msgid ""
 "Mount an inactive, non-running Raw, DynFileFS, DynBlk, or VMDK session read-"
 "write. The command prints the mount point and remains in the foreground "
 "until standard input closes or Ctrl+C is pressed, then unmounts and detaches "
-"the backing storage. It holds the session mutation lock for the complete "
-"mount lifetime. Active, running, Native, and SquashFS sessions are rejected."
+"the backing storage. It holds an exclusive lease on this session, allowing "
+"other session IDs to be mounted or modified concurrently. Active, running, "
+"Native, and SquashFS sessions are rejected."
 msgstr ""
 "Mount sesi Raw, DynFileFS, DynBlk, atau VMDK yang tidak aktif dan tidak "
-"berjalan secara read-write. Perintah ini akan menampilkan titik mount dan "
-"tetap di foreground sampai input standar ditutup atau Ctrl+C ditekan, lalu "
-"melakukan unmount dan melepaskan storage yang mendasarinya. Perintah ini "
-"memegang kunci mutasi sesi selama masa mount. Sesi yang aktif, berjalan, "
-"Native, dan SquashFS akan ditolak."
+"berjalan secara baca-tulis. Perintah ini mencetak titik mount dan tetap di "
+"latar depan sampai masukan standar ditutup atau Ctrl+C ditekan, lalu "
+"melakukan unmount dan melepaskan storage pendukung. Perintah ini memegang "
+"sewa eksklusif pada sesi ini, memungkinkan ID sesi lain untuk di-mount atau "
+"dimodifikasi secara bersamaan. Sesi yang aktif, berjalan, Native, dan "
+"SquashFS akan ditolak."
 
 #. type: Plain text
-#: en/minios-session.1:55
+#: en/minios-session.1:56
+msgid ""
+"Temporary mount directories use the same pattern for all container modes: "
+"minios-session-ID-filesystem-*, with minios-session-ID-backend-* for "
+"intermediate storage mounts. Existing mounts keep their paths until "
+"unmounted."
+msgstr ""
+"Direktori mount sementara menggunakan pola yang sama untuk semua mode "
+"container: minios-session-ID-filesystem-*, dengan minios-session-ID-backend-"
+"* untuk mount penyimpanan sementara. Mount yang sudah ada akan "
+"mempertahankan path-nya hingga dilepas (unmounted)."
+
+#. type: Plain text
+#: en/minios-session.1:60
 msgid ""
 "Encrypted sessions prompt for a LUKS passphrase or read one line from "
 "standard input with B<--password-stdin>. If unmounting is busy, the command "
@@ -351,13 +366,38 @@ msgstr ""
 "perangkat live."
 
 #. type: TP
-#: en/minios-session.1:55
+#: en/minios-session.1:60
+#, no-wrap
+msgid "B<change-passphrase >I<session_id> [--password-stdin]"
+msgstr "B<change-passphrase >I<session_id> [--password-stdin]"
+
+#. type: Plain text
+#: en/minios-session.1:68
+msgid ""
+"Change one LUKS passphrase for an inactive, detached encrypted Raw, "
+"DynFileFS, DynBlk, or VMDK session. The command prompts for the current "
+"passphrase, the new passphrase, and its confirmation. With B<--password-"
+"stdin>, supply these three lines in that order. Passphrases are not passed "
+"as arguments or stored in session metadata. Active, running, and mounted "
+"sessions are rejected.  The operation changes one keyslot without re-"
+"encrypting the session data."
+msgstr ""
+"Ubah satu frasa sandi LUKS untuk sesi Raw terenkripsi yang tidak aktif dan "
+"terlepas, DynFileFS, DynBlk, atau VMDK. Perintah ini akan meminta frasa "
+"sandi saat ini, frasa sandi baru, dan konfirmasinya. Dengan B<--password-"
+"stdin>, berikan tiga baris tersebut secara berurutan. Frasa sandi tidak "
+"diberikan sebagai argumen atau disimpan dalam metadata sesi. Sesi yang "
+"aktif, berjalan, dan terpasang akan ditolak. Operasi ini mengubah satu "
+"keyslot tanpa mengenkripsi ulang data sesi."
+
+#. type: TP
+#: en/minios-session.1:68
 #, no-wrap
 msgid "B<create [>I<mode>] [I<size>] [--encryption none|luks] [--compression CODEC] [--policy manual|shutdown] [--autosave MINUTES] [--activate]"
 msgstr "B<create [>I<mode>] [I<size>] [--encryption none|luks] [--compression CODEC] [--policy manual|shutdown] [--autosave MINUTES] [--activate]"
 
 #. type: Plain text
-#: en/minios-session.1:61
+#: en/minios-session.1:74
 msgid ""
 "Create a new session with the specified mode and optional size. The new "
 "session will be automatically assigned the next available ID. The tool "
@@ -375,13 +415,13 @@ msgstr ""
 "yang ter-mount lain."
 
 #. type: TP
-#: en/minios-session.1:62
+#: en/minios-session.1:75
 #, no-wrap
 msgid "B<--activate> (optional)"
 msgstr "B<--activate> (opsional)"
 
 #. type: Plain text
-#: en/minios-session.1:68
+#: en/minios-session.1:81
 msgid ""
 "Select the completed session as the boot default in the same metadata "
 "update.  The running-session selector is preserved. Combine with --sessions-"
@@ -394,13 +434,13 @@ msgstr ""
 "target. Tanpa opsi ini, boot default saat ini tidak berubah."
 
 #. type: TP
-#: en/minios-session.1:68
+#: en/minios-session.1:81
 #, no-wrap
 msgid "I<mode> (optional)"
 msgstr "I<mode> (opsional)"
 
 #. type: Plain text
-#: en/minios-session.1:71
+#: en/minios-session.1:84
 msgid ""
 "Session mode: native, squashfs, dynfilefs, dynblk, vmdk, or raw (default: "
 "native). DynBlk is exposed only when its userspace utility, kernel module, "
@@ -411,13 +451,13 @@ msgstr ""
 "marker kemampuan initrd-nya tersedia."
 
 #. type: TP
-#: en/minios-session.1:71
+#: en/minios-session.1:84
 #, no-wrap
 msgid "I<size> (optional)"
 msgstr "I<size> (opsional)"
 
 #. type: Plain text
-#: en/minios-session.1:75
+#: en/minios-session.1:88
 msgid ""
 "Decimal size in MB, GB, or TB for container modes. DynFileFS and raw default "
 "to 4000MB. DynBlk defaults to 16GiB and uses the installed backend limit "
@@ -428,13 +468,13 @@ msgstr ""
 "yang terinstal (batas dynblk)."
 
 #. type: TP
-#: en/minios-session.1:75
+#: en/minios-session.1:88
 #, no-wrap
 msgid "B<--encryption> none|luks (optional)"
 msgstr "B<--encryption> none|luks (opsional)"
 
 #. type: Plain text
-#: en/minios-session.1:80
+#: en/minios-session.1:93
 msgid ""
 "Encrypt Raw, DynFileFS, or DynBlk storage with LUKS2. Encrypted creation "
 "reads the passphrase and confirmation interactively or from standard input "
@@ -445,14 +485,14 @@ msgstr ""
 "input standar dengan B<--password-stdin>."
 
 #. type: TP
-#: en/minios-session.1:80 en/minios-session.1:164 en/minios-session.1:192
-#: en/minios-session.1:216
+#: en/minios-session.1:93 en/minios-session.1:179 en/minios-session.1:207
+#: en/minios-session.1:231
 #, no-wrap
 msgid "B<--compression> CODEC (optional)"
 msgstr "B<--compression> CODEC (opsional)"
 
 #. type: Plain text
-#: en/minios-session.1:87
+#: en/minios-session.1:100
 msgid ""
 "DynBlk creation codec. Known codecs are none, lz4, lz4hc, lzo, lzo-rle, "
 "zstd, deflate, and 842. Before creating storage, minios-session checks the "
@@ -467,24 +507,24 @@ msgstr ""
 "berlaku untuk DynBlk dan tidak dapat digabungkan dengan enkripsi LUKS."
 
 #. type: TP
-#: en/minios-session.1:87
+#: en/minios-session.1:100
 #, no-wrap
 msgid "B<--policy> manual|shutdown (optional)"
 msgstr "B<--policy> manual|shutdown (opsional)"
 
 #. type: Plain text
-#: en/minios-session.1:90
+#: en/minios-session.1:103
 msgid "Set the SquashFS shutdown-save policy. The default is shutdown."
 msgstr "Atur kebijakan shutdown-save SquashFS. Default-nya adalah shutdown."
 
 #. type: TP
-#: en/minios-session.1:90
+#: en/minios-session.1:103
 #, no-wrap
 msgid "B<--autosave> MINUTES (optional)"
 msgstr "B<--autosave> MINUTES (opsional)"
 
 #. type: Plain text
-#: en/minios-session.1:94
+#: en/minios-session.1:107
 msgid ""
 "Set the periodic SquashFS save interval to 30, 60, 120, 240, or 480 "
 "minutes.  Use 0 to disable periodic saving."
@@ -493,13 +533,13 @@ msgstr ""
 "menit. Gunakan 0 untuk menonaktifkan penyimpanan berkala."
 
 #. type: TP
-#: en/minios-session.1:95
+#: en/minios-session.1:108
 #, no-wrap
 msgid "B<settings >I<session_id> [--shutdown on|off] [--autosave MINUTES]"
 msgstr "B<settings >I<session_id> [--shutdown on|off] [--autosave MINUTES]"
 
 #. type: Plain text
-#: en/minios-session.1:100
+#: en/minios-session.1:113
 msgid ""
 "Change automatic saving for a SquashFS session. At least one setting must be "
 "specified. The supported periodic intervals are 30, 60, 120, 240, and 480 "
@@ -510,13 +550,13 @@ msgstr ""
 "dan 480 menit; 0 menonaktifkan penyimpanan berkala."
 
 #. type: TP
-#: en/minios-session.1:100
+#: en/minios-session.1:113
 #, no-wrap
 msgid "B<delete >I<session_id> [--handoff]"
 msgstr "B<delete >I<session_id> [--handoff]"
 
 #. type: Plain text
-#: en/minios-session.1:105
+#: en/minios-session.1:118
 msgid ""
 "Delete the specified session by ID. Active sessions cannot be deleted. "
 "Running sessions are rejected unless B<--handoff> is used for a RAM-backed "
@@ -528,37 +568,41 @@ msgstr ""
 "mengambil alih."
 
 #. type: Plain text
-#: en/minios-session.1:109
+#: en/minios-session.1:122
 msgid "ID of the session to delete"
 msgstr "ID sesi yang akan dihapus"
 
 #. type: TP
-#: en/minios-session.1:110
+#: en/minios-session.1:123
 #, no-wrap
 msgid "B<reclaim >I<session_id> [--compact]"
 msgstr "B<reclaim >I<session_id> [--compact]"
 
 #. type: Plain text
-#: en/minios-session.1:118
+#: en/minios-session.1:133
 msgid ""
 "Trim the unencrypted internal ext4 filesystem and reclaim known free "
 "container space for a DynFileFS, DynBlk, or VMDK session. The running device "
 "is validated against the current boot and remains connected; inactive "
-"sessions are attached and mounted temporarily. B<--compact> explicitly "
-"permits live-data relocation and increases flash writes. Encrypted sessions "
-"reclaim only already-known free storage and do not enable discard through "
-"LUKS."
+"sessions are attached and mounted temporarily. Session Manager can reclaim "
+"its own mounted sessions without reconnecting the backing storage, even "
+"after the GUI is restarted.  B<--compact> explicitly permits live-data "
+"relocation and increases flash writes. Encrypted sessions reclaim only "
+"already-known free storage and do not enable discard through LUKS."
 msgstr ""
-"Trim filesystem internal ext4 yang tidak terenkripsi dan reclaim ruang "
-"kontainer yang diketahui bebas untuk sesi DynFileFS, DynBlk, atau VMDK. "
-"Perangkat yang sedang berjalan divalidasi terhadap boot saat ini dan tetap "
-"terhubung; sesi yang tidak aktif akan di-attach dan di-mount sementara. B<--"
-"compact> secara eksplisit mengizinkan relokasi data live dan meningkatkan "
-"penulisan flash. Sesi terenkripsi hanya reclaim storage yang sudah diketahui "
-"bebas dan tidak mengaktifkan discard melalui LUKS."
+"Trim filesystem ext4 internal yang tidak terenkripsi dan mengklaim kembali "
+"ruang container yang diketahui kosong untuk sesi DynFileFS, DynBlk, atau "
+"VMDK. Perangkat yang sedang berjalan divalidasi terhadap boot saat ini dan "
+"tetap terhubung; sesi yang tidak aktif akan di-attach dan di-mount "
+"sementara. Session Manager dapat mengklaim kembali sesi yang di-mount "
+"sendiri tanpa harus menghubungkan ulang storage pendukung, bahkan setelah "
+"GUI dimulai ulang.  B<--compact> secara eksplisit mengizinkan relokasi data "
+"langsung dan meningkatkan penulisan ke flash. Sesi terenkripsi hanya "
+"mengklaim kembali storage kosong yang sudah diketahui dan tidak mengaktifkan "
+"discard melalui LUKS."
 
 #. type: Plain text
-#: en/minios-session.1:121
+#: en/minios-session.1:136
 msgid ""
 "DynFileFS reclamation requires version 4.6.0 or later. If an older daemon is "
 "still running after a package update, reboot with the updated backend first."
@@ -568,13 +612,13 @@ msgstr ""
 "backend yang telah diperbarui."
 
 #. type: TP
-#: en/minios-session.1:121
+#: en/minios-session.1:136
 #, no-wrap
 msgid "B<resize >I<session_id> I<size>"
 msgstr "B<resize >I<session_id> I<size>"
 
 #. type: Plain text
-#: en/minios-session.1:124
+#: en/minios-session.1:139
 msgid ""
 "Resize the specified session to a larger size in MB, GB, or TB. Works for "
 "dynfilefs, dynblk, vmdk, and raw sessions, including their encrypted forms. "
@@ -589,31 +633,31 @@ msgstr ""
 "langsung. Tidak dapat mengubah ukuran sesi yang sedang berjalan."
 
 #. type: Plain text
-#: en/minios-session.1:128
+#: en/minios-session.1:143
 msgid "ID of the session to resize"
 msgstr "ID sesi yang akan diubah ukurannya"
 
 #. type: TP
-#: en/minios-session.1:128
+#: en/minios-session.1:143
 #, no-wrap
 msgid "I<size> (required)"
 msgstr "I<size> (wajib)"
 
 #. type: Plain text
-#: en/minios-session.1:131
+#: en/minios-session.1:146
 msgid "New decimal size in MB, GB, or TB. Must be larger than current size."
 msgstr ""
 "Ukuran desimal baru dalam MB, GB, atau TB. Harus lebih besar dari ukuran "
 "saat ini."
 
 #. type: TP
-#: en/minios-session.1:132
+#: en/minios-session.1:147
 #, no-wrap
 msgid "B<export >I<session_id> I<output_path> [--no-verify]"
 msgstr "B<export >I<session_id> I<output_path> [--no-verify]"
 
 #. type: Plain text
-#: en/minios-session.1:136
+#: en/minios-session.1:151
 msgid ""
 "Export a session to a .tar.zst archive. Encrypted sessions are decrypted and "
 "exported as logical files; the encrypted container is not copied into the "
@@ -623,18 +667,18 @@ msgstr ""
 "sebagai file logis; kontainer terenkripsi tidak disalin ke dalam arsip."
 
 #. type: Plain text
-#: en/minios-session.1:140
+#: en/minios-session.1:155
 msgid "ID of the session to export"
 msgstr "ID sesi yang akan diekspor"
 
 #. type: TP
-#: en/minios-session.1:140
+#: en/minios-session.1:155
 #, no-wrap
 msgid "I<output_path> (required)"
 msgstr "I<output_path> (wajib)"
 
 #. type: Plain text
-#: en/minios-session.1:143
+#: en/minios-session.1:158
 msgid ""
 "Path to output file or directory. If directory is provided, filename is auto-"
 "generated."
@@ -643,59 +687,59 @@ msgstr ""
 "dibuat secara otomatis."
 
 #. type: TP
-#: en/minios-session.1:143 en/minios-session.1:167
+#: en/minios-session.1:158 en/minios-session.1:182
 #, no-wrap
 msgid "B<--no-verify> (optional)"
 msgstr "B<--no-verify> (opsional)"
 
 #. type: Plain text
-#: en/minios-session.1:146
+#: en/minios-session.1:161
 msgid "Skip archive verification after creation"
 msgstr "Lewati verifikasi arsip setelah pembuatan"
 
 #. type: TP
-#: en/minios-session.1:147
+#: en/minios-session.1:162
 #, no-wrap
 msgid "B<import >I<archive_path> [--auto-convert] [--force-mode I<MODE>] [--force-encryption none|luks] [--compression CODEC] [--skip-compatibility-check] [--no-verify]"
 msgstr "B<import >I<archive_path> [--auto-convert] [--force-mode I<MODE>] [--force-encryption none|luks] [--compression CODEC] [--skip-compatibility-check] [--no-verify]"
 
 #. type: Plain text
-#: en/minios-session.1:150
+#: en/minios-session.1:165
 msgid ""
 "Import a session from a .tar.zst archive file. Supports automatic mode "
 "conversion."
 msgstr "Impor sesi dari file arsip .tar.zst. Mendukung konversi mode otomatis."
 
 #. type: TP
-#: en/minios-session.1:151
+#: en/minios-session.1:166
 #, no-wrap
 msgid "I<archive_path> (required)"
 msgstr "I<archive_path> (wajib)"
 
 #. type: Plain text
-#: en/minios-session.1:154
+#: en/minios-session.1:169
 msgid "Path to the archive file (.tar.zst)"
 msgstr "Path ke file arsip (.tar.zst)"
 
 #. type: TP
-#: en/minios-session.1:154
+#: en/minios-session.1:169
 #, no-wrap
 msgid "B<--auto-convert> (optional)"
 msgstr "B<--auto-convert> (opsional)"
 
 #. type: Plain text
-#: en/minios-session.1:157
+#: en/minios-session.1:172
 msgid "Automatically convert to compatible mode for current filesystem"
 msgstr "Otomatis konversi ke mode yang kompatibel untuk filesystem saat ini"
 
 #. type: TP
-#: en/minios-session.1:157
+#: en/minios-session.1:172
 #, no-wrap
 msgid "B<--force-mode> I<MODE> (optional)"
 msgstr "B<--force-mode> I<MODE> (opsional)"
 
 #. type: Plain text
-#: en/minios-session.1:160
+#: en/minios-session.1:175
 msgid ""
 "Force import as a specific storage mode (native/dynfilefs/dynblk/vmdk/raw)"
 msgstr ""
@@ -703,13 +747,13 @@ msgstr ""
 "raw)"
 
 #. type: TP
-#: en/minios-session.1:160
+#: en/minios-session.1:175
 #, no-wrap
 msgid "B<--force-encryption> none|luks (optional)"
 msgstr "B<--force-encryption> none|luks (opsional)"
 
 #. type: Plain text
-#: en/minios-session.1:164
+#: en/minios-session.1:179
 msgid ""
 "Force target encryption. A LUKS target receives a fresh LUKS header and ext4 "
 "identity."
@@ -718,25 +762,25 @@ msgstr ""
 "identitas ext4 baru."
 
 #. type: Plain text
-#: en/minios-session.1:167
+#: en/minios-session.1:182
 msgid ""
 "Select compression when the import target is DynBlk. Not available with LUKS."
 msgstr ""
 "Pilih kompresi saat target impor adalah DynBlk. Tidak tersedia untuk LUKS."
 
 #. type: Plain text
-#: en/minios-session.1:170
+#: en/minios-session.1:185
 msgid "Skip session integrity verification after import"
 msgstr "Lewati verifikasi integritas sesi setelah impor"
 
 #. type: TP
-#: en/minios-session.1:170
+#: en/minios-session.1:185
 #, no-wrap
 msgid "B<--skip-compatibility-check> (optional)"
 msgstr "B<--skip-compatibility-check> (opsional)"
 
 #. type: Plain text
-#: en/minios-session.1:173
+#: en/minios-session.1:188
 msgid ""
 "Skip source MiniOS version, edition, and union-filesystem compatibility "
 "checks."
@@ -745,13 +789,13 @@ msgstr ""
 "MiniOS."
 
 #. type: TP
-#: en/minios-session.1:174
+#: en/minios-session.1:189
 #, no-wrap
 msgid "B<copy >I<session_id> [--to-mode I<MODE>] [--to-encryption none|luks] [--size I<SIZE>] [--compression CODEC]"
 msgstr "B<copy >I<session_id> [--to-mode I<MODE>] [--to-encryption none|luks] [--size I<SIZE>] [--compression CODEC]"
 
 #. type: Plain text
-#: en/minios-session.1:178
+#: en/minios-session.1:193
 msgid ""
 "Logically copy a session through its filesystem, optionally changing "
 "storage, capacity, or encryption. The target receives fresh filesystem and "
@@ -762,42 +806,42 @@ msgstr ""
 "filesystem dan LUKS baru."
 
 #. type: Plain text
-#: en/minios-session.1:182
+#: en/minios-session.1:197
 msgid "ID of the session to copy"
 msgstr "ID sesi yang akan disalin"
 
 #. type: TP
-#: en/minios-session.1:182
+#: en/minios-session.1:197
 #, no-wrap
 msgid "B<--to-mode> I<MODE> (optional)"
 msgstr "B<--to-mode> I<MODE> (opsional)"
 
 #. type: Plain text
-#: en/minios-session.1:185
+#: en/minios-session.1:200
 msgid ""
 "Convert to a different storage mode: native, dynfilefs, dynblk, vmdk, or raw"
 msgstr ""
 "Konversi ke mode penyimpanan lain: native, dynfilefs, dynblk, vmdk, atau raw"
 
 #. type: TP
-#: en/minios-session.1:185 en/minios-session.1:210
+#: en/minios-session.1:200 en/minios-session.1:225
 #, no-wrap
 msgid "B<--to-encryption> none|luks (optional)"
 msgstr "B<--to-encryption> none|luks (opsional)"
 
 #. type: Plain text
-#: en/minios-session.1:188 en/minios-session.1:213
+#: en/minios-session.1:203 en/minios-session.1:228
 msgid "Select target encryption."
 msgstr "Pilih enkripsi target."
 
 #. type: TP
-#: en/minios-session.1:188 en/minios-session.1:213
+#: en/minios-session.1:203 en/minios-session.1:228
 #, no-wrap
 msgid "B<--size> I<SIZE> (optional)"
 msgstr "B<--size> I<SIZE> (opsional)"
 
 #. type: Plain text
-#: en/minios-session.1:192
+#: en/minios-session.1:207
 msgid ""
 "Decimal size in MB, GB, or TB for dynfilefs, dynblk, vmdk, or raw targets.  "
 "DynBlk defaults to 16GiB; the other container modes default to 4000MB when "
@@ -808,7 +852,7 @@ msgstr ""
 "jika tidak ada ukuran sumber yang terdeteksi."
 
 #. type: Plain text
-#: en/minios-session.1:195
+#: en/minios-session.1:210
 msgid ""
 "Select compression for a newly created DynBlk copy target. Not available "
 "with LUKS."
@@ -817,13 +861,13 @@ msgstr ""
 "untuk LUKS."
 
 #. type: TP
-#: en/minios-session.1:196
+#: en/minios-session.1:211
 #, no-wrap
 msgid "B<clone >I<session_id>"
 msgstr "B<clone >I<session_id>"
 
 #. type: Plain text
-#: en/minios-session.1:200
+#: en/minios-session.1:215
 msgid ""
 "Physically clone a detached session backend. The clone preserves LUKS "
 "headers, keyslots, LUKS UUID, and ext4 UUID and does not require a "
@@ -833,34 +877,34 @@ msgstr ""
 "keyslot, UUID LUKS, dan UUID ext4 serta tidak memerlukan kata sandi."
 
 #. type: TP
-#: en/minios-session.1:200
+#: en/minios-session.1:215
 #, no-wrap
 msgid "B<convert >I<session_id> I<target_mode> [--to-encryption none|luks] [--size I<SIZE>] [--compression CODEC] [--new-session]"
 msgstr "B<convert >I<session_id> I<target_mode> [--to-encryption none|luks] [--size I<SIZE>] [--compression CODEC] [--new-session]"
 
 #. type: Plain text
-#: en/minios-session.1:203
+#: en/minios-session.1:218
 msgid "Convert an existing session to a different mode in-place."
 msgstr "Konversi sesi yang ada ke mode lain secara langsung."
 
 #. type: Plain text
-#: en/minios-session.1:207
+#: en/minios-session.1:222
 msgid "ID of the session to convert"
 msgstr "ID sesi yang akan dikonversi"
 
 #. type: TP
-#: en/minios-session.1:207
+#: en/minios-session.1:222
 #, no-wrap
 msgid "I<target_mode> (required)"
 msgstr "I<target_mode> (wajib)"
 
 #. type: Plain text
-#: en/minios-session.1:210
+#: en/minios-session.1:225
 msgid "Target storage mode: native, dynfilefs, dynblk, vmdk, or raw"
 msgstr "Mode penyimpanan target: native, dynfilefs, dynblk, vmdk, atau raw"
 
 #. type: Plain text
-#: en/minios-session.1:216
+#: en/minios-session.1:231
 msgid ""
 "Decimal size in MB, GB, or TB for dynfilefs, dynblk, vmdk, or raw targets."
 msgstr ""
@@ -868,19 +912,19 @@ msgstr ""
 "atau raw."
 
 #. type: Plain text
-#: en/minios-session.1:219
+#: en/minios-session.1:234
 msgid ""
 "Select compression for the new DynBlk container. Not available with LUKS."
 msgstr "Pilih kompresi untuk kontainer DynBlk baru. Tidak tersedia untuk LUKS."
 
 #. type: TP
-#: en/minios-session.1:219
+#: en/minios-session.1:234
 #, no-wrap
 msgid "B<--new-session> (optional)"
 msgstr "B<--new-session> (opsional)"
 
 #. type: Plain text
-#: en/minios-session.1:223
+#: en/minios-session.1:238
 msgid ""
 "Create a converted session with a new ID and preserve the source. Without "
 "this option conversion replaces the source in-place."
@@ -889,13 +933,13 @@ msgstr ""
 "opsi ini, konversi akan menggantikan sumber secara langsung."
 
 #. type: TP
-#: en/minios-session.1:224
+#: en/minios-session.1:239
 #, no-wrap
 msgid "B<cleanup [--days >I<N>]"
 msgstr "B<cleanup [--days >I<N>]"
 
 #. type: Plain text
-#: en/minios-session.1:227
+#: en/minios-session.1:242
 msgid ""
 "Delete all sessions older than N days. The currently active session and "
 "currently running session are never deleted. If called without parameters, "
@@ -906,13 +950,13 @@ msgstr ""
 "parameter, menggunakan ambang batas default 30 hari."
 
 #. type: TP
-#: en/minios-session.1:228
+#: en/minios-session.1:243
 #, no-wrap
 msgid "B<--days> I<N> (optional)"
 msgstr "B<--days> I<N> (opsional)"
 
 #. type: Plain text
-#: en/minios-session.1:231
+#: en/minios-session.1:246
 msgid ""
 "Age threshold in days for session deletion (default: 30). Sessions modified "
 "within this period are preserved."
@@ -921,13 +965,13 @@ msgstr ""
 "dimodifikasi dalam periode ini akan dipertahankan."
 
 #. type: TP
-#: en/minios-session.1:232
+#: en/minios-session.1:247
 #, no-wrap
 msgid "B<status>"
 msgstr "B<status>"
 
 #. type: Plain text
-#: en/minios-session.1:235
+#: en/minios-session.1:250
 msgid ""
 "Check sessions directory status and write permissions. Reports filesystem "
 "type and whether session operations are available."
@@ -936,19 +980,19 @@ msgstr ""
 "dan apakah operasi sesi tersedia."
 
 #. type: SH
-#: en/minios-session.1:235
+#: en/minios-session.1:250
 #, no-wrap
 msgid "COMMAND BEHAVIOR"
 msgstr "PERILAKU PERINTAH"
 
 #. type: TP
-#: en/minios-session.1:236
+#: en/minios-session.1:251
 #, no-wrap
 msgid "B<Filesystem Compatibility Checking>"
 msgstr "B<Pemeriksaan Kompatibilitas Filesystem>"
 
 #. type: Plain text
-#: en/minios-session.1:241
+#: en/minios-session.1:256
 msgid ""
 "The B<create> command automatically detects the filesystem type and "
 "validates mode compatibility. If the requested mode is not supported:"
@@ -957,49 +1001,49 @@ msgstr ""
 "memvalidasi kompatibilitas mode. Jika mode yang diminta tidak didukung:"
 
 #. type: TP
-#: en/minios-session.1:242
+#: en/minios-session.1:257
 #, no-wrap
 msgid "- On FAT32/NTFS/exFAT with native mode: Returns an error suggesting a container mode"
 msgstr "- Pada FAT32/NTFS/exFAT dengan mode native: Mengembalikan error yang menyarankan mode container"
 
 #. type: TP
-#: en/minios-session.1:244
+#: en/minios-session.1:259
 #, no-wrap
 msgid "- On read-only media: Returns error stating no sessions can be created"
 msgstr "- Pada media hanya-baca: Mengembalikan error yang menyatakan tidak ada sesi yang dapat dibuat"
 
 #. type: TP
-#: en/minios-session.1:246
+#: en/minios-session.1:261
 #, no-wrap
 msgid "- With dynfilefs mode but package not installed: Returns error requesting dynfilefs package installation"
 msgstr "- Dengan mode dynfilefs tetapi paket belum terpasang: Mengembalikan error yang meminta instalasi paket dynfilefs"
 
 #. type: TP
-#: en/minios-session.1:248
+#: en/minios-session.1:263
 #, no-wrap
 msgid "- With DynBlk mode but no matching initrd/kernel capability: Returns an availability error"
 msgstr "- Dengan mode DynBlk tetapi tidak ada kemampuan initrd/kernel yang cocok: Mengembalikan error ketersediaan"
 
 #. type: TP
-#: en/minios-session.1:250
+#: en/minios-session.1:265
 #, no-wrap
 msgid "- With an oversized raw image on FAT32: Returns an error with the 4000MB limit"
 msgstr "- Dengan image raw yang terlalu besar di FAT32: Mengembalikan error dengan batas 4000MB"
 
 #. type: TP
-#: en/minios-session.1:253
+#: en/minios-session.1:268
 #, no-wrap
 msgid "B<Default Parameter Behavior>"
 msgstr "B<Perilaku Parameter Default>"
 
 #. type: TP
-#: en/minios-session.1:256 en/minios-session.1:260 en/minios-session.1:264
+#: en/minios-session.1:271 en/minios-session.1:275 en/minios-session.1:279
 #, no-wrap
-msgid "- "
-msgstr "- "
+msgid "-"
+msgstr "-"
 
 #. type: Plain text
-#: en/minios-session.1:260
+#: en/minios-session.1:275
 msgid ""
 "B<create> without mode: Uses native mode, may fail on non-POSIX filesystems"
 msgstr ""
@@ -1007,7 +1051,7 @@ msgstr ""
 "non-POSIX"
 
 #. type: Plain text
-#: en/minios-session.1:264
+#: en/minios-session.1:279
 msgid ""
 "B<create> without size: Uses 16GiB for DynBlk/VMDK and 4000MB for dynfilefs "
 "and raw modes"
@@ -1016,19 +1060,19 @@ msgstr ""
 "mode dynfilefs dan raw"
 
 #. type: Plain text
-#: en/minios-session.1:268
+#: en/minios-session.1:283
 msgid "B<cleanup> without days: Uses 30-day threshold for session deletion"
 msgstr ""
 "B<cleanup> tanpa days: Menggunakan ambang 30 hari untuk penghapusan sesi"
 
 #. type: TP
-#: en/minios-session.1:269
+#: en/minios-session.1:284
 #, no-wrap
 msgid "B<Session safeguards>"
 msgstr "B<Perlindungan Sesi>"
 
 #. type: Plain text
-#: en/minios-session.1:273
+#: en/minios-session.1:288
 msgid ""
 "Active sessions are protected from deletion and in-place conversion. Running "
 "sessions are protected from deletion, export, copy, resize, and conversion."
@@ -1038,18 +1082,18 @@ msgstr ""
 "konversi."
 
 #. type: Plain text
-#: en/minios-session.1:275
+#: en/minios-session.1:290
 msgid "MiniOS supports six persistence storage modes:"
 msgstr "MiniOS mendukung enam mode penyimpanan persistensi:"
 
 #. type: TP
-#: en/minios-session.1:275
+#: en/minios-session.1:290
 #, no-wrap
 msgid "B<native>"
 msgstr "B<native>"
 
 #. type: Plain text
-#: en/minios-session.1:278
+#: en/minios-session.1:293
 msgid ""
 "Direct storage on POSIX-compatible filesystems (ext4, btrfs, etc.). This is "
 "the default and most efficient mode for compatible filesystems."
@@ -1059,13 +1103,13 @@ msgstr ""
 "yang kompatibel."
 
 #. type: TP
-#: en/minios-session.1:278
+#: en/minios-session.1:293
 #, no-wrap
 msgid "B<squashfs>"
 msgstr "B<squashfs>"
 
 #. type: Plain text
-#: en/minios-session.1:282
+#: en/minios-session.1:297
 msgid ""
 "Compressed snapshot of the current live changes. Saving may be manual, at "
 "shutdown, or periodic. SquashFS sessions have no fixed container size."
@@ -1075,13 +1119,13 @@ msgstr ""
 "memiliki ukuran container tetap."
 
 #. type: TP
-#: en/minios-session.1:282
+#: en/minios-session.1:297
 #, no-wrap
 msgid "B<dynfilefs>"
 msgstr "B<dynfilefs>"
 
 #. type: Plain text
-#: en/minios-session.1:285
+#: en/minios-session.1:300
 msgid ""
 "Dynamic file-based storage suitable for non-POSIX filesystems (FAT32, NTFS, "
 "exFAT). Creates expandable container files."
@@ -1090,13 +1134,13 @@ msgstr ""
 "(FAT32, NTFS, exFAT). Membuat file container yang dapat diperluas."
 
 #. type: TP
-#: en/minios-session.1:285
+#: en/minios-session.1:300
 #, no-wrap
 msgid "B<dynblk>"
 msgstr "B<dynblk>"
 
 #. type: Plain text
-#: en/minios-session.1:288
+#: en/minios-session.1:303
 msgid ""
 "Format-1 kernel block storage backed by thin volumeNNN.db files. The mode is "
 "available only when the running system has the dynblk utility and module and "
@@ -1110,13 +1154,13 @@ msgstr ""
 "dynblk)."
 
 #. type: TP
-#: en/minios-session.1:288
+#: en/minios-session.1:303
 #, no-wrap
 msgid "B<vmdk>"
 msgstr "B<vmdk>"
 
 #. type: Plain text
-#: en/minios-session.1:294
+#: en/minios-session.1:309
 msgid ""
 "Standard split sparse VMDK storage exposed through the DynBlk driver. "
 "Managed sessions contain volume.vmdk and volume-sNNN.vmdk extents. The mode "
@@ -1129,13 +1173,13 @@ msgstr ""
 "kompresi backend, dan memerlukan penanda kemampuan initrd vmdk-session-v1."
 
 #. type: TP
-#: en/minios-session.1:294
+#: en/minios-session.1:309
 #, no-wrap
 msgid "B<raw>"
 msgstr "B<raw>"
 
 #. type: Plain text
-#: en/minios-session.1:297
+#: en/minios-session.1:312
 msgid ""
 "Fixed-size image file storage compatible with any filesystem. Requires pre-"
 "allocation of storage space."
@@ -1144,7 +1188,7 @@ msgstr ""
 "Membutuhkan pre-allocasi ruang penyimpanan."
 
 #. type: Plain text
-#: en/minios-session.1:303
+#: en/minios-session.1:318
 msgid ""
 "Raw, DynFileFS, DynBlk, and VMDK may optionally use LUKS2 encryption. "
 "Passphrases are read interactively or from standard input with B<--password-"
@@ -1159,7 +1203,7 @@ msgstr ""
 "terlebih dahulu, diikuti kata sandi target dua kali."
 
 #. type: Plain text
-#: en/minios-session.1:307
+#: en/minios-session.1:322
 msgid ""
 "LUKS choices and --password-stdin are shown only when the selected backend "
 "tools are available and /run/initramfs/etc/minios-initramfs-crypt contains "
@@ -1170,13 +1214,13 @@ msgstr ""
 "layer-v1."
 
 #. type: SH
-#: en/minios-session.1:307
+#: en/minios-session.1:322
 #, no-wrap
 msgid "FILESYSTEM COMPATIBILITY"
 msgstr "KOMPATIBILITAS FILESYSTEM"
 
 #. type: Plain text
-#: en/minios-session.1:309
+#: en/minios-session.1:324
 msgid ""
 "The tool automatically detects your media's filesystem type and restricts "
 "session creation to compatible modes:"
@@ -1185,13 +1229,13 @@ msgstr ""
 "pembuatan sesi hanya pada mode yang kompatibel:"
 
 #. type: TP
-#: en/minios-session.1:309
+#: en/minios-session.1:324
 #, no-wrap
 msgid "B<POSIX Filesystems (ext2/3/4, btrfs, xfs, f2fs)>"
 msgstr "B<Filesystem POSIX (ext2/3/4, btrfs, xfs, f2fs)>"
 
 #. type: Plain text
-#: en/minios-session.1:313
+#: en/minios-session.1:328
 msgid ""
 "Native mode and available container modes are supported. DynBlk is admitted "
 "on ext2/3/4 and Btrfs when its capability check succeeds; XFS/f2fs are not "
@@ -1204,13 +1248,13 @@ msgstr ""
 "initrd khusus backend."
 
 #. type: TP
-#: en/minios-session.1:313
+#: en/minios-session.1:328
 #, no-wrap
 msgid "B<FAT32, NTFS, and exFAT>"
 msgstr "B<FAT32, NTFS, dan exFAT>"
 
 #. type: Plain text
-#: en/minios-session.1:318
+#: en/minios-session.1:333
 msgid ""
 "DynFileFS and Raw are supported on writable media. DynBlk and VMDK are also "
 "offered on vfat, exFAT, and ntfs3 when their capability checks succeed. "
@@ -1225,19 +1269,19 @@ msgstr ""
 "FAT32 baik terenkripsi maupun tidak. Mode native tidak didukung."
 
 #. type: TP
-#: en/minios-session.1:318
+#: en/minios-session.1:333
 #, no-wrap
 msgid "B<Read-only Media>"
 msgstr "B<Media Hanya-Baca>"
 
 #. type: Plain text
-#: en/minios-session.1:321
+#: en/minios-session.1:336
 msgid "No session creation possible. Sessions can only be activated or listed."
 msgstr ""
 "Tidak dapat membuat sesi. Sesi hanya dapat diaktifkan atau ditampilkan."
 
 #. type: Plain text
-#: en/minios-session.1:323
+#: en/minios-session.1:338
 msgid ""
 "Under UEFI Secure Boot, DynBlk and VMDK creation is disabled because MiniOS "
 "does not sign the external DynBlk kernel module."
@@ -1246,7 +1290,7 @@ msgstr ""
 "MiniOS tidak menandatangani modul kernel eksternal DynBlk."
 
 #. type: Plain text
-#: en/minios-session.1:327
+#: en/minios-session.1:342
 msgid ""
 "Use the B<info> command to check filesystem compatibility before creating "
 "sessions."
@@ -1255,178 +1299,178 @@ msgstr ""
 "sebelum membuat sesi."
 
 #. type: Plain text
-#: en/minios-session.1:330
+#: en/minios-session.1:345
 msgid "List all sessions:"
 msgstr "Daftar semua sesi:"
 
 #. type: Plain text
-#: en/minios-session.1:332
+#: en/minios-session.1:347
 msgid "B<minios-session list>"
 msgstr "B<minios-session list>"
 
 #. type: Plain text
-#: en/minios-session.1:335
+#: en/minios-session.1:350
 msgid "Show active session:"
 msgstr "Tampilkan sesi aktif:"
 
 #. type: Plain text
-#: en/minios-session.1:337
+#: en/minios-session.1:352
 msgid "B<minios-session active>"
 msgstr "B<minios-session active>"
 
 #. type: Plain text
-#: en/minios-session.1:340
+#: en/minios-session.1:355
 msgid "Activate session:"
 msgstr "Aktifkan sesi:"
 
 #. type: Plain text
-#: en/minios-session.1:342
+#: en/minios-session.1:357
 msgid "B<minios-session activate 2>"
 msgstr "B<minios-session activate 2>"
 
 #. type: Plain text
-#: en/minios-session.1:345
+#: en/minios-session.1:360
 msgid "Delete old sessions:"
 msgstr "Hapus sesi lama:"
 
 #. type: Plain text
-#: en/minios-session.1:347
+#: en/minios-session.1:362
 msgid "B<minios-session cleanup --days 7>"
 msgstr "B<minios-session cleanup --days 7>"
 
 #. type: Plain text
-#: en/minios-session.1:350
+#: en/minios-session.1:365
 msgid "Create sessions:"
 msgstr "Buat sesi:"
 
 #. type: Plain text
-#: en/minios-session.1:352
+#: en/minios-session.1:367
 msgid "B<minios-session create>"
 msgstr "B<minios-session create>"
 
 #. type: Plain text
-#: en/minios-session.1:354
+#: en/minios-session.1:369
 msgid "B<minios-session create native>"
 msgstr "B<minios-session create native>"
 
 #. type: Plain text
-#: en/minios-session.1:356
+#: en/minios-session.1:371
 msgid "B<minios-session create squashfs --policy shutdown --autosave 60>"
 msgstr "B<minios-session create squashfs --policy shutdown --autosave 60>"
 
 #. type: Plain text
-#: en/minios-session.1:358
+#: en/minios-session.1:373
 msgid "B<minios-session create dynfilefs 8000>"
 msgstr "B<minios-session create dynfilefs 8000>"
 
 #. type: Plain text
-#: en/minios-session.1:360
+#: en/minios-session.1:375
 msgid "B<minios-session create dynblk 16GB>"
 msgstr "B<minios-session create dynblk 16GB>"
 
 #. type: Plain text
-#: en/minios-session.1:362
+#: en/minios-session.1:377
 msgid "B<minios-session create raw 2000>"
 msgstr "B<minios-session create raw 2000>"
 
 #. type: Plain text
-#: en/minios-session.1:365
+#: en/minios-session.1:380
 msgid "Resize session:"
 msgstr "Ubah ukuran sesi:"
 
 #. type: Plain text
-#: en/minios-session.1:367
+#: en/minios-session.1:382
 msgid "B<minios-session resize 2 8000>"
 msgstr "B<minios-session resize 2 8000>"
 
 #. type: Plain text
-#: en/minios-session.1:370
+#: en/minios-session.1:385
 msgid "Export session:"
 msgstr "Ekspor sesi:"
 
 #. type: Plain text
-#: en/minios-session.1:372
+#: en/minios-session.1:387
 msgid "B<minios-session export 3 /tmp/backup.tar.zst>"
 msgstr "B<minios-session export 3 /tmp/backup.tar.zst>"
 
 #. type: Plain text
-#: en/minios-session.1:374
+#: en/minios-session.1:389
 msgid "B<minios-session export 3 /tmp/>"
 msgstr "B<minios-session export 3 /tmp/>"
 
 #. type: Plain text
-#: en/minios-session.1:377
+#: en/minios-session.1:392
 msgid "Import session:"
 msgstr "Impor sesi:"
 
 #. type: Plain text
-#: en/minios-session.1:379
+#: en/minios-session.1:394
 msgid "B<minios-session import /tmp/backup.tar.zst>"
 msgstr "B<minios-session import /tmp/backup.tar.zst>"
 
 #. type: Plain text
-#: en/minios-session.1:381
+#: en/minios-session.1:396
 msgid "B<minios-session import /tmp/backup.tar.zst --force-mode dynblk>"
 msgstr "B<minios-session import /tmp/backup.tar.zst --force-mode dynblk>"
 
 #. type: Plain text
-#: en/minios-session.1:383
+#: en/minios-session.1:398
 msgid "B<minios-session import /tmp/backup.tar.zst --auto-convert>"
 msgstr "B<minios-session import /tmp/backup.tar.zst --auto-convert>"
 
 #. type: Plain text
-#: en/minios-session.1:386
+#: en/minios-session.1:401
 msgid "Copy session:"
 msgstr "Salin sesi:"
 
 #. type: Plain text
-#: en/minios-session.1:388
+#: en/minios-session.1:403
 msgid "B<minios-session copy 2>"
 msgstr "B<minios-session copy 2>"
 
 #. type: Plain text
-#: en/minios-session.1:390
+#: en/minios-session.1:405
 msgid "B<minios-session copy 2 --to-mode raw --size 2000>"
 msgstr "B<minios-session copy 2 --to-mode raw --size 2000>"
 
 #. type: Plain text
-#: en/minios-session.1:393
+#: en/minios-session.1:408
 msgid "Convert session:"
 msgstr "Konversi sesi:"
 
 #. type: Plain text
-#: en/minios-session.1:395
+#: en/minios-session.1:410
 msgid "B<minios-session convert 3 dynblk --size 16GB>"
 msgstr "B<minios-session convert 3 dynblk --size 16GB>"
 
 #. type: Plain text
-#: en/minios-session.1:398
+#: en/minios-session.1:413
 msgid "JSON output:"
 msgstr "Keluaran JSON:"
 
 #. type: Plain text
-#: en/minios-session.1:400
+#: en/minios-session.1:415
 msgid "B<minios-session --json list>"
 msgstr "B<minios-session --json list>"
 
 #. type: Plain text
-#: en/minios-session.1:403
+#: en/minios-session.1:418
 msgid "Check directory status:"
 msgstr "Periksa status direktori:"
 
 #. type: Plain text
-#: en/minios-session.1:405
+#: en/minios-session.1:420
 msgid "B<minios-session status>"
 msgstr "B<minios-session status>"
 
 #. type: TP
-#: en/minios-session.1:419
+#: en/minios-session.1:434
 #, no-wrap
 msgid "B</etc/minios-release>"
 msgstr "B</etc/minios-release>"
 
 #. type: Plain text
-#: en/minios-session.1:422
+#: en/minios-session.1:437
 msgid ""
 "System version and edition information used for session compatibility "
 "checking."
@@ -1435,30 +1479,30 @@ msgstr ""
 "kompatibilitas sesi."
 
 #. type: SH
-#: en/minios-session.1:422
+#: en/minios-session.1:437
 #, no-wrap
 msgid "EXIT STATUS"
 msgstr "STATUS KELUAR"
 
 #. type: TP
-#: en/minios-session.1:423
+#: en/minios-session.1:438
 #, no-wrap
 msgid "B<0>"
 msgstr "B<0>"
 
 #. type: Plain text
-#: en/minios-session.1:426
+#: en/minios-session.1:441
 msgid "Success"
 msgstr "Berhasil"
 
 #. type: TP
-#: en/minios-session.1:426
+#: en/minios-session.1:441
 #, no-wrap
 msgid "B<1>"
 msgstr "B<1>"
 
 #. type: Plain text
-#: en/minios-session.1:429
+#: en/minios-session.1:444
 msgid ""
 "Error occurred (invalid arguments, session not found, permission denied, "
 "etc.)"
@@ -1467,7 +1511,7 @@ msgstr ""
 "dll.)"
 
 #. type: Plain text
-#: en/minios-session.1:432
+#: en/minios-session.1:447
 msgid ""
 "Session activation takes effect on the next boot. The tool automatically "
 "detects session storage location and requests authentication via PolicyKit "
@@ -1478,12 +1522,12 @@ msgstr ""
 "jika diperlukan."
 
 #. type: Plain text
-#: en/minios-session.1:436
+#: en/minios-session.1:451
 msgid "B<minios-session-manager>(1), B<live-config>(7), B<systemd.special>(7)"
 msgstr "B<minios-session-manager>(1), B<live-config>(7), B<systemd.special>(7)"
 
 #. type: Plain text
-#: en/minios-session.1:439
+#: en/minios-session.1:454
 msgid ""
 "Report bugs to: https://github.com/minios-linux/minios-session-manager/issues"
 msgstr ""

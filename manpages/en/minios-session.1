@@ -46,12 +46,25 @@ stream machine-readable progress events.
 Mount an inactive, non-running Raw, DynFileFS, DynBlk, or VMDK session
 read-write. The command prints the mount point and remains in the foreground
 until standard input closes or Ctrl+C is pressed, then unmounts and detaches
-the backing storage. It holds the session mutation lock for the complete mount
-lifetime. Active, running, Native, and SquashFS sessions are rejected.
+the backing storage. It holds an exclusive lease on this session, allowing
+other session IDs to be mounted or modified concurrently. Active, running,
+Native, and SquashFS sessions are rejected.
+.PP
+Temporary mount directories use the same pattern for all container modes:
+minios-session-ID-filesystem-*, with minios-session-ID-backend-* for
+intermediate storage mounts. Existing mounts keep their paths until unmounted.
 .PP
 Encrypted sessions prompt for a LUKS passphrase or read one line from standard
 input with \fB\-\-password-stdin\fR. If unmounting is busy, the command fails
 without killing the backing daemon or detaching the live device.
+.TP
+.B change-passphrase \fIsession_id\fR [\-\-password-stdin]
+Change one LUKS passphrase for an inactive, detached encrypted Raw, DynFileFS,
+DynBlk, or VMDK session. The command prompts for the current passphrase, the
+new passphrase, and its confirmation. With \fB\-\-password-stdin\fR, supply
+these three lines in that order. Passphrases are not passed as arguments or
+stored in session metadata. Active, running, and mounted sessions are rejected.
+The operation changes one keyslot without re-encrypting the session data.
 .TP
 .B create [\fImode\fR] [\fIsize\fR] [\-\-encryption none|luks] [\-\-compression CODEC] [\-\-policy manual|shutdown] [\-\-autosave MINUTES] [\-\-activate]
 Create a new session with the specified mode and optional size. The new session will be automatically assigned the next available ID. The tool automatically detects the filesystem type and only allows compatible session modes.
@@ -112,7 +125,9 @@ ID of the session to delete
 Trim the unencrypted internal ext4 filesystem and reclaim known free container
 space for a DynFileFS, DynBlk, or VMDK session. The running device is validated
 against the current boot and remains connected; inactive sessions are attached
-and mounted temporarily. \fB\-\-compact\fR explicitly permits live-data
+and mounted temporarily. Session Manager can reclaim its own mounted sessions
+without reconnecting the backing storage, even after the GUI is restarted.
+\fB\-\-compact\fR explicitly permits live-data
 relocation and increases flash writes. Encrypted sessions reclaim only
 already-known free storage and do not enable discard through LUKS.
 .PP

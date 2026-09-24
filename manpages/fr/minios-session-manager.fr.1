@@ -62,18 +62,29 @@ backend sélectionné, et un marqueur de capacité initrd MiniOS contenant
 luks\-layer\-v1. L'interface graphique demande les mots de passe et ne les
 stocke pas dans les métadonnées de session.
 .SH INTERFACE
-La fenêtre principale affiche les sessions disponibles et leur statut. Les
+La fenêtre principale affiche les sessions disponibles et leur état. Les
 actions de création, d'importation et de nettoyage sont accessibles depuis
 la barre d'outils. Des actions supplémentaires pour la session sélectionnée,
 telles qu'activer, monter ou démonter, redimensionner, exporter, copier,
-cloner, convertir, ouvrir le dossier et supprimer, sont disponibles dans le
-menu contextuel. Les sessions Raw, DynFileFS, DynBlk et VMDK inactives et
-non en cours d'exécution peuvent être montées en lecture\-écriture ; les
-sessions chiffrées demandent leur mot de passe LUKS. Les actions en conflit
-restent désactivées jusqu'à ce que "Démonter la session" soit
-sélectionné. Les options "Enregistrer maintenant" et de sauvegarde
-automatique propres à SquashFS ne sont affichées ici que pour les sessions
-SquashFS.
+cloner, convertir, ouvrir le dossier de la session et supprimer, sont
+disponibles via le menu contextuel. Les sessions Raw, DynFileFS, DynBlk et
+VMDK inactives et non démarrées peuvent être montées en lecture\-écriture ;
+les sessions chiffrées demandent leur phrase secrète LUKS. Plusieurs
+sessions peuvent être montées simultanément. Les sessions LUKS inactives et
+détachées proposent Changer la phrase secrète dans le menu contextuel ; la
+phrase secrète actuelle et une nouvelle phrase confirmée sont requises. Ce
+changement ne ré\-encrypte pas les données de la session et ne modifie pas
+ses autres emplacements de clés. Le badge MONTÉ et l'action Démonter la
+session restent disponibles après la fermeture et la réouverture du
+gestionnaire ; fermer sa fenêtre ne démonte pas les sessions. Les actions en
+conflit sur la session montée restent désactivées, tandis que les autres
+sessions peuvent toujours être utilisées. Ouvrir le dossier de la session
+affiche le répertoire de stockage numéroté ; Ouvrir le dossier monté affiche
+le système de fichiers attaché. Si le démontage est occupé, le montage reste
+connecté et peut être réessayé une fois que le dossier n'est plus
+utilisé. Libérer de l'espace opère sur le stockage DynFileFS, DynBlk ou VMDK
+déjà monté. Les options Sauvegarder maintenant et sauvegarde automatique
+réservées à SquashFS ne sont affichées ici que pour les sessions SquashFS.
 .PP
 Les exportations chiffrées contiennent les fichiers logiques déchiffrés
 plutôt que le backend chiffré. Copier crée de nouvelles identités de système

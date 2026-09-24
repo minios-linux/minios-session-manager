@@ -65,13 +65,24 @@ La ventana principal muestra las sesiones disponibles y su estado. Las
 acciones de crear, importar y limpiar están disponibles en la barra de
 herramientas. Acciones adicionales para la sesión seleccionada, como
 activar, montar o desmontar, redimensionar, exportar, copiar, clonar,
-convertir, abrir carpeta y eliminar, están disponibles en el menú
-contextual. Las sesiones Raw, DynFileFS, DynBlk y VMDK inactivas y no
-ejecutándose pueden montarse en modo lectura\-escritura; las sesiones
-cifradas solicitan su contraseña LUKS. Las acciones en conflicto permanecen
-deshabilitadas hasta que se seleccione Desmontar sesión. Las opciones
-Guardar ahora y guardado automático solo se muestran allí para sesiones
-SquashFS de solo SquashFS.
+convertir, abrir la carpeta de la sesión y eliminar, están disponibles en el
+menú contextual. Las sesiones Raw inactivas y no ejecutándose, DynFileFS,
+DynBlk y VMDK pueden montarse en modo lectura\-escritura; las sesiones
+cifradas solicitan su frase de contraseña LUKS. Se pueden montar varias
+sesiones a la vez. Las sesiones LUKS inactivas y separadas ofrecen Cambiar
+frase de contraseña en el menú contextual; se requiere la frase de
+contraseña actual y una nueva confirmada. El cambio no vuelve a cifrar los
+datos de la sesión ni modifica sus otros keyslots. La insignia MONTADO y la
+acción Desmontar sesión permanecen disponibles después de cerrar y volver a
+abrir el gestor; cerrar su ventana no desmonta las sesiones. Las acciones en
+conflicto sobre la sesión montada permanecen deshabilitadas, mientras que
+otras sesiones aún pueden usarse. Abrir carpeta de sesión muestra el
+directorio de respaldo numerado; Abrir carpeta montada muestra el sistema de
+archivos adjunto. Si el desmontaje está ocupado, el montaje permanece
+conectado y puede reintentarse después de que la carpeta deje de estar en
+uso. Espacio libre opera sobre el almacenamiento DynFileFS, DynBlk o VMDK ya
+montado. Las opciones Guardar ahora y guardar automáticamente solo para
+SquashFS se muestran ahí solo para sesiones SquashFS.
 .PP
 Las exportaciones cifradas contienen archivos lógicos descifrados en lugar
 del backend cifrado. Copiar crea identidades nuevas de sistema de archivos y

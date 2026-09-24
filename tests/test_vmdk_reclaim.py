@@ -70,6 +70,7 @@ def test_reclaim_ownership_and_opt_in_compaction(tmp_path, mode, running, compac
     manager = cli.SessionManager.__new__(cli.SessionManager)
     manager.sessions_dir = str(tmp_path)
     manager._mutation_lock = null_context
+    manager._session_lease = lambda _session_id: null_context()
     manager._read_sessions_metadata = lambda: {
         'sessions': {'1': {'mode': mode, 'encryption': encryption}},
         'running': '1' if running else None}
@@ -105,6 +106,44 @@ def test_reclaim_ownership_and_opt_in_compaction(tmp_path, mode, running, compac
     assert any(a[0] == 'unload' for a in calls) is (not running)
     assert manager._trim_block_filesystem.called is (encryption == 'none')
     assert not any('cryptsetup' in str(a) for a in calls)
+
+
+@pytest.mark.parametrize('mode', ['dynblk', 'vmdk'])
+def test_mounted_reclaim_reuses_existing_device_without_load(tmp_path, mode):
+    manager = cli.SessionManager.__new__(cli.SessionManager)
+    manager.sessions_dir = str(tmp_path)
+    manager._dynblk_status = Mock(return_value={
+        'storage_format': mode, 'cache': 'writeback'})
+    manager._trim_block_filesystem = Mock()
+    manager._invalidate_size_cache = Mock()
+    calls = []
+
+    def backend(args):
+        calls.append(args)
+        if '--execute' in args:
+            return result(json.dumps({'complete': True}).encode())
+        return result(json.dumps({'dry_run': True}).encode())
+
+    manager._run_dynblk = backend
+    state = {
+        'session_id': '1', 'session_path': str(tmp_path), 'mode': mode,
+        'encryption': 'none', 'mount_point': '/mounted/changes',
+        'backend_device': '/dev/dynblk9',
+    }
+    with patch.object(cli.os, 'open', return_value=999), \
+            patch.object(cli.os, 'close'), \
+            patch.object(cli.os, 'fstat',
+                         return_value=SimpleNamespace(st_mode=stat.S_IFBLK)):
+        success, message, details = manager.reclaim_mounted_session(
+            state, compact=True)
+
+    assert success, message
+    assert details['complete'] is True
+    assert not any(call[0] in ('load', 'unload') for call in calls)
+    assert calls[-1] == [
+        'reclaim', '/dev/dynblk9', '--execute', '--json', '--compact']
+    manager._trim_block_filesystem.assert_called_once_with(
+        '/dev/dynblk9', '/mounted/changes')
 
 
 def test_mount_escape_decoding():

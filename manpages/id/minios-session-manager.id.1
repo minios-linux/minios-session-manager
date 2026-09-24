@@ -59,14 +59,26 @@ dipilih, dan penanda kemampuan initrd MiniOS yang berisi luks\-layer\-v1. GUI
 akan meminta passphrase dan tidak menyimpannya di metadata sesi.
 .SH ANTARMUKA
 Jendela utama menampilkan sesi yang tersedia dan statusnya.  Tindakan
-membuat, mengimpor, dan membersihkan tersedia dari toolbar.  Tindakan
-tambahan untuk sesi yang dipilih, seperti aktifkan, mount atau unmount, ubah
-ukuran, ekspor, salin, klon, konversi, buka folder, dan hapus, tersedia dari
-menu konteks. Sesi Raw, DynFileFS, DynBlk, dan VMDK yang tidak aktif dan
-tidak berjalan dapat di\-mount baca\-tulis; sesi terenkripsi akan meminta
-passphrase LUKS mereka. Tindakan yang bertentangan tetap dinonaktifkan
-hingga Lepaskan Mount Sesi dipilih. Pengaturan Simpan Sekarang dan simpan
-otomatis khusus SquashFS hanya ditampilkan di sana untuk sesi SquashFS.
+membuat, mengimpor, dan membersihkan tersedia dari bilah alat.  Tindakan
+tambahan untuk sesi yang dipilih, seperti aktifkan, kaitkan atau lepas kait,
+ubah ukuran, ekspor, salin, klon, konversi, buka folder sesi, dan hapus,
+tersedia dari menu konteks. Sesi Raw, DynFileFS, DynBlk, dan VMDK yang tidak
+aktif dan tidak berjalan dapat dikaitkan dengan hak baca\-tulis; sesi
+terenkripsi akan meminta frasa sandi LUKS mereka. Beberapa sesi dapat
+dikaitkan secara bersamaan.  Sesi LUKS yang tidak aktif dan terlepas
+menawarkan Ubah Frasa Sandi di menu konteks; frasa sandi saat ini dan
+pengganti yang dikonfirmasi diperlukan. Perubahan ini tidak mengenkripsi
+ulang data sesi atau mengubah keyslot lainnya. Lencana MOUNTED dan tindakan
+Lepas Kait Sesi tetap tersedia setelah menutup dan membuka kembali manajer;
+menutup jendelanya tidak melepaskan sesi. Tindakan yang bertentangan pada
+sesi yang sudah dikaitkan tetap dinonaktifkan, sementara sesi lain masih
+dapat digunakan.  Buka Folder Sesi menampilkan direktori pendukung bernomor;
+Buka Folder yang Sudah Dikaitkan menampilkan sistem berkas yang
+terpasang. Jika pelepasan kait sedang sibuk, kaitan tetap terhubung dan
+dapat dicoba lagi setelah folder tidak lagi digunakan.  Ruang Bebas
+beroperasi pada penyimpanan DynFileFS, DynBlk, atau VMDK yang sudah
+dikaitkan.  Pengaturan Simpan Sekarang khusus SquashFS dan simpan otomatis
+hanya ditampilkan di sana untuk sesi SquashFS.
 .PP
 Ekspor terenkripsi berisi file logis yang telah didekripsi, bukan backend
 terenkripsi. Salin akan membuat identitas filesystem dan enkripsi baru; klon
