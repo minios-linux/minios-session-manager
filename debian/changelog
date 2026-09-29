@@ -1,3 +1,9 @@
+minios-session-manager (2.6.1) unstable; urgency=medium
+
+  * Group the Session Manager launcher in the MiniOS desktop category.
+
+ -- crims0n <crims0n@minios.dev>  Tue, 29 Sep 2026 17:04:29 +0300
+
 minios-session-manager (2.6.0) unstable; urgency=medium
 
   * Add LUKS passphrase changes for detached encrypted sessions in the CLI and
