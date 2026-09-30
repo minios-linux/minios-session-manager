@@ -427,6 +427,8 @@ class SessionManagerGUI:
         intent, status_text = self._sessions_status_presentation()
         banner = StatusBanner(status_text, intent=intent)
         self.sessions_status_banner = banner
+        # Show the contents before excluding the banner from window.show_all().
+        banner.show_all()
         # Keep a healthy status out of the way, including after window.show_all().
         banner.set_no_show_all(True)
         self.sessions_status_retry = Gtk.Button(label=_("Retry"))
@@ -566,6 +568,8 @@ class SessionManagerGUI:
     def _build_persistence_health_banner(self, main_box):
         """Add a banner reflecting persistence health, refreshed every few minutes."""
         self._persistence_banner = StatusBanner('', intent='warning')
+        # no-show-all also prevents GTK from showing the icon and label later.
+        self._persistence_banner.show_all()
         # Keep these aliases for existing callers/tests that inspect the parts.
         self._persistence_banner_icon = self._persistence_banner.icon
         self._persistence_banner_label = self._persistence_banner.label
