@@ -1,3 +1,15 @@
+minios-session-manager (2.7.0) unstable; urgency=medium
+
+  * Save RAM-backed sessions to their original storage or as a new session,
+    with measured copy progress and caller-owned cancellation.
+  * Resolve original storage by filesystem UUID and recover interrupted
+    container replacement without discarding unrelated session data.
+  * Keep RAM sessions visible in the manager and tray when storage is
+    detached, with explicit save availability and error status.
+  * Require the MiniOS Tools RAM-save backend and extend regression coverage.
+
+ -- crims0n <crims0n@minios.dev>  Mon, 05 Oct 2026 14:05:45 +0300
+
 minios-session-manager (2.6.2) unstable; urgency=medium
 
   * Keep session and persistence status banner contents visible after the

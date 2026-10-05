@@ -277,7 +277,7 @@ class SessionManager:
     )
     DYNBLK_BACKING_FILESYSTEMS = (
         'ext2', 'ext3', 'ext4', 'btrfs', 'vfat', 'fat', 'msdos', 'exfat',
-        'ntfs3',
+        'ntfs3', 'tmpfs',
     )
     SAVECHANGES_COMMAND = '/usr/bin/savechanges'
     SQUASHFS_SAVE_COMMAND = '/usr/bin/minios-squashfs-save'
@@ -691,6 +691,11 @@ class SessionManager:
             'sessions_dir': self.sessions_dir,
             'filesystem_type': fs_type
         }
+        result['ram_backed'] = fs_type in ('tmpfs', 'ramfs') or (
+            self.custom_sessions_dir is None and os.path.isfile(os.path.join(
+                os.path.dirname(self.BOOT_STATE_FILE), 'ram-origin')))
+        if result['ram_backed'] and self.custom_sessions_dir is None:
+            result['ram_save'] = self.ram_save_status()
         result['capabilities'] = {
             'luks_layer_v1': luks_runtime_available('raw'),
             'dynblk': self._check_dynblk_available(),
@@ -700,6 +705,11 @@ class SessionManager:
             result['error'] = error_msg
         
         return result
+
+    def ram_save_status(self):
+        """Inspect the original device without granting disk-save authority to RAM."""
+        from minios_ram_store import ram_save_status
+        return ram_save_status(self.BOOT_STATE_FILE)
 
 
     def _read_sessions_metadata(self):
@@ -2494,6 +2504,10 @@ class SessionManager:
 
     def autosave_running_session(self, now=None):
         """Save the running SquashFS session when its configured interval is due."""
+        ram_session = os.path.isfile(os.path.join(os.path.dirname(self.BOOT_STATE_FILE), 'ram-origin'))
+        ram_status = self.ram_save_status() if ram_session else {}
+        if ram_session and not ram_status.get('save_available'):
+            return False, True, _("Original storage is unavailable; periodic RAM session saving was skipped"), None
         metadata = self._normalize_metadata(self._read_sessions_metadata())
         session_id = metadata.get('running')
         session_data = metadata.get('sessions', {}).get(session_id or '', {})
@@ -2510,7 +2524,7 @@ class SessionManager:
 
         now = now or datetime.now(timezone.utc).replace(tzinfo=None)
         baseline = None
-        saved = session_data.get('saved')
+        saved = ram_status.get('saved') or session_data.get('saved')
         if saved:
             try:
                 baseline = datetime.strptime(saved, '%Y-%m-%dT%H:%M:%SZ')
@@ -2669,7 +2683,7 @@ class SessionManager:
     def _reject_json_constant(value):
         raise ValueError("invalid JSON constant: {}".format(value))
 
-    def _run_savechanges(self, output_path, work_parent, progress_callback=None):
+    def _run_savechanges(self, output_path, work_parent, progress_callback=None, cancel_file=None):
         """Run exact capture and return its validated machine result."""
         command = self.SAVECHANGES_COMMAND
         try:
@@ -2686,11 +2700,15 @@ class SessionManager:
             command, '--json', '--profile', 'exact', '--work-parent',
             work_parent, output_path,
         ]
+        if cancel_file is not None:
+            argv.extend(['--cancel-file', cancel_file])
         environment = {
             'PATH': '/usr/sbin:/usr/bin:/sbin:/bin',
             'LC_ALL': 'C.UTF-8',
             'LANG': 'C.UTF-8',
         }
+        if cancel_file is not None and os.environ.get('PKEXEC_UID', '').isdigit():
+            environment['PKEXEC_UID'] = os.environ['PKEXEC_UID']
         events = []
         with tempfile.TemporaryFile() as error_file:
             process = subprocess.Popen(
@@ -2917,7 +2935,26 @@ class SessionManager:
         os.unlink(name, dir_fd=directory_fd)
         self._sync_session_directory(directory_fd)
 
-    def save_session(self, session_id, finalize_shutdown=False, progress_callback=None):
+    def save_session(self, session_id, finalize_shutdown=False, progress_callback=None,
+                     as_new=False, cancel_file=None):
+        if os.path.isfile(os.path.join(os.path.dirname(self.BOOT_STATE_FILE), 'ram-origin')):
+            saver = None
+            try:
+                from minios_ram_store import RamSessionSave
+                saver = RamSessionSave(self)
+                with self._session_lease(session_id):
+                    result = saver.save(session_id, progress_callback, cancel_file, as_new,
+                                        finalize_shutdown=finalize_shutdown)
+                if result.get('skipped'):
+                    return True, _("RAM session was not saved: {}").format(result['reason']), result
+                return True, _("Session {} saved to the original store as session {}.").format(
+                    session_id, result['target_session_id']), result
+            except Exception as error:
+                if saver is not None and isinstance(error, saver.tools.SaveCancelled):
+                    return False, _("Session save cancelled"), {'cancelled': True}
+                return False, _("Failed to save RAM session {}: {}").format(session_id, error), None
+        if as_new or cancel_file is not None:
+            return False, _("These save options require a RAM session"), None
         try:
             with self._session_lease(session_id):
                 return self._save_session_locked(
@@ -5935,8 +5972,10 @@ EXAMPLES:
     activate_parser.add_argument('session_id', help=_('Session ID to activate'))
 
     # Save command
-    save_parser = subparsers.add_parser('save', help=_('Save a SquashFS session'), parents=[parent_parser])
-    save_parser.add_argument('session_id', help=_('Running SquashFS session ID to save'))
+    save_parser = subparsers.add_parser('save', help=_('Save a running RAM or SquashFS session'), parents=[parent_parser])
+    save_parser.add_argument('session_id', help=_('Running session ID to save'))
+    save_parser.add_argument('--as-new', action='store_true', help=_('Save a RAM session under a new number on its original store'))
+    save_parser.add_argument('--cancel-file', help=_('Caller-owned cancellation marker on tmpfs'))
     save_parser.add_argument('--progress', action='store_true',
                              help=_('Stream save progress events with JSON output'))
     save_parser.add_argument('--shutdown-finalize', action='store_true',
@@ -6415,11 +6454,13 @@ EXAMPLES:
 
         def emit_progress(phase):
             if args.progress:
-                print(json.dumps({"type": "phase", "phase": phase}), flush=True)
+                event = phase if isinstance(phase, dict) else {"type": "phase", "phase": phase}
+                print(json.dumps(event), flush=True)
 
         success, message, capture = manager.save_session(
             args.session_id, finalize_shutdown=args.shutdown_finalize,
-            progress_callback=emit_progress if args.progress else None)
+            progress_callback=emit_progress if args.progress else None,
+            as_new=args.as_new, cancel_file=args.cancel_file)
         if args.json:
             result = {"success": success, "message": message}
             if capture is not None:

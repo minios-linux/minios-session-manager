@@ -186,8 +186,10 @@ def write_boot_warnings_atomic(records, path=PUBLIC_BOOT_WARNINGS_FILE):
 def serialize_state(state):
     """Serialize the state dict to the key=value format the GUI reads."""
     lines = []
-    for key in ("boot_level", "level", "degraded", "session", "mode",
-                "policy", "autosave", "saved",
+    for key in ("boot_level", "level", "degraded", "session", "mode", "durable",
+                "policy", "autosave", "saved", "ram", "store_state", "store_message", "save_available",
+                "saving", "save_phase", "copied_bytes", "total_bytes", "save_error",
+                "store_uuid", "store_relative", "target_session",
                 "free_outer_bytes", "free_inner_bytes",
                 "free_outer_inodes", "free_inner_inodes",
                 "eta_seconds", "boot_warnings_pending", "updated"):
@@ -355,8 +357,29 @@ class PersistenceGuard:
         if boot.get("session"):
             state["session"] = boot["session"]
         state["boot_level"] = boot.get("boot_level", "ok")
+        state["durable"] = boot.get("durable", "0")
         if state.get("mode") == "squashfs" and state.get("session"):
             state.update(read_squashfs_settings(self.sessions_dir, state["session"]))
+        self.ram_active = os.path.isfile(os.path.join(os.path.dirname(BOOT_STATE_FILE), 'ram-origin'))
+        if self.ram_active:
+            from minios_ram_store import ram_save_status
+            store = ram_save_status(BOOT_STATE_FILE)
+            state['ram'] = 1
+            state['store_state'] = store['state']
+            state['store_message'] = store.get('message', '').replace('\n', ' ').replace('\r', ' ')
+            state['save_available'] = int(store.get('save_available', False))
+            state['store_uuid'] = store.get('uuid', '')
+            state['store_relative'] = store.get('relative', '')
+            state['target_session'] = store.get('target_session', '')
+            state['saving'] = int(store.get('saving', False))
+            operation = store.get('operation', {})
+            state['save_phase'] = operation.get('phase', '')
+            for name in ('copied_bytes', 'total_bytes'):
+                if name in operation:
+                    state[name] = operation[name]
+            state['save_error'] = store.get('error', '').replace('\n', ' ').replace('\r', ' ')
+            if store.get('saved'):
+                state['saved'] = store['saved']
 
         if boot_warnings is None:
             boot_warnings = ingest_boot_warnings(BOOT_WARNINGS_FILE)
@@ -364,6 +387,8 @@ class PersistenceGuard:
         return state
 
     def sample_interval(self, level):
+        if getattr(self, 'ram_active', False):
+            return min(5, CRITICAL_SAMPLE_INTERVAL if level in ('critical', 'emergency') else SAMPLE_INTERVAL)
         return CRITICAL_SAMPLE_INTERVAL if level in ("critical", "emergency") else SAMPLE_INTERVAL
 
     def run_once(self):

@@ -17,4 +17,4 @@ else
     DIR="$(dirname "$SCRIPT_DIR")/lib"
 fi
 
-exec python3 -u "$DIR/minios_session.py" "$@"
+exec python3 -B -u "$DIR/minios_session.py" "$@"

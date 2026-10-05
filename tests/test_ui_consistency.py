@@ -1,5 +1,10 @@
+import ast
+import json
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -65,9 +70,9 @@ def test_squashfs_create_policies_and_save_progress_are_exposed():
     assert 'squashfs_options.show_all()' in SOURCE
     assert 'squashfs_options.hide()' in SOURCE
     assert 'squashfs_options.set_sensitive(' not in SOURCE
-    assert 'save_now_item.set_visible(is_squashfs)' in SOURCE
+    assert 'save_now_item.set_visible(is_squashfs or (ram_session and running))' in SOURCE
     assert 'save_settings_item.set_visible(is_squashfs)' in SOURCE
-    assert 'is_squashfs and running)' in SOURCE
+    assert 'can_save and running)' in SOURCE
     assert "getattr(row, 'configuration_supported', True)" in SOURCE
     assert "'save', session_id, '--json', '--progress'" in SOURCE
     assert 'GLib.timeout_add(500, show_progress_if_needed)' in SOURCE
@@ -84,7 +89,10 @@ def test_session_frontends_share_save_phases_and_notifications():
 
 
 def test_periodic_save_uses_shared_confirmation_dialog():
-    assert "ask_confirmation)" in ALERT_SOURCE
+    imports = {alias.name for node in ast.walk(ast.parse(ALERT_SOURCE))
+               if isinstance(node, ast.ImportFrom) and node.module == 'minios_gui'
+               for alias in node.names}
+    assert 'ask_confirmation' in imports
     assert "return ask_confirmation(" in ALERT_SOURCE
 
 
@@ -105,11 +113,60 @@ def test_privileged_commands_skip_pkexec_for_root():
             'pkexec', 'minios-session', 'list']
 
 
+@pytest.mark.parametrize('identifiers,expected', ((['1', '2'], '1'), (['2'], None)))
+def test_refresh_preserves_selection_only_while_the_session_exists(identifiers, expected):
+    from minios_session_manager import SessionManagerGUI
+
+    manager = SessionManagerGUI.__new__(SessionManagerGUI)
+    manager._refresh_generation = 1
+    manager.selected_session_id = '1'
+    manager._session_mounts = {}
+    manager._show_error = Mock()
+    manager._show_loading = Mock()
+    manager._update_footer_sensitivity = Mock()
+
+    class SessionList:
+        def __init__(self):
+            self.rows = [SimpleNamespace(session_id='1')]
+            self.selected = self.rows[0]
+
+        def get_children(self):
+            return list(self.rows)
+
+        def remove(self, row):
+            self.rows.remove(row)
+            self.selected = None
+            manager.selected_session_id = None
+
+        def add(self, row):
+            self.rows.append(row)
+
+        def show_all(self):
+            pass
+
+        def select_row(self, row):
+            self.selected = row
+            manager.selected_session_id = row.session_id
+
+    manager.sessions_list = SessionList()
+    previous = manager.sessions_list.selected
+    manager._create_session_row = lambda session_id, *args: manager.sessions_list.add(
+        SimpleNamespace(session_id=session_id))
+    sessions = [{'id': identifier, 'mode': 'raw', 'version': '6.0.0', 'edition': 'standard',
+                 'union': 'overlayfs', 'size': 256, 'size_formatted': '256 MiB',
+                 'path': '/sessions/' + identifier, 'is_default': identifier == '1',
+                 'is_running': identifier == '1'} for identifier in identifiers]
+    manager._process_session_data(1, True, json.dumps(sessions), '', '1', '1')
+    assert manager.selected_session_id == expected
+    assert manager.sessions_list.selected is not previous
+    manager._show_error.assert_not_called()
+
+
 def test_repeated_background_work_uses_task_outcomes():
     assert "def complete(outcome):" in SOURCE
     assert "def finish_fetch(outcome):" in SOURCE
     assert "BackgroundTask(" in SOURCE
-    assert SOURCE.count("threading.Thread(") == 1
+    assert SOURCE.count("threading.Thread(") == 0
 
 
 def test_repeated_operation_presentations_use_shared_widgets():

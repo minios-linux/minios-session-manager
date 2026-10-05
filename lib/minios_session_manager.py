@@ -25,7 +25,8 @@ from minios_gui import (BackgroundTask, OperationView, ProgressDialog,
                         StatusBanner, apply_minios_css, ask_confirmation,
                         choose_open_file, choose_save_file, new_header_bar,
                         new_icon, show_error_dialog, show_info_dialog)
-from minios_session_ui import save_phase_text, send_desktop_notification
+from minios_session_ui import (SaveCancellation, save_phase_text, save_progress,
+                               send_desktop_notification, store_state_text)
 
 # Internationalization setup
 try:
@@ -208,11 +209,15 @@ class SessionManagerGUI:
             return '{}\n\n{}'.format(message, details)
         return str(message or details or text)
 
-    def _run_cli_streaming_save(self, session_id, phase_callback):
+    def _run_cli_streaming_save(self, session_id, phase_callback, as_new=False, cancel_file=None):
         """Run Save Now and surface validated phase events while it is active."""
         try:
             cmd = _privileged_command([
                 self.cli_command, 'save', session_id, '--json', '--progress'])
+            if as_new:
+                cmd.append('--as-new')
+            if cancel_file is not None:
+                cmd.extend(['--cancel-file', cancel_file])
             with self._cli_lock:
                 with tempfile.TemporaryFile() as error_file:
                     with self._cli_process_lock:
@@ -234,6 +239,8 @@ class SessionManagerGUI:
                                 continue
                             if event.get('type') == 'phase':
                                 phase_callback(event.get('phase'))
+                            elif event.get('type') == 'progress':
+                                phase_callback(event)
                             else:
                                 final_output = stripped
                         process.wait()
@@ -326,6 +333,10 @@ class SessionManagerGUI:
 
     def _on_window_destroy(self, _window):
         """Leave persistent mounts running when the GUI exits."""
+        cancellation = getattr(self, '_save_cancellation', None)
+        if cancellation is not None:
+            cancellation.cancel()
+            cancellation.close()
         with self._cli_process_lock:
             self._closing = True
             process = self._cli_process
@@ -408,6 +419,19 @@ class SessionManagerGUI:
             intent = 'error'
             status_text = _("Error: {}").format(
                 self.sessions_status.get('error') or _('Unknown error'))
+        elif self.sessions_status.get('ram_backed', False):
+            intent = 'warning'
+            ram = self.sessions_status.get('ram_save', {})
+            status_text = _("Session is running in RAM. {}.").format(store_state_text(ram.get('state')))
+            if ram.get('saved'):
+                status_text += _(" Last saved: {}.").format(ram['saved'])
+            if ram.get('target_session'):
+                status_text += _(" Saved on storage as session #{}.").format(ram['target_session'])
+            if ram.get('uuid'):
+                status_text += '\n{}: {}'.format(ram['uuid'], ram.get('relative', ''))
+            if ram.get('error'):
+                intent = 'error'
+                status_text += ' ' + ram['error']
         elif self.sessions_status.get('found', False) and self.sessions_writable:
             intent = 'success'
             status_text = _("Sessions directory is writable")
@@ -500,7 +524,10 @@ class SessionManagerGUI:
         if (not busy and not self._status_pending and
                 not self.sessions_status.get('_query_error', False) and
                 self.sessions_status.get('found', False)):
-            self.refresh_session_list()
+            if self.sessions_status.get('ram_backed', False):
+                self._retry_sessions_directory_status(None)
+            else:
+                self.refresh_session_list()
         return True
 
     def _show_sessions_query_error_state(self, generation):
@@ -920,6 +947,7 @@ class SessionManagerGUI:
             self._update_footer_sensitivity()
 
             # Keep the previous rows visible until a complete response is valid.
+            selected_session_id = getattr(self, 'selected_session_id', None)
             for row in self.sessions_list.get_children():
                 self.sessions_list.remove(row)
 
@@ -981,6 +1009,11 @@ class SessionManagerGUI:
                 self.sessions_list.add(no_sessions_row)
             
             self.sessions_list.show_all()
+            if selected_session_id is not None:
+                for row in self.sessions_list.get_children():
+                    if getattr(row, 'session_id', None) == selected_session_id:
+                        self.sessions_list.select_row(row)
+                        break
         finally:
             # Hide loading indicator
             self._show_loading(False)
@@ -1236,6 +1269,9 @@ class SessionManagerGUI:
         self.reclaim_item = Gtk.MenuItem.new_with_mnemonic(_("_Free Space..."))
         self.reclaim_item.connect("activate", self._on_context_reclaim)
         self.context_menu.append(self.reclaim_item)
+        self.save_as_new_item = Gtk.MenuItem.new_with_mnemonic(_("Save to Storage as _New Session"))
+        self.save_as_new_item.connect('activate', lambda item: self.on_save_clicked(item, as_new=True))
+        self.context_menu.append(self.save_as_new_item)
         self.context_menu.show_all()
 
     def _on_list_button_press(self, widget, event):
@@ -1314,11 +1350,17 @@ class SessionManagerGUI:
         activate_item.set_sensitive(
             not mounted and self.sessions_writable and not active and
             getattr(row, 'configuration_supported', True))
-        save_now_item.set_visible(is_squashfs)
+        ram_session = getattr(self, 'sessions_status', {}).get('ram_backed', False)
+        ram_save = getattr(self, 'sessions_status', {}).get('ram_save', {})
+        can_save = ram_save.get('save_available', False) if ram_session else is_squashfs
+        save_now_item.set_visible(is_squashfs or (ram_session and running))
         save_settings_item.set_visible(is_squashfs)
         save_now_item.set_sensitive(
             self.sessions_writable and
-            is_squashfs and running)
+            can_save and running)
+        if hasattr(self, 'save_as_new_item'):
+            self.save_as_new_item.set_visible(ram_session and running)
+            self.save_as_new_item.set_sensitive(self.sessions_writable and can_save and running)
         save_settings_item.set_sensitive(
             self.sessions_writable and is_squashfs)
         resize_item.set_sensitive(
@@ -2033,28 +2075,49 @@ class SessionManagerGUI:
         else:
             dialog.destroy()
 
-    def on_save_clicked(self, button):
-        """Save the selected running SquashFS session."""
+    def on_save_clicked(self, button, as_new=False):
+        """Save the selected running session to its persistent store."""
         row = self.sessions_list.get_selected_row()
+        ram_session = self.sessions_status.get('ram_backed', False)
+        can_save = (self.sessions_status.get('ram_save', {}).get('save_available', False)
+                    if ram_session else getattr(row, 'mode', 'unknown') == 'squashfs')
         if (not row or not self.sessions_writable or
-                getattr(row, 'mode', 'unknown') != 'squashfs' or
+                not can_save or
                 not getattr(row, 'is_running', False)):
-            self._show_error(_("Save Now is available only for the running SquashFS session."))
+            self._show_error(_("The running session cannot be saved to storage right now."))
             return
         session_id = row.session_id
         state = {'done': False, 'dialog': None, 'shown': False, 'phase': 'prepare'}
+        try:
+            cancellation = SaveCancellation() if ram_session else None
+        except OSError as error:
+            self._show_error(_("Cannot prepare session saving: {}").format(error))
+            return
+        self._save_cancellation = cancellation
 
         def update_phase(phase):
             state['phase'] = phase
             if state['dialog'] is not None:
-                state['dialog'].message_label.set_text(save_phase_text(phase))
+                if not cancellation or not cancellation.requested:
+                    state['dialog'].message_label.set_text(save_phase_text(phase))
+                    state['dialog'].operation_view.set_progress(save_progress(phase))
+                if phase == 'publish':
+                    state['dialog'].operation_view.cancel_button.set_sensitive(False)
             return False
 
         def show_progress_if_needed():
             if state['done']:
                 return False
-            dialog = self._create_progress_dialog(
-                _("Saving Session"), save_phase_text(state['phase']))
+            message = (save_phase_text('prepare-container')
+                       if ram_session and getattr(row, 'mode', '') != 'squashfs'
+                       else save_phase_text(state['phase']))
+            dialog = self._create_progress_dialog(_("Saving Session"), message, cancellable=ram_session)
+            if cancellation:
+                def cancel_requested(_dialog, response):
+                    if response == Gtk.ResponseType.CANCEL:
+                        cancellation.cancel()
+                        dialog.message_label.set_text(_("Cancelling session save..."))
+                dialog.connect('response', cancel_requested)
             state['dialog'] = dialog
             state['shown'] = True
             dialog.show_all()
@@ -2062,39 +2125,63 @@ class SessionManagerGUI:
 
         def finish_save(success, output, error):
             state['done'] = True
+            if cancellation:
+                cancellation.close()
+            if getattr(self, '_save_cancellation', None) is cancellation:
+                self._save_cancellation = None
             if state['dialog'] is not None:
                 state['dialog'].destroy()
                 state['dialog'] = None
             detail = error.strip()
+            cancelled = False
             try:
                 result = _strict_json_loads(output) if output else {}
                 detail = result.get('message') or detail
+                cancelled = result.get('capture', {}).get('cancelled', False)
             except (TypeError, ValueError):
                 pass
             if success:
-                self.refresh_session_list()
+                if ram_session:
+                    self._retry_sessions_directory_status(None)
+                else:
+                    self.refresh_session_list()
                 if not state['shown']:
                     send_desktop_notification(
                         _("Session saved"),
-                        _("SquashFS session #{} was saved successfully.").format(session_id),
+                        _("Session #{} was saved successfully.").format(session_id),
                         timeout_ms=4000)
-            else:
+            elif not cancelled:
                 message = _("Failed to save session")
                 if detail:
                     message = "{}: {}".format(message, detail)
                 self._show_error(message)
             return False
 
-        def save_session_bg():
-            success, output, error = self._run_cli_streaming_save(
+        def save_session_bg(token):
+            token.raise_if_cancelled()
+            return self._run_cli_streaming_save(
                 session_id,
-                lambda phase: GLib.idle_add(update_phase, phase))
-            GLib.idle_add(finish_save, success, output, error)
+                lambda phase: GLib.idle_add(update_phase, phase), as_new=as_new,
+                cancel_file=cancellation.path if cancellation else None)
 
-        GLib.timeout_add(500, show_progress_if_needed)
-        thread = threading.Thread(target=save_session_bg)
-        thread.daemon = True
-        thread.start()
+        def finished(outcome):
+            if outcome.succeeded:
+                finish_save(*outcome.value)
+            elif not outcome.cancelled:
+                finish_save(False, '', str(outcome.error))
+
+        def start_save():
+            if self._closing:
+                return False
+            BackgroundTask(save_session_bg, finished, owner=self.window).start()
+            return False
+
+        if ram_session:
+            show_progress_if_needed()
+            GLib.timeout_add(200, start_save)
+        else:
+            GLib.timeout_add(500, show_progress_if_needed)
+            start_save()
 
     def on_activate_clicked(self, button):
         """Handle activate session action"""
@@ -2244,11 +2331,11 @@ class SessionManagerGUI:
         show_info_dialog(self.window, _("Completed"), str(message))
 
 
-    def _create_progress_dialog(self, title, message):
+    def _create_progress_dialog(self, title, message, cancellable=False):
         """Create the shared indeterminate operation dialog."""
         progress_dialog = ProgressDialog(
             parent=self.window, title=title, status=message,
-            cancellable=False)
+            cancellable=cancellable)
         progress_dialog.set_deletable(False)
         progress_dialog.set_resizable(False)
         progress_dialog.set_default_size(400, 150)

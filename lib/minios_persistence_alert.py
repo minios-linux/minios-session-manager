@@ -28,7 +28,8 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from minios_session_ui import save_phase_text, send_desktop_notification
+from minios_session_ui import (SaveCancellation, save_phase_text, save_progress,
+                               send_desktop_notification, store_state_text)
 
 gettext.bindtextdomain('minios-session-manager', '/usr/share/locale')
 gettext.textdomain('minios-session-manager')
@@ -191,17 +192,40 @@ def squashfs_session_id(state):
     """Return the active SquashFS session ID exposed by the guard, if any."""
     session = state.get("session", "")
     if (state.get("boot_level", "ok") == "ok" and
+            state.get("durable", "1") == "1" and
             state.get("mode") == "squashfs" and session.isdigit()):
         return session
     return None
 
 
-def save_command(session_id, command=SESSION_COMMAND, progress=False):
+def tray_session_id(state):
+    session = state.get('session', '')
+    if state.get('ram') == '1' and state.get('boot_level') == 'ok' and session.isdigit():
+        return session
+    return squashfs_session_id(state)
+
+
+def session_tray_icon(state):
+    if state.get('saving') == '1':
+        return 'view-refresh'
+    if state.get('ram') == '1':
+        if state.get('store_state') == 'missing':
+            return 'media-eject'
+        if state.get('save_error'):
+            return 'dialog-error'
+        if state.get('save_available') != '1':
+            return 'dialog-warning'
+    return 'document-save'
+
+
+def save_command(session_id, command=SESSION_COMMAND, progress=False, cancel_file=None):
     if not isinstance(session_id, str) or not session_id.isdigit():
         raise ValueError("invalid session id")
     argv = ["pkexec", command, "save", session_id, "--json"]
     if progress:
         argv.append("--progress")
+    if cancel_file is not None:
+        argv.extend(['--cancel-file', cancel_file])
     return argv
 
 
@@ -266,7 +290,7 @@ def _run_gui():
     gi.require_version("Gtk", "3.0")
     from gi.repository import Gtk, GLib
     from minios_gui import (BackgroundTask, ProgressDialog, apply_minios_css,
-                            ask_confirmation)
+                            ask_confirmation, resolve_icon)
 
     app_css = None
     for candidate in (
@@ -313,15 +337,18 @@ def _run_gui():
         "autosave": 0, "saved": None, "settings_active": False,
         "syncing_menu": False, "settings_override_until": 0.0,
         "saved_override_until": 0.0, "notice_shown": False,
+        "ram": False, "mode": None, "save_available": True,
+        "store_state": None, "remote_saving": False,
     }
     saving = {
         "active": False, "dialog": None, "label": None,
         "dialog_shown": False, "phase": "prepare",
+        "cancellation": None,
     }
 
     tray = Gtk.StatusIcon()
     tray.set_from_icon_name("document-save")
-    tray.set_title(_("MiniOS SquashFS Session"))
+    tray.set_title(_("MiniOS Session"))
     tray.set_visible(False)
 
     menu = Gtk.Menu()
@@ -373,19 +400,42 @@ def _run_gui():
     def update_tooltip():
         session_id = state.get("session")
         if session_id:
-            tray.set_tooltip_text(squashfs_tooltip(state, session_id))
+            if state.get('ram'):
+                text = _("Session #{} is running in RAM. {}").format(
+                    session_id, store_state_text(state.get('store_state')))
+                saved = format_saved_time(state.get('saved'))
+                if saved:
+                    text += _(" · Last saved {}").format(saved)
+                if state.get('store_uuid'):
+                    text += '\n{}: {}'.format(state['store_uuid'], state.get('store_relative', ''))
+                if state.get('save_error'):
+                    text += '\n' + state['save_error']
+                if state.get('remote_saving'):
+                    text += '\n' + save_phase_text(state.get('save_phase'))
+                tray.set_tooltip_text(text)
+            else:
+                tray.set_tooltip_text(squashfs_tooltip(state, session_id))
 
     def update_controls():
-        enabled = bool(state.get("session")) and not saving["active"]
+        enabled = bool(state.get("session")) and not saving["active"] and not state.get('remote_saving')
+        enabled = enabled and (not state.get('ram') or state.get('save_available'))
         save_item.set_sensitive(enabled)
-        settings_enabled = enabled and not state["settings_active"]
+        settings_enabled = enabled and not state["settings_active"] and state.get('mode') == 'squashfs'
+        shutdown_item.set_visible(state.get('mode') == 'squashfs')
+        periodic_item.set_visible(state.get('mode') == 'squashfs')
         shutdown_item.set_sensitive(settings_enabled)
         periodic_item.set_sensitive(settings_enabled)
 
     def create_save_dialog():
         dialog = ProgressDialog(
             title=_("Saving Session"),
-            status=save_phase_text(saving["phase"]), cancellable=False)
+            status=save_phase_text(saving["phase"]), cancellable=bool(saving.get('cancellation')))
+        if saving.get('cancellation'):
+            def cancel_requested(_dialog, response):
+                if response == Gtk.ResponseType.CANCEL:
+                    saving['cancellation'].cancel()
+                    dialog.operation_view.set_status(_("Cancelling session save..."))
+            dialog.connect('response', cancel_requested)
         dialog.set_modal(False)
         dialog.set_deletable(False)
         dialog.set_resizable(False)
@@ -395,8 +445,12 @@ def _run_gui():
 
     def update_save_phase(phase):
         saving["phase"] = phase
-        if saving.get("label") is not None:
+        cancellation = saving.get('cancellation')
+        if saving.get("label") is not None and not (cancellation and cancellation.requested):
             saving["label"].set_text(save_phase_text(phase))
+            saving['dialog'].operation_view.set_progress(save_progress(phase))
+            if phase == 'publish':
+                saving['dialog'].operation_view.cancel_button.set_sensitive(False)
         return False
 
     def show_save_dialog_if_needed():
@@ -410,6 +464,8 @@ def _run_gui():
         return False
 
     def finish_save(session_id, returncode, stdout, stderr):
+        if saving.get('cancellation'):
+            saving['cancellation'].close()
         dialog = saving.get("dialog")
         if dialog is not None:
             dialog.destroy()
@@ -417,8 +473,15 @@ def _run_gui():
         saving.update({
             "active": False, "dialog": None, "label": None,
             "dialog_shown": False, "phase": "prepare",
+            "cancellation": None,
         })
         success, message = save_result(returncode, stdout, stderr)
+        cancelled = False
+        try:
+            final = json.loads(stdout.strip().splitlines()[-1])
+            cancelled = final.get('capture', {}).get('cancelled', False)
+        except (ValueError, TypeError, IndexError, AttributeError):
+            pass
         if success:
             state["saved"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             state["saved_override_until"] = time.monotonic() + 35.0
@@ -426,30 +489,44 @@ def _run_gui():
             if not shown:
                 send_desktop_notification(
                     _("Session saved"),
-                    _("SquashFS session #{} was saved successfully.").format(session_id))
-        else:
+                    _("Session #{} was saved successfully.").format(session_id))
+        elif not cancelled:
             show_dialog(_("Failed to save session"), message, "error")
         update_controls()
         return False
 
     def save_now(*_args):
         current = read_state()
-        session_id = squashfs_session_id(current)
+        session_id = tray_session_id(current)
         if not session_id or saving["active"]:
             return
+        if current.get('ram') == '1' and current.get('save_available') != '1':
+            return
+        try:
+            cancellation = SaveCancellation() if current.get('ram') == '1' else None
+        except OSError as error:
+            show_dialog(_("Cannot prepare session saving"), str(error), 'error')
+            return
+        saving['cancellation'] = cancellation
         state["session"] = session_id
         saving["active"] = True
         saving["phase"] = "prepare"
         saving["dialog_shown"] = False
         update_controls()
-        GLib.timeout_add(500, show_save_dialog_if_needed)
+        if cancellation:
+            saving['phase'] = 'prepare-container' if current.get('mode') != 'squashfs' else 'prepare'
+            show_save_dialog_if_needed()
+        else:
+            GLib.timeout_add(500, show_save_dialog_if_needed)
 
-        def worker():
+        def worker(token):
+            token.raise_if_cancelled()
             output_lines = []
             try:
                 with tempfile.TemporaryFile() as error_file:
                     process = subprocess.Popen(
-                        save_command(session_id, progress=True),
+                        save_command(session_id, progress=True,
+                                     cancel_file=cancellation.path if cancellation else None),
                         stdout=subprocess.PIPE, stderr=error_file,
                         universal_newlines=True)
                     for line in process.stdout:
@@ -460,17 +537,29 @@ def _run_gui():
                             continue
                         if isinstance(event, dict) and event.get("type") == "phase":
                             GLib.idle_add(update_save_phase, event.get("phase"))
+                        elif isinstance(event, dict) and event.get('type') == 'progress':
+                            GLib.idle_add(update_save_phase, event)
                     process.wait()
                     error_file.seek(0)
                     stderr = error_file.read().decode("utf-8", "replace")
                     result = (process.returncode, "".join(output_lines), stderr)
             except Exception as error:
                 result = (1, "", str(error))
-            GLib.idle_add(finish_save, session_id, *result)
+            return result
 
-        thread = threading.Thread(target=worker)
-        thread.daemon = True
-        thread.start()
+        def finished(outcome):
+            if outcome.succeeded:
+                finish_save(session_id, *outcome.value)
+            elif not outcome.cancelled:
+                finish_save(session_id, 1, '', str(outcome.error))
+
+        def start_save():
+            BackgroundTask(worker, finished).start()
+            return False
+        if cancellation:
+            GLib.timeout_add(200, start_save)
+        else:
+            start_save()
 
     def finish_settings(returncode, stdout, stderr, desired_policy, desired_autosave):
         state["settings_active"] = False
@@ -574,8 +663,19 @@ def _run_gui():
 
     def update_tray():
         current = read_state()
-        session_id = squashfs_session_id(current)
+        session_id = tray_session_id(current)
         state["session"] = session_id
+        state['ram'] = current.get('ram') == '1'
+        state['mode'] = current.get('mode')
+        state['store_state'] = current.get('store_state')
+        state['save_available'] = current.get('save_available') == '1'
+        state['remote_saving'] = current.get('saving') == '1'
+        for key in ('store_uuid', 'store_relative', 'target_session', 'save_error', 'save_phase'):
+            state[key] = current.get(key)
+        icon_state = dict(current)
+        if saving['active']:
+            icon_state['saving'] = '1'
+        tray.set_from_icon_name(resolve_icon(session_tray_icon(icon_state)))
         if time.monotonic() >= state["settings_override_until"]:
             state["policy"] = current.get("policy", "manual")
             try:
@@ -592,7 +692,9 @@ def _run_gui():
             if squashfs_notice_seen():
                 state["notice_shown"] = True
             else:
-                if state.get("policy") == "shutdown":
+                if state.get('ram'):
+                    body = _("Your session is running in RAM. Use the save icon to write changes to the original storage.")
+                elif state.get("policy") == "shutdown":
                     body = _(
                         "Your session is stored as a compressed snapshot. Use the save "
                         "icon at any time. MiniOS will also save it automatically when shutting down.")
@@ -600,7 +702,7 @@ def _run_gui():
                     body = _(
                         "Your session is stored as a compressed snapshot. Use the save "
                         "icon at any time. Automatic saving can be configured from the tray menu.")
-                if send_desktop_notification(_("SquashFS session is active"), body):
+                if send_desktop_notification(_("RAM session is active") if state.get('ram') else _("SquashFS session is active"), body):
                     state["notice_shown"] = True
                     mark_squashfs_notice_seen()
         return True
