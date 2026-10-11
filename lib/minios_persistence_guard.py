@@ -28,6 +28,11 @@ INITRAMFS_RUN_DIR = "/run/initramfs/minios-persistence"
 BOOT_WARNINGS_FILE = os.path.join(INITRAMFS_RUN_DIR, "boot-warnings")
 PUBLIC_BOOT_WARNINGS_FILE = os.path.join(RUN_DIR, "boot-warnings")
 BOOT_STATE_FILE = os.path.join(INITRAMFS_RUN_DIR, "boot-state")
+BOOT_ID_FILE = "/proc/sys/kernel/random/boot_id"
+VENTOY_STORE_PATHS = (
+    "/run/initramfs/memory/ventoy-persistence",
+    "/memory/ventoy-persistence",
+)
 
 SESSION_PATHS = [
     "/run/initramfs/memory/data/minios/changes",
@@ -276,9 +281,31 @@ class PersistenceGuard:
 
     @staticmethod
     def _detect_sessions_dir():
+        if read_boot_state().get("mode") == "ventoy":
+            return PersistenceGuard._detect_ventoy_store()
         for path in SESSION_PATHS:
             if os.path.exists(path):
                 return path
+        return None
+
+    @staticmethod
+    def _detect_ventoy_store():
+        boot = read_boot_state()
+        if boot.get("mode") != "ventoy" or boot.get("boot_level") != "ok":
+            return None
+        try:
+            with open(BOOT_ID_FILE, "r", encoding="utf-8") as stream:
+                if boot.get("boot_id") != stream.read().strip():
+                    return None
+            for path in VENTOY_STORE_PATHS:
+                if not os.path.ismount(path):
+                    continue
+                current = os.stat(path)
+                if (str(current.st_dev) == boot.get("sessions_device") and
+                        str(current.st_ino) == boot.get("sessions_inode")):
+                    return path
+        except OSError:
+            pass
         return None
 
     def _read_mounts(self):
@@ -287,6 +314,9 @@ class PersistenceGuard:
 
     def backing_and_inner(self):
         """Resolve the backing directory and the inner (union upper) path."""
+        if read_boot_state().get("mode") == "ventoy":
+            backing = self._detect_ventoy_store()
+            return backing, backing
         backing = self.sessions_dir
         inner = None
         if self.sessions_dir:

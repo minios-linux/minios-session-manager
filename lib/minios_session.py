@@ -58,6 +58,13 @@ DYNBLK_COMPRESSION_CODECS = (
 SECURE_BOOT_GUID = '8be4df61-93ca-11d2-aa0d-00e098032b8c'
 SECURE_BOOT_DYNBLK_ERROR = _(
     'DynBlk and VMDK session storage are unavailable while Secure Boot is enabled.')
+VENTOY_SESSION_ERROR = _(
+    'Session Manager is unavailable with the Ventoy Persistence Plugin. '
+    'Select another persistence image in the Ventoy boot menu.')
+
+
+class SessionStorageUnavailableError(RuntimeError):
+    pass
 
 
 def secure_boot_enabled(efivars_dir=None):
@@ -283,6 +290,7 @@ class SessionManager:
     SQUASHFS_SAVE_COMMAND = '/usr/bin/minios-squashfs-save'
     BOOT_STATE_FILE = '/run/initramfs/minios-persistence/boot-state'
     BOOT_ID_FILE = '/proc/sys/kernel/random/boot_id'
+    STORE_TYPE_FILE = '/run/initramfs/minios-persistence/store-type'
     SESSION_PATHS = (
         '/run/initramfs/memory/data/minios/changes',
         '/lib/live/mount/medium/minios/changes',
@@ -302,6 +310,7 @@ class SessionManager:
     SQUASHFS_AUTOSAVE_INTERVALS = (0, 30, 60, 120, 240, 480)
 
     def __init__(self, custom_sessions_dir=None):
+        self.check_storage_support()
         self.sessions_file = None
         self.sessions_dir = None
         self.current_session = None
@@ -318,6 +327,27 @@ class SessionManager:
         
             
         self._detect_session_storage()
+
+    @classmethod
+    def check_storage_support(cls):
+        """Ventoy images have a single upper, not numbered MiniOS sessions."""
+        try:
+            descriptor = os.open(cls.STORE_TYPE_FILE, os.O_RDONLY | os.O_NOFOLLOW)
+        except (FileNotFoundError, PermissionError):
+            # Ordinary session boot records live in a root-only directory.
+            return
+        except OSError as error:
+            raise SessionStorageUnavailableError(str(error))
+        try:
+            with os.fdopen(descriptor, 'rb') as stream:
+                current = os.fstat(stream.fileno())
+                if (not stat.S_ISREG(current.st_mode) or current.st_uid != 0 or
+                        current.st_mode & 0o022 or current.st_size > 64):
+                    raise SessionStorageUnavailableError(_("Invalid persistence storage type record"))
+                if stream.read(64).strip() == b'ventoy-plugin':
+                    raise SessionStorageUnavailableError(VENTOY_SESSION_ERROR)
+        except OSError as error:
+            raise SessionStorageUnavailableError(str(error))
 
     def _ensure_cache_dir(self):
         """Ensure the shared-/tmp cache path is a directory owned by this uid."""
@@ -6144,7 +6174,14 @@ EXAMPLES:
 
     # Initialize session manager with custom directory if specified
     custom_dir = getattr(args, 'sessions_dir', None)
-    manager = SessionManager(custom_sessions_dir=custom_dir)
+    try:
+        manager = SessionManager(custom_sessions_dir=custom_dir)
+    except SessionStorageUnavailableError as error:
+        if args.json:
+            print(json.dumps({"success": False, "error": str(error)}), flush=True)
+        else:
+            print(str(error), file=sys.stderr)
+        sys.exit(1)
 
     if not manager.sessions_dir:
         if args.command == 'autosave':

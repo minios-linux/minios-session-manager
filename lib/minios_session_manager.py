@@ -27,6 +27,7 @@ from minios_gui import (BackgroundTask, OperationView, ProgressDialog,
                         new_icon, show_error_dialog, show_info_dialog)
 from minios_session_ui import (SaveCancellation, save_phase_text, save_progress,
                                send_desktop_notification, store_state_text)
+from minios_session import SessionManager, SessionStorageUnavailableError
 
 # Internationalization setup
 try:
@@ -90,6 +91,7 @@ class SessionManagerGUI:
     """GUI application for session management"""
 
     def __init__(self):
+        SessionManager.check_storage_support()
         self.cli_command = self._get_minios_session_cli_path()
         self._cli_lock = threading.Lock()
         self._cli_process_lock = threading.Lock()
@@ -3170,7 +3172,12 @@ class SessionManagerGUI:
 
 def main():
     """Main entry point"""
-    app = SessionManagerGUI()
+    try:
+        app = SessionManagerGUI()
+    except SessionStorageUnavailableError as error:
+        apply_minios_css()
+        show_error_dialog(None, _("Session Manager"), str(error))
+        sys.exit(1)
     app.run()
 
 if __name__ == '__main__':

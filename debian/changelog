@@ -1,3 +1,12 @@
+minios-session-manager (2.7.1) unstable; urgency=medium
+
+  * Reject session operations with the Ventoy Persistence Plugin before
+    creating directories or starting the GUI, including custom session paths.
+  * Validate current-boot Ventoy backing storage for persistence monitoring.
+  * Document the restriction and add Ventoy storage regressions.
+
+ -- crims0n <crims0n@minios.dev>  Sun, 11 Oct 2026 03:12:04 +0300
+
 minios-session-manager (2.7.0) unstable; urgency=medium
 
   * Save RAM-backed sessions to their original storage or as a new session,

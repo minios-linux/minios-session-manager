@@ -6,6 +6,11 @@ Utility suite for managing MiniOS persistent sessions from within the running sy
 
 For the full session and boot workflow, see [Sessions and persistence](https://github.com/minios-linux/docs/blob/master/using-minios/Sessions-and-Persistence.md) and [Persistence internals](https://github.com/minios-linux/docs/blob/master/reference/boot-process/Persistence-Internals.md). The CLI reference is also available in [minios-session(1)](debian/minios-session.1).
 
+Session Manager is unavailable when MiniOS uses the Ventoy Persistence Plugin.
+Each selected image holds one writable layer, without numbered MiniOS sessions.
+Choose another image in the Ventoy boot menu. This restriction applies to both
+the GUI and CLI, including `--sessions-dir`.
+
 ## Components
 
 - **minios-session-manager** - GTK3 GUI application
