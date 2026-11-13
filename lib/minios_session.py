@@ -2217,6 +2217,106 @@ class SessionManager:
             if temp_mount:
                 self._safe_rmtree(temp_mount)
 
+    @staticmethod
+    def _inspect_dynfilefs(session_path):
+        """Read backend geometry without mounting, recovery, or format conversion."""
+        # Old releases do not implement --info; never test an unknown option
+        # against real storage. Their no-argument usage cannot open a store.
+        probe = subprocess.run(['dynfilefs'], stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, timeout=10)
+        if b'--info' not in probe.stdout or b'--upgrade400' not in probe.stdout:
+            raise OSError(_('Update DynFileFS before upgrading format-400 storage.'))
+        result = subprocess.run(
+            ['dynfilefs', '--info', '-f', os.path.join(session_path, 'changes.dat')],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+        if result.returncode:
+            raise OSError(result.stderr.decode(errors='replace').strip() or
+                          _('Cannot inspect DynFileFS storage. Update the DynFileFS package.'))
+        info = {}
+        for line in result.stdout.decode('ascii').splitlines():
+            key, separator, value = line.partition(':')
+            if not separator or key in info or not value.isdecimal():
+                raise OSError(_('Invalid DynFileFS storage information'))
+            info[key] = int(value)
+        if (info.get('version') not in (400, 500, 600) or
+                info.get('size', 0) <= 0 or info['size'] % 4096):
+            raise OSError(_('Invalid DynFileFS storage information'))
+        return info
+
+    def upgrade_dynfilefs_session(self, session_id):
+        """Copy format 400 into a verified new session; never activate or replace it."""
+        target_path = None
+        target_lease = None
+        metadata_attempted = False
+        details = {}
+        try:
+            with self._session_lease(session_id) as source_path:
+                running = self.get_running_session()
+                if running and running['id'] == session_id:
+                    raise OSError(_('Cannot upgrade the currently running session'))
+                with self._mutation_lock():
+                    metadata = self._read_sessions_metadata()
+                    original = dict(metadata.get('sessions', {}).get(session_id, {}))
+                if (original.get('mode') != 'dynfilefs' or
+                        not self._session_configuration_supported(original)):
+                    raise OSError(_('Select a supported DynFileFS session'))
+                info = self._inspect_dynfilefs(source_path)
+                if info['version'] != 400:
+                    raise OSError(_('This command upgrades DynFileFS format 400 only'))
+                new_id, target_path, target_lease = self._reserve_session(acquire_lease=True)
+                candidate = os.path.join(target_path, 'verified')
+                converted = subprocess.run(
+                    ['dynfilefs', '--upgrade400', os.path.join(source_path, 'changes.dat'), candidate],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if converted.returncode:
+                    raise OSError(converted.stderr.decode(errors='replace').strip() or
+                                  _('DynFileFS storage upgrade failed'))
+                verified = self._inspect_dynfilefs(candidate)
+                if verified['version'] != 600 or verified['size'] != info['size']:
+                    raise OSError(_('Upgraded DynFileFS geometry does not match the source'))
+                # The converter has already reopened and compared all logical bytes.
+                # Move only its owned, cleanly committed store into our leased session.
+                for filename in os.listdir(candidate):
+                    source = os.path.join(candidate, filename)
+                    if (not re.fullmatch(r'changes\.dat(?:\.(?:[0-9]+|log|work|next|migrate|rollback|lock))?', filename) or
+                            not stat.S_ISREG(os.stat(source, follow_symlinks=False).st_mode)):
+                        raise OSError(_('Unexpected file in upgraded DynFileFS storage'))
+                    os.rename(source, os.path.join(target_path, filename))
+                os.rmdir(candidate)
+                directory_fd = os.open(target_path, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+                record = dict(original)
+                if 'id' in record:
+                    record['id'] = new_id
+                record['size'] = str(info['size'] // (1024 * 1024))
+                details = {'source_session': session_id, 'new_session': new_id,
+                           'format_from': 400, 'format_to': 600, 'verified': True,
+                           'activated': False, 'encryption': original.get('encryption', 'none')}
+                with self._mutation_lock():
+                    metadata = self._read_sessions_metadata()
+                    if metadata.get('sessions', {}).get(session_id) != original:
+                        raise OSError(_('Source session metadata changed during upgrade'))
+                    metadata.setdefault('sessions', {})[new_id] = record
+                    metadata_attempted = True
+                    if not self._write_sessions_metadata(metadata):
+                        raise OSError(_('Failed to update session metadata'))
+                return True, _('Storage upgraded to session #{}. Original session retained; activate the new session explicitly.').format(new_id), details
+        except Exception as error:
+            # A failed metadata fsync may already have published the new ID.
+            # Never remove verified files once publication has been attempted.
+            if target_path and not metadata_attempted:
+                shutil.rmtree(target_path, ignore_errors=True)
+                details = {}
+            if metadata_attempted:
+                details['registration_uncertain'] = True
+            return False, _('DynFileFS upgrade failed: {}').format(error), details
+        finally:
+            if target_lease is not None:
+                target_lease.close()
+
     def _get_dynfilefs_size(self, session_path):
         """Get the actual size of a dynfilefs session"""
         total_size = 0
@@ -2224,7 +2324,7 @@ class SessionManager:
         try:
             # Count all changes.dat.* files
             for file in os.listdir(session_path):
-                if re.fullmatch(r'changes\.dat(?:\.[0-9]+)?', file):
+                if re.fullmatch(r'changes\.dat(?:\.(?:[0-9]+|log|work|next|migrate|rollback|lock))?', file):
                     file_path = os.path.join(session_path, file)
                     file_stat = os.stat(file_path, follow_symlinks=False)
                     if stat.S_ISREG(file_stat.st_mode):
@@ -6085,6 +6185,11 @@ EXAMPLES:
     reclaim_parser.add_argument('--compact', action='store_true',
                                 help=_('Explicitly permit moving live data; increases flash writes'))
 
+    upgrade_parser = subparsers.add_parser(
+        'upgrade-storage', help=_('Upgrade DynFileFS format 400 into a new verified session'),
+        parents=[parent_parser])
+    upgrade_parser.add_argument('session_id', help=_('Session ID to upgrade'))
+
     resize_parser = subparsers.add_parser('resize', help=_('Resize a session'), parents=[parent_parser])
     resize_parser.add_argument('session_id', help=_('Session ID to resize'))
     resize_parser.add_argument('size', type=parse_perch_size, metavar='SIZE', help=_('New size in MB, GB, or TB'))
@@ -6544,6 +6649,14 @@ EXAMPLES:
         success, message, details = manager.reclaim_session(args.session_id, compact=args.compact)
         if args.json:
             print(json.dumps({'success': success, 'message': message, 'reclaim': details}))
+        else:
+            print(message)
+        sys.exit(0 if success else 1)
+
+    elif args.command == 'upgrade-storage':
+        success, message, details = manager.upgrade_dynfilefs_session(args.session_id)
+        if args.json:
+            print(json.dumps({'success': success, 'message': message, 'upgrade': details}))
         else:
             print(message)
         sys.exit(0 if success else 1)

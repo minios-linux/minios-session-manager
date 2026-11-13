@@ -191,3 +191,25 @@ crims0n <crims0n@minios.dev>
 ## License
 
 GPL-3.0+
+
+
+## Upgrading DynFileFS format 400
+
+With DynFileFS 6.00-1~minios2 or later installed, upgrade a stopped session into
+a new, verified format-600 session:
+
+```sh
+minios-session upgrade-storage 3 --json
+```
+
+The command retains session 3, preserves its metadata and optional LUKS encryption,
+and does not change the default session. It does not ask for encryption keys:
+the container's virtual bytes are copied without decrypting them. Running and
+leased sessions are refused. Additional storage is required for the new copy.
+
+Before activating the returned `new_session` ID, update the boot initrd to the
+matching DynFileFS build. Format 600 cannot be resumed by an old format-400-only
+initrd. Keep the original session until the new one has been boot-tested.
+If session-metadata publication is uncertain, verified files are retained and
+the JSON response includes `registration_uncertain`; inspect the session list
+and storage rather than deleting either copy blindly.

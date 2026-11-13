@@ -1,3 +1,13 @@
+minios-session-manager (2.7.2) unstable; urgency=medium
+
+  * Add explicit verified DynFileFS format-400 upgrade into a new session.
+  * Preserve the original and default session, including LUKS metadata.
+  * Retain verified storage after uncertain metadata publication.
+  * Include format-600 recovery companions in allocated-storage accounting.
+  * Add format-upgrade regression tests.
+
+ -- crims0n <crims0n@minios.dev>  Fri, 13 Nov 2026 15:24:30 +0300
+
 minios-session-manager (2.7.1) unstable; urgency=medium
 
   * Reject session operations with the Ventoy Persistence Plugin before
