@@ -215,6 +215,23 @@ the JSON response includes `registration_uncertain`; inspect the session list
 and storage rather than deleting either copy blindly.
 
 
+### DynFileFS in Bionic (initrd only)
+
+Bionic images retain the static `dynfilefs` executable in
+`/run/initramfs/bin/dynfilefs`; no system DynFileFS Debian package is required
+or installed. Session Manager prefers an installed DynFileFS executable where
+available (for example on Trixie), and uses the retained initrd binary as a
+fallback on Bionic for creating, mounting, resizing, reclaiming and upgrading
+DynFileFS sessions. Both versions report their supported operations from the binary itself.
+
+Without *either* executable, Session Manager can still list, inspect usage,
+activate and delete existing sessions. It does not advertise DynFileFS as a
+new conversion or creation target, and commands that actually need the executable
+return an actionable error instead of crashing. For a running DynFileFS session,
+this does not imply the storage disappeared: the daemon that initrd already
+started may still be running. No kernel module or Secure Boot exceptions are
+introduced.
+
 ### DynFileFS 6.04 storage and snapshots
 
 DynFileFS on Secure Boot is a userspace fallback for DynBlk. Release-based MiniOS
@@ -225,7 +242,7 @@ The Session Manager's `reclaim` operation does not delete such snapshots.
 
 To migrate an **inactive** format-400 session without replacing it, use
 `minios-session upgrade-storage ID --json`. The new session remains inactive;
-its original remains unchanged. This command requires the MiniOS DynFileFS 6.04
-backend and a boot initrd containing the same helper. Upstream 6.04 creates
+its original remains unchanged. This command requires an accessible MiniOS DynFileFS 6.04 helper
+(either from retained initrd on Bionic or from the system on Trixie). Upstream 6.04 creates
 transaction files (`changes.dat.txn` and `.txn.lock`) which must be retained
 when moving the verified new store into the selected session directory.

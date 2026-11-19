@@ -769,6 +769,7 @@ class TestPersistentMount:
         manager._safe_rmtree = MagicMock(return_value=True)
 
         with patch('minios_session.subprocess.Popen'), \
+                patch('minios_session.require_dynfilefs_executable', return_value='dynfilefs'), \
                 patch('minios_session.tempfile.mkdtemp',
                       return_value=str(tmp_path / 'dynfilefs')) as create, \
                 patch('minios_session.os.path.ismount',
@@ -826,6 +827,7 @@ class TestPersistentMount:
         with patch('minios_session.tempfile.mkdtemp',
                    side_effect=['/tmp/dyn-mount', '/tmp/inner-mount']) as create, \
                 patch('minios_session.subprocess.Popen', return_value=process), \
+                patch('minios_session.require_dynfilefs_executable', return_value='dynfilefs'), \
                 patch('minios_session.subprocess.run',
                       return_value=MagicMock(returncode=0)):
             with pytest.raises(MountCleanupError):

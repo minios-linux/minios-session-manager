@@ -15,7 +15,7 @@ def configured(tmp_path, encryption='none'):
     (source/'changes.dat').write_bytes(b'original400')
     manager = cli.SessionManager.__new__(cli.SessionManager)
     manager.sessions_dir = str(tmp_path)
-    manager._mutation_lock = contextlib.nullcontext
+    manager._mutation_lock = contextlib.ExitStack
     manager._detached_mount_exists = lambda path: False
     manager.get_running_session = lambda: None
     data = {'default': '1', 'sessions': {'1': {
@@ -71,7 +71,7 @@ def test_upgrades_into_new_session_without_activation_or_keys(tmp_path, encrypti
     assert (tmp_path/'1/changes.dat').read_bytes() == b'original400'
     assert (tmp_path/'2/changes.dat').read_bytes() == b'DYNFS600'
     assert (tmp_path/'2/changes.dat.txn').read_bytes() == b'verified-journal'
-    assert all(call.args[0][0] == 'dynfilefs' for call in calls.call_args_list)
+    assert all(call[0][0][0] == 'dynfilefs' for call in calls.call_args_list)
 
 
 def test_running_source_never_reserves_destination(tmp_path):
@@ -131,7 +131,7 @@ def test_old_backend_is_probed_without_a_storage_path(tmp_path):
         ok, _, _ = manager.upgrade_dynfilefs_session('1')
     assert not ok
     assert len(calls.call_args_list) == 1
-    assert calls.call_args.args[0] == ['dynfilefs']
+    assert calls.call_args[0][0] == ['dynfilefs']
     manager._reserve_session.assert_not_called()
 
 
@@ -183,3 +183,10 @@ def test_usage_includes_format_604_snapshot_records_not_other_files(tmp_path):
     expected-=(store/'changes.dat.unrelated').stat().st_blocks*512
     expected+=(history/'0000000000000001.snap').stat().st_blocks*512
     assert manager._get_dynfilefs_size(str(store))==expected
+
+
+@pytest.fixture(autouse=True)
+def installed_dynfilefs_for_mocked_commands():
+    """Existing fake subprocess tests model a present named system helper."""
+    with patch.object(cli, 'require_dynfilefs_executable', return_value='dynfilefs'):
+        yield

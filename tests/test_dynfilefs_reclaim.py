@@ -301,3 +301,10 @@ def test_old_running_daemon_fails_before_trim(tmp_path):
             manager._reclaim_dynfilefs_in_namespace('1', 'none', True)
     manager._trim_block_filesystem_fd.assert_not_called()
     run.assert_not_called()
+
+
+@pytest.fixture(autouse=True)
+def installed_dynfilefs_for_mocked_commands():
+    """Existing fake subprocess tests model a present named system helper."""
+    with patch.object(cli, 'require_dynfilefs_executable', return_value='dynfilefs'):
+        yield

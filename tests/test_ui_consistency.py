@@ -229,7 +229,7 @@ def test_ram_only_status_explains_missing_persistent_storage():
 
 
 def test_dynblk_gui_is_capability_driven_and_resizable():
-    assert "compatible_modes = ['native', 'dynfilefs', 'raw']" in SOURCE
+    assert "compatible_modes = ['native', 'raw']" in SOURCE
     assert "for mode in ('raw', 'dynfilefs', 'dynblk', 'vmdk')" in SOURCE
     assert "if session_mode in ('dynblk', 'vmdk'):" in SOURCE
     assert "encryption_combo.append('luks', _(\"LUKS2\"))" in SOURCE

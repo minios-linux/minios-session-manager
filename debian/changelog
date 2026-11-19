@@ -1,3 +1,15 @@
+minios-session-manager (2.7.5) unstable; urgency=medium
+
+  * Make DynFileFS optional so Bionic needs no userspace dynfilefs package.
+  * Prefer the installed DynFileFS executable for management and fall back to
+    the retained static initrd helper when no system executable is available.
+  * Avoid advertising unavailable DynFileFS targets; preserve read-only session
+    inspection and other backends when neither executable is available.
+  * Keep upgrades and reclaim available through the retained boot helper.
+  * Add regression coverage for missing and available DynFileFS helpers.
+
+ -- crims0n <crims0n@minios.dev>  Fri, 20 Nov 2026 02:30:45 +0300
+
 minios-session-manager (2.7.4) unstable; urgency=medium
 
   * Require the MiniOS DynFileFS 6.04 release-based backend.

@@ -51,6 +51,8 @@ except Exception:
 
 INITRD_CRYPTO_MARKER = '/run/initramfs/etc/minios-initramfs-crypt'
 INITRD_DYNBLK_MARKER = '/run/initramfs/etc/minios-initramfs-dynblk'
+INITRD_DYNFILEFS_EXECUTABLE = '/run/initramfs/bin/dynfilefs'
+
 LUKS_LAYER_CAPABILITY = 'luks-layer-v1'
 DYNBLK_COMPRESSION_CODECS = (
     'none', 'lz4', 'lz4hc', 'lzo', 'lzo-rle', 'zstd', 'deflate', '842',
@@ -65,6 +67,35 @@ VENTOY_SESSION_ERROR = _(
 
 class SessionStorageUnavailableError(RuntimeError):
     pass
+
+def dynfilefs_executable():
+    """Prefer installed DynFileFS; use retained initrd only as a fallback.
+
+    MiniOS Bionic does not install the package into the live root, but retains
+    the static helper under /run/initramfs. An installed system package may
+    have a newer backend, so it always takes priority when available.
+    """
+    installed = shutil.which('dynfilefs') or shutil.which('mount.dynfilefs')
+    if installed:
+        return installed
+    try:
+        state = os.stat(INITRD_DYNFILEFS_EXECUTABLE, follow_symlinks=False)
+        if (stat.S_ISREG(state.st_mode) and state.st_uid == 0 and
+                state.st_mode & 0o111 and not state.st_mode & 0o022 and
+                os.access(INITRD_DYNFILEFS_EXECUTABLE, os.X_OK)):
+            return INITRD_DYNFILEFS_EXECUTABLE
+    except OSError:
+        pass
+    return None
+
+
+def require_dynfilefs_executable():
+    executable = dynfilefs_executable()
+    if executable is None:
+        raise OSError(_(
+            'DynFileFS helper is unavailable in the running system and retained initrd.'))
+    return executable
+
 
 
 def secure_boot_enabled(efivars_dir=None):
@@ -1081,16 +1112,8 @@ class SessionManager:
         return f"{size_bytes:.1f}TB"
 
     def _check_dynfilefs_available(self):
-        """Check if dynfilefs is available on the system"""
-        try:
-            result = subprocess.run(['which', 'dynfilefs'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            if result.returncode == 0:
-                return True
-            # Also check for mount.dynfilefs
-            result = subprocess.run(['which', 'mount.dynfilefs'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            return result.returncode == 0
-        except Exception:
-            return False
+        """Resolve the retained initrd binary even without a system package."""
+        return dynfilefs_executable() is not None
 
     def _get_dynblk_compression_codecs(self):
         return runtime_dynblk_compression_codecs()
@@ -1437,7 +1460,8 @@ class SessionManager:
             compatible_modes.append('squashfs')
         
         # DynFileFS mode: works on all writable filesystems.
-        compatible_modes.append('dynfilefs')
+        if self._check_dynfilefs_available():
+            compatible_modes.append('dynfilefs')
 
         # dynblk uses the lower-filesystem admission contract enforced again by
         # the kernel module. Only expose targets covered by that contract.
@@ -1503,14 +1527,15 @@ class SessionManager:
             return False, _("Sessions directory is read-only")
         if mode in ('dynblk', 'vmdk') and secure_boot_enabled():
             return False, SECURE_BOOT_DYNBLK_ERROR
+        if mode == 'dynfilefs' and not self._check_dynfilefs_available():
+            return False, _(
+                'DynFileFS helper is unavailable in the running system and retained initrd.')
         if mode not in self._get_compatible_session_modes(fs_info):
             return False, _("Session mode '{}' is not compatible with {} filesystem").format(mode, fs_info['type'])
         if size_mb is not None and size_mb <= 0:
             return False, _("Session size must be greater than zero")
         if mode == 'squashfs' and size_mb is not None:
             return False, _("SquashFS sessions do not use a fixed container size")
-        if mode == 'dynfilefs' and not self._check_dynfilefs_available():
-            return False, _("DynFileFS is not available on this system. Please install dynfilefs package.")
         if mode in ('dynblk', 'vmdk'):
             if not self._check_dynblk_available():
                 return False, _("DynBlk is not available on this system.")
@@ -1893,7 +1918,7 @@ class SessionManager:
                 mount_point = self._make_session_mount_point(session_path, 'backend')
                 
                 # Mount dynfilefs
-                cmd = ['dynfilefs', '-f', changes_file, '-m', mount_point]
+                cmd = [require_dynfilefs_executable(), '-f', changes_file, '-m', mount_point]
                 process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 
                 virtual_file = os.path.join(mount_point, 'virtual.dat')
@@ -2084,7 +2109,7 @@ class SessionManager:
                 new_container = not os.path.exists(changes_file)
                 mount_point = self._make_session_mount_point(session_path, 'backend')
                 
-                cmd = ['dynfilefs', '-f', changes_file, '-m', mount_point, '-s', str(size_mb), '-p', '4000']
+                cmd = [require_dynfilefs_executable(), '-f', changes_file, '-m', mount_point, '-s', str(size_mb), '-p', '4000']
                 process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 
                 virtual_file = os.path.join(mount_point, 'virtual.dat')
@@ -2191,7 +2216,7 @@ class SessionManager:
             changes_file = os.path.join(session_path, "changes.dat")
             temp_mount = self._make_session_mount_point(session_path, 'backend')
             process = subprocess.Popen([
-                'dynfilefs', '-f', changes_file, '-m', temp_mount,
+                require_dynfilefs_executable(), '-f', changes_file, '-m', temp_mount,
                 '-s', str(initial_size_mb), '-p', '4000'
             ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             virtual_file = os.path.join(temp_mount, "virtual.dat")
@@ -2222,12 +2247,12 @@ class SessionManager:
         """Read backend geometry without mounting, recovery, or format conversion."""
         # Old releases do not implement --info; never test an unknown option
         # against real storage. Their no-argument usage cannot open a store.
-        probe = subprocess.run(['dynfilefs'], stdout=subprocess.PIPE,
+        probe = subprocess.run([require_dynfilefs_executable()], stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, timeout=10)
         if b'--info' not in probe.stdout or b'--upgrade400' not in probe.stdout:
             raise OSError(_('Update DynFileFS before upgrading format-400 storage.'))
         result = subprocess.run(
-            ['dynfilefs', '--info', '-f', os.path.join(session_path, 'changes.dat')],
+            [require_dynfilefs_executable(), '--info', '-f', os.path.join(session_path, 'changes.dat')],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
         if result.returncode:
             raise OSError(result.stderr.decode(errors='replace').strip() or
@@ -2278,7 +2303,7 @@ class SessionManager:
                 new_id, target_path, target_lease = self._reserve_session(acquire_lease=True)
                 candidate = os.path.join(target_path, 'verified')
                 converted = subprocess.run(
-                    ['dynfilefs', '--upgrade400', os.path.join(source_path, 'changes.dat'), candidate],
+                    [require_dynfilefs_executable(), '--upgrade400', os.path.join(source_path, 'changes.dat'), candidate],
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 if converted.returncode:
                     raise OSError(converted.stderr.decode(errors='replace').strip() or
@@ -3260,10 +3285,6 @@ class SessionManager:
         if not valid_target:
             return False, target_error
         
-        # Check dynfilefs availability for dynfilefs mode
-        if session_mode == "dynfilefs" and not self._check_dynfilefs_available():
-            return False, _("DynFileFS is not available on this system. Please install dynfilefs package.")
-
         # Check fixed/admitted sizes here. SquashFS capture performs its own
         # exact free-space admission in savechanges, so do not impose the
         # unrelated 4000 MB container default on snapshot creation.
@@ -3694,7 +3715,7 @@ class SessionManager:
         process = None
         try:
             process = subprocess.Popen(
-                ['dynfilefs', '-f', os.path.join(session_path, 'changes.dat'),
+                [require_dynfilefs_executable(), '-f', os.path.join(session_path, 'changes.dat'),
                  '-m', mount_point, '-d'],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             virtual_file = os.path.join(mount_point, 'virtual.dat')
@@ -3710,7 +3731,7 @@ class SessionManager:
 
     def _check_dynfilefs_reclaim(self):
         # The no-argument usage is read-only even in old DynFileFS releases.
-        probe = subprocess.run(['dynfilefs'], stdout=subprocess.PIPE,
+        probe = subprocess.run([require_dynfilefs_executable()], stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, timeout=10)
         if b'--reclaim' not in probe.stdout or b'--compact' not in probe.stdout:
             raise OSError(_('Update DynFileFS to version 4.6.0 or later to free session space.'))
@@ -3826,7 +3847,7 @@ class SessionManager:
             if encryption == 'none':
                 self._trim_block_filesystem_fd(device, mount_fd)
             result = subprocess.run(
-                ['dynfilefs', '--compact' if compact else '--reclaim',
+                [require_dynfilefs_executable(), '--compact' if compact else '--reclaim',
                  '/proc/self/fd/{}'.format(image_fd)], pass_fds=(image_fd,),
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if result.returncode:
@@ -3895,7 +3916,7 @@ class SessionManager:
                             raise OSError(_('Cannot unmount the temporary session; its device was left attached.'))
                         os.rmdir(mount_point)
                 command = '--compact' if compact else '--reclaim'
-                result = subprocess.run(['dynfilefs', command, pinned_image],
+                result = subprocess.run([require_dynfilefs_executable(), command, pinned_image],
                                         pass_fds=(fd,), stdout=subprocess.PIPE,
                                         stderr=subprocess.PIPE)
                 if result.returncode:
@@ -3933,7 +3954,7 @@ class SessionManager:
                     self._trim_block_filesystem(device, mount_point)
                 command = '--compact' if compact else '--reclaim'
                 result = subprocess.run(
-                    ['dynfilefs', command, image], stdout=subprocess.PIPE,
+                    [require_dynfilefs_executable(), command, image], stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE)
                 if result.returncode:
                     raise OSError(result.stderr.decode(errors='replace').strip() or
@@ -4177,7 +4198,7 @@ class SessionManager:
             try:
                 # Mount dynfilefs with the new size - this will expand the virtual.dat file automatically
                 mount_cmd = [
-                    'dynfilefs', 
+                    require_dynfilefs_executable(),
                     '-f', changes_file, 
                     '-m', temp_mount, 
                     '-s', str(new_size_mb),
@@ -4229,7 +4250,7 @@ class SessionManager:
         """Expose virtual.dat for one bounded DynFileFS operation."""
         changes_file = os.path.join(session_path, 'changes.dat')
         mount_point = self._make_session_mount_point(session_path, 'backend')
-        command = ['dynfilefs', '-f', changes_file, '-m', mount_point]
+        command = [require_dynfilefs_executable(), '-f', changes_file, '-m', mount_point]
         if size_mb is not None:
             command += ['-s', str(size_mb)]
         command += ['-p', '4000', '-d']

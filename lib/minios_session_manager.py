@@ -1782,14 +1782,14 @@ class SessionManagerGUI:
         
         # Filesystem information is refreshed together with the session list.
         fs_info = self._filesystem_info
-        compatible_modes = ['native', 'dynfilefs', 'raw']  # Capability-neutral fallback
+        compatible_modes = ['native', 'raw']  # Never expose unavailable backends without the CLI capability report
         filesystem_type = "unknown"
         limitations = {}
 
         if fs_info:
             filesystem_type = fs_info.get('filesystem', {}).get('type', 'unknown')
             compatible_modes = fs_info.get(
-                'compatible_modes', ['native', 'dynfilefs', 'raw'])
+                'compatible_modes', ['native', 'raw'])
             limitations = fs_info.get('limitations', {})
         
         # Create session mode selection dialog
@@ -2716,7 +2716,7 @@ class SessionManagerGUI:
         mode_combo = Gtk.ComboBoxText()
         mode_combo.append("auto", _("Auto (from metadata)"))
         import_modes = [mode for mode in self._filesystem_info.get(
-            'compatible_modes', ['native', 'dynfilefs', 'raw'])
+            'compatible_modes', ['native', 'raw'])
                         if mode != 'squashfs']
         for mode in import_modes:
             mode_combo.append(mode, _mode_display_name(mode))
@@ -2850,7 +2850,7 @@ class SessionManagerGUI:
         mode_label = Gtk.Label(label=_("Target mode:"))
         mode_combo = Gtk.ComboBoxText()
         copy_modes = [mode for mode in self._filesystem_info.get(
-            'compatible_modes', ['native', 'dynfilefs', 'raw'])
+            'compatible_modes', ['native', 'raw'])
                       if mode != 'squashfs']
         for mode in copy_modes:
             mode_combo.append(mode, _mode_display_name(mode))
@@ -3027,7 +3027,7 @@ class SessionManagerGUI:
 
         mode_combo = Gtk.ComboBoxText()
         modes = [mode for mode in self._filesystem_info.get(
-            'compatible_modes', ['native', 'dynfilefs', 'raw'])
+            'compatible_modes', ['native', 'raw'])
                  if mode != 'squashfs']
         for mode in modes:
             mode_combo.append(mode, _mode_display_name(mode))
