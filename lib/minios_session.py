@@ -2233,11 +2233,23 @@ class SessionManager:
             raise OSError(result.stderr.decode(errors='replace').strip() or
                           _('Cannot inspect DynFileFS storage. Update the DynFileFS package.'))
         info = {}
+        numeric = {'version', 'size', 'sizeMiB', 'split', 'splitMiB',
+                   'blockSize', 'reusableBytes'}
+        optional = {'currentParent', 'automaticSnapshots', 'currentMatchesParent'}
         for line in result.stdout.decode('ascii').splitlines():
             key, separator, value = line.partition(':')
-            if not separator or key in info or not value.isdecimal():
+            if not separator or key in info:
                 raise OSError(_('Invalid DynFileFS storage information'))
-            info[key] = int(value)
+            if key in numeric and value.isdecimal():
+                info[key] = int(value)
+            elif key == 'currentParent' and (
+                    value == 'none' or re.fullmatch(r'[0-9a-f]{16}', value)):
+                info[key] = value
+            elif key in ('automaticSnapshots', 'currentMatchesParent') and (
+                    value in ('true', 'false', 'none')):
+                info[key] = value
+            else:
+                raise OSError(_('Invalid DynFileFS storage information'))
         if (info.get('version') not in (400, 500, 600) or
                 info.get('size', 0) <= 0 or info['size'] % 4096):
             raise OSError(_('Invalid DynFileFS storage information'))
@@ -2278,7 +2290,7 @@ class SessionManager:
                 # Move only its owned, cleanly committed store into our leased session.
                 for filename in os.listdir(candidate):
                     source = os.path.join(candidate, filename)
-                    if (not re.fullmatch(r'changes\.dat(?:\.(?:[0-9]+|log|work|next|migrate|rollback|lock))?', filename) or
+                    if (not re.fullmatch(r'changes\.dat(?:\.(?:[0-9]+|log|work|next|migrate|rollback|lock|txn|txn\.lock))?', filename) or
                             not stat.S_ISREG(os.stat(source, follow_symlinks=False).st_mode)):
                         raise OSError(_('Unexpected file in upgraded DynFileFS storage'))
                     os.rename(source, os.path.join(target_path, filename))
@@ -2320,18 +2332,27 @@ class SessionManager:
     def _get_dynfilefs_size(self, session_path):
         """Get the actual size of a dynfilefs session"""
         total_size = 0
-        
         try:
-            # Count all changes.dat.* files
-            for file in os.listdir(session_path):
-                if re.fullmatch(r'changes\.dat(?:\.(?:[0-9]+|log|work|next|migrate|rollback|lock))?', file):
-                    file_path = os.path.join(session_path, file)
-                    file_stat = os.stat(file_path, follow_symlinks=False)
-                    if stat.S_ISREG(file_stat.st_mode):
-                        total_size += file_stat.st_blocks * 512
-        except Exception:
+            with os.scandir(session_path) as entries:
+                for entry in entries:
+                    if re.fullmatch(
+                            r'changes\.dat(?:\.(?:[0-9]+|log|work|next|migrate|rollback|lock|txn|txn\.lock))?',
+                            entry.name):
+                        info = entry.stat(follow_symlinks=False)
+                        if stat.S_ISREG(info.st_mode):
+                            total_size += info.st_blocks * 512
+                    elif entry.name == 'changes.dat.snapshots' and entry.is_dir(follow_symlinks=False):
+                        # Upstream 6.04 retains immutable named snapshot metadata
+                        # in a dedicated directory. Count only canonical snapshot
+                        # records, never walk unexpected links or user files.
+                        with os.scandir(entry.path) as snapshots:
+                            for snapshot in snapshots:
+                                if re.fullmatch(r'[0-9a-f]{16}\.snap', snapshot.name):
+                                    info = snapshot.stat(follow_symlinks=False)
+                                    if stat.S_ISREG(info.st_mode):
+                                        total_size += info.st_blocks * 512
+        except OSError:
             pass
-        
         return total_size
 
     def _get_session_size_info(self, session_path, session_data):

@@ -195,7 +195,7 @@ GPL-3.0+
 
 ## Upgrading DynFileFS format 400
 
-With DynFileFS 6.00-1~minios2 or later installed, upgrade a stopped session into
+With DynFileFS 6.00~git20261112.49e5546-1~minios1 or later installed, upgrade a stopped session into
 a new, verified format-600 session:
 
 ```sh
@@ -213,3 +213,19 @@ initrd. Keep the original session until the new one has been boot-tested.
 If session-metadata publication is uncertain, verified files are retained and
 the JSON response includes `registration_uncertain`; inspect the session list
 and storage rather than deleting either copy blindly.
+
+
+### DynFileFS 6.04 storage and snapshots
+
+DynFileFS on Secure Boot is a userspace fallback for DynBlk. Release-based MiniOS
+DynFileFS 6.04 uses upstream format 600 and preserves upstream snapshot history.
+Space reclamation respects saved snapshot pins: an ext4 FITRIM may legitimately
+free no backing space if immutable snapshots still reference the deleted blocks.
+The Session Manager's `reclaim` operation does not delete such snapshots.
+
+To migrate an **inactive** format-400 session without replacing it, use
+`minios-session upgrade-storage ID --json`. The new session remains inactive;
+its original remains unchanged. This command requires the MiniOS DynFileFS 6.04
+backend and a boot initrd containing the same helper. Upstream 6.04 creates
+transaction files (`changes.dat.txn` and `.txn.lock`) which must be retained
+when moving the verified new store into the selected session directory.

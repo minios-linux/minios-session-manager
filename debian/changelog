@@ -1,3 +1,21 @@
+minios-session-manager (2.7.4) unstable; urgency=medium
+
+  * Require the MiniOS DynFileFS 6.04 release-based backend.
+  * Parse upstream 6.04 snapshot info without rejecting nonnumeric metadata.
+  * Preserve new format-600 transaction files during verified format-400 upgrades.
+  * Include saved snapshot records and durable transaction files in storage usage.
+  * Test actual 400-to-600 upgrade through Session Manager with upstream 6.04.
+
+ -- crims0n <crims0n@minios.dev>  Thu, 19 Nov 2026 22:30:00 +0300
+
+minios-session-manager (2.7.3) unstable; urgency=medium
+
+  * Require the correctly versioned DynFileFS development snapshot.
+  * Include the initrd directory-pinning fix in the minimum backend version.
+  * Update the documented prerequisite for verified format-400 upgrades.
+
+ -- crims0n <crims0n@minios.dev>  Fri, 13 Nov 2026 17:12:36 +0300
+
 minios-session-manager (2.7.2) unstable; urgency=medium
 
   * Add explicit verified DynFileFS format-400 upgrade into a new session.
