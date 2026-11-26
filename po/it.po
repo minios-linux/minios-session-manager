@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: minios-session-manager 2.7.1\n"
+"Project-Id-Version: minios-session-manager 3.0.0\n"
 "Report-Msgid-Bugs-To: support@minios.dev\n"
 "POT-Creation-Date: 2026-09-24 16:22+0300\n"
 "PO-Revision-Date: 2026-09-24 13:25+0000\n"
@@ -500,6 +500,14 @@ msgstr "Impossibile creare il filesystem ext4 cifrato"
 #: lib/minios_session.py:1689
 msgid "Failed to unmount encrypted session; its backing device was left attached."
 msgstr "Impossibile smontare la sessione crittografata; il dispositivo di supporto è rimasto collegato."
+
+#: lib/minios_session.py:1904
+msgid "Cannot verify DynFileFS storage format without mounting it. Use a current DynFileFS helper."
+msgstr "Impossibile verificare il formato di archiviazione DynFileFS senza montarlo. Usa un helper DynFileFS aggiornato."
+
+#: lib/minios_session.py:1925
+msgid "A read-only operation cannot convert legacy DynFileFS storage. Back up the session first, then mount it read-write with the current DynFileFS helper. Only even-MiB splits can be converted."
+msgstr "Un'operazione di sola lettura non può convertire l'archiviazione DynFileFS legacy. Esegui prima il backup della sessione, quindi montala in lettura e scrittura con l'helper DynFileFS aggiornato. La conversione è possibile solo se la dimensione dei segmenti è un numero pari di MiB."
 
 #: lib/minios_session.py:1850
 msgid "DynFileFS container not found"

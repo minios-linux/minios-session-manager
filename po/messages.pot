@@ -6,7 +6,7 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: minios-session-manager 2.7.1\n"
+"Project-Id-Version: minios-session-manager 3.0.0\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-09-24 16:22+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
@@ -499,6 +499,14 @@ msgstr ""
 
 #: lib/minios_session.py:1689
 msgid "Failed to unmount encrypted session; its backing device was left attached."
+msgstr ""
+
+#: lib/minios_session.py:1904
+msgid "Cannot verify DynFileFS storage format without mounting it. Use a current DynFileFS helper."
+msgstr ""
+
+#: lib/minios_session.py:1925
+msgid "A read-only operation cannot convert legacy DynFileFS storage. Back up the session first, then mount it read-write with the current DynFileFS helper. Only even-MiB splits can be converted."
 msgstr ""
 
 #: lib/minios_session.py:1850

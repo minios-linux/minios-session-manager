@@ -123,26 +123,18 @@ def test_existing_dynfilefs_session_can_be_activated_without_helper(no_helper, t
     manager._write_sessions_metadata.assert_called_once()
 
 
-def test_missing_helper_fails_upgrade_before_creating_new_session(no_helper, tmp_path):
+def test_missing_helper_does_not_mount_source(no_helper, tmp_path):
     source = tmp_path / '1'
     source.mkdir()
     (source / 'changes.dat').write_bytes(b'original')
     manager = make_manager()
-    @contextlib.contextmanager
-    def lease(*args):
-        yield str(source)
-    manager._session_lease = lease
-    manager._mutation_lock = contextlib.ExitStack
-    manager._read_sessions_metadata = lambda: {
-        'default': '1', 'sessions': {'1': {'mode': 'dynfilefs', 'encryption': 'none'}}}
-    manager._session_configuration_supported = lambda data: True
-    manager.get_running_session = lambda: None
-    manager._reserve_session = Mock()
-    with patch.object(cli.subprocess, 'run') as run:
-        success, error, details = manager.upgrade_dynfilefs_session('1')
-    assert not success and 'initrd' in error and not details
+    with patch.object(cli.subprocess, 'run') as run, \
+            patch.object(cli.subprocess, 'Popen') as spawn:
+        with pytest.raises(OSError, match='initrd'):
+            with manager._mount_session_read(str(source), 'dynfilefs'):
+                pytest.fail('Mounted without a helper')
     assert (source / 'changes.dat').read_bytes() == b'original'
-    manager._reserve_session.assert_not_called()
+    spawn.assert_not_called()
     run.assert_not_called()
 
 

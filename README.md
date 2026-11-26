@@ -67,7 +67,7 @@ sudo minios-session reclaim SESSION_ID --json
 | Mode | Storage | Optional LUKS2 |
 | --- | --- | --- |
 | `native` | Direct storage in the session directory on a compatible POSIX filesystem | No |
-| `dynfilefs` | Expandable format-400 `changes.dat` and segment files, exposing an ext4 `virtual.dat` through FUSE | Yes |
+| `dynfilefs` | Expandable format-600 `changes.dat` and segment files, exposing `virtual.dat` through FUSE | Yes |
 | `dynblk` | Native format-1 thin block storage: `volume000.db`, `volume001.db`, and subsequent parts; supports compression | Yes, with compression disabled |
 | `vmdk` | Standard split sparse `twoGbMaxExtentSparse` image: `volume.vmdk` plus `volume-s001.vmdk` and subsequent parts; no compression | Yes |
 | `raw` | Fixed-size ext4 image in `changes.img` | Yes |
@@ -138,6 +138,12 @@ If unmounting is busy, the backend reports failure and leaves the backing daemon
 
 New temporary mount directories follow `/tmp/minios-session-<ID>-filesystem-*` for the folder containing session files and `/tmp/minios-session-<ID>-backend-*` for intermediate storage mounts. An in-progress conversion without a target ID uses `staging` in place of `<ID>`. Existing mounts keep their original paths until unmounted.
 
+### Older DynFileFS storage
+
+The current MiniOS DynFileFS helper converts format 400 and 500 to format 600 in place on the first normal mount. It does not mount either older format directly. This requires a split size that is an even number of MiB; odd splits are refused. Back up the detached session before mounting it and update the boot initrd before using the converted session at boot. The mount does not create a new session or a separate backup. Other operations that open the backend for writing, such as resize, detached reclaim, and changing a LUKS passphrase, can also trigger conversion before opening the inner filesystem.
+
+Export, logical copy, and storage-mode conversion require read-only access to the source filesystem and refuse format 400 or 500 rather than silently upgrading it. For an even-split session, use an explicit read-write mount and unmount it before using those commands. A physical backup of the detached storage does not require mounting it.
+
 ## Returning unused DynFileFS, DynBlk and VMDK space
 
 Right-click a DynFileFS, DynBlk or VMDK session and choose **Free Space...**. For plaintext sessions, the backend runs FITRIM on the actual inner ext4, not the combined AUFS/OverlayFS root, then invokes the owning backend's reclaim command. A session mounted by Session Manager reuses its existing image or device, including after reopening the GUI. Detached plaintext sessions are temporarily attached and mounted. Running DynBlk/VMDK sessions keep their device; it is validated against protected current-boot state.
@@ -193,35 +199,13 @@ crims0n <crims0n@minios.dev>
 GPL-3.0+
 
 
-## Upgrading DynFileFS format 400
-
-With DynFileFS 6.00~git20261112.49e5546-1~minios1 or later installed, upgrade a stopped session into
-a new, verified format-600 session:
-
-```sh
-minios-session upgrade-storage 3 --json
-```
-
-The command retains session 3, preserves its metadata and optional LUKS encryption,
-and does not change the default session. It does not ask for encryption keys:
-the container's virtual bytes are copied without decrypting them. Running and
-leased sessions are refused. Additional storage is required for the new copy.
-
-Before activating the returned `new_session` ID, update the boot initrd to the
-matching DynFileFS build. Format 600 cannot be resumed by an old format-400-only
-initrd. Keep the original session until the new one has been boot-tested.
-If session-metadata publication is uncertain, verified files are retained and
-the JSON response includes `registration_uncertain`; inspect the session list
-and storage rather than deleting either copy blindly.
-
-
 ### DynFileFS in Bionic (initrd only)
 
 Bionic images retain the static `dynfilefs` executable in
 `/run/initramfs/bin/dynfilefs`; no system DynFileFS Debian package is required
 or installed. Session Manager prefers an installed DynFileFS executable where
 available (for example on Trixie), and uses the retained initrd binary as a
-fallback on Bionic for creating, mounting, resizing, reclaiming and upgrading
+fallback on Bionic for creating, mounting, resizing and reclaiming
 DynFileFS sessions. Both versions report their supported operations from the binary itself.
 
 Without *either* executable, Session Manager can still list, inspect usage,
@@ -239,10 +223,3 @@ DynFileFS 6.04 uses upstream format 600 and preserves upstream snapshot history.
 Space reclamation respects saved snapshot pins: an ext4 FITRIM may legitimately
 free no backing space if immutable snapshots still reference the deleted blocks.
 The Session Manager's `reclaim` operation does not delete such snapshots.
-
-To migrate an **inactive** format-400 session without replacing it, use
-`minios-session upgrade-storage ID --json`. The new session remains inactive;
-its original remains unchanged. This command requires an accessible MiniOS DynFileFS 6.04 helper
-(either from retained initrd on Bionic or from the system on Trixie). Upstream 6.04 creates
-transaction files (`changes.dat.txn` and `.txn.lock`) which must be retained
-when moving the verified new store into the selected session directory.

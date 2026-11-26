@@ -57,6 +57,14 @@ intermediate storage mounts. Existing mounts keep their paths until unmounted.
 Encrypted sessions prompt for a LUKS passphrase or read one line from standard
 input with \fB\-\-password-stdin\fR. If unmounting is busy, the command fails
 without killing the backing daemon or detaching the live device.
+.PP
+The current DynFileFS helper converts formats 400 and 500 in place to format
+600 on the first normal mount. Only splits that are an even number of MiB
+can be converted. Back up detached storage first and update the boot initrd
+before booting the converted session. No new session or backup is created.
+Export, logical copy, and storage-mode conversion refuse legacy DynFileFS
+sources so they do not upgrade the source while reading it. For even splits,
+mount and unmount the session explicitly before using these commands.
 .TP
 .B change-passphrase \fIsession_id\fR [\-\-password-stdin]
 Change one LUKS passphrase for an inactive, detached encrypted Raw, DynFileFS,

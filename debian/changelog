@@ -1,3 +1,16 @@
+minios-session-manager (3.0.0) unstable; urgency=medium
+
+  * Remove upgrade-storage. Back up detached storage before mounting it with
+    a DynFileFS helper that converts even-MiB format-400 and format-500
+    stores to format 600 in place. Update the boot initrd before using the
+    converted session.
+  * Refuse legacy DynFileFS sources during export, logical copy, and
+    storage-mode conversion instead of migrating them as a side effect.
+  * Open encrypted sources read-only and prevent ext4 journal replay on
+    read-only DynFileFS and LUKS mounts.
+
+ -- crims0n <crims0n@minios.dev>  Thu, 26 Nov 2026 16:24:16 +0300
+
 minios-session-manager (2.7.5) unstable; urgency=medium
 
   * Make DynFileFS optional so Bionic needs no userspace dynfilefs package.

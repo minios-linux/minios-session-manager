@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: minios-session-manager 2.7.1\n"
+"Project-Id-Version: minios-session-manager 3.0.0\n"
 "Report-Msgid-Bugs-To: support@minios.dev\n"
 "POT-Creation-Date: 2026-09-24 16:22+0300\n"
 "PO-Revision-Date: 2026-09-24 13:25+0000\n"
@@ -499,6 +499,14 @@ msgstr "Gagal membuat filesystem ext4 terenkripsi"
 #: lib/minios_session.py:1689
 msgid "Failed to unmount encrypted session; its backing device was left attached."
 msgstr "Gagal melepas sesi terenkripsi; perangkat pendukungnya masih terpasang."
+
+#: lib/minios_session.py:1904
+msgid "Cannot verify DynFileFS storage format without mounting it. Use a current DynFileFS helper."
+msgstr "Tidak dapat memverifikasi format penyimpanan DynFileFS tanpa memasangnya. Gunakan helper DynFileFS versi terbaru."
+
+#: lib/minios_session.py:1925
+msgid "A read-only operation cannot convert legacy DynFileFS storage. Back up the session first, then mount it read-write with the current DynFileFS helper. Only even-MiB splits can be converted."
+msgstr "Operasi hanya-baca tidak dapat mengonversi penyimpanan DynFileFS versi lama. Cadangkan sesi terlebih dahulu, lalu pasang penyimpanan dalam mode baca-tulis dengan helper DynFileFS versi terbaru. Konversi hanya dapat dilakukan jika ukuran segmen dalam MiB adalah bilangan genap."
 
 #: lib/minios_session.py:1850
 msgid "DynFileFS container not found"
